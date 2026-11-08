@@ -65,12 +65,15 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         super.init(frame: frame)
         backgroundColor = .black
         scroll.backgroundColor = .black
-        scroll.alwaysBounceVertical = true
+        // Vertical pans go to the terminal (its scrollback); this view pans a grid wider or taller than the screen.
+        scroll.alwaysBounceVertical = false
         scroll.showsHorizontalScrollIndicator = true
         scroll.keyboardDismissMode = .interactive
         addSubview(scroll)
         terminal.terminalDelegate = self
-        terminal.isScrollEnabled = false
+        // The Mac sends its scrollback with the screen: swiping down reads back through it.
+        terminal.isScrollEnabled = true
+        terminal.alwaysBounceVertical = true
         terminal.nativeBackgroundColor = UIColor(red: 0.09, green: 0.09, blue: 0.1, alpha: 1)
         terminal.nativeForegroundColor = UIColor(white: 0.9, alpha: 1)
         scroll.addSubview(terminal)
