@@ -93,6 +93,8 @@ final class RemoteStore {
     /// The Local Network permission is off: the Mac at home can't be found directly.
     private(set) var localNetworkDenied = false
     @ObservationIgnored private let discovery = RemoteDiscovery()
+    /// The addresses the current connection attempt is racing.
+    @ObservationIgnored private var attemptAddresses: Set<String> = []
 
     init() {
         let saved = PairingKeychain.load()
@@ -114,8 +116,11 @@ final class RemoteStore {
 
     private func lanHostsChanged(_ hosts: [DiscoveredHost]) {
         lanHosts = hosts
-        // Just got home: go local if we aren't connected.
-        if isActive, pairing != nil, connection != .connected, connection != .connecting, !isRefused { reconnect() }
+        guard isActive, let pairing, connection != .connected, !isRefused else { return }
+        // Just got home: go local if we aren't connected. Mid-attempt too, when the Mac's local
+        // address wasn't in it (found after the app came to the front), but once per address set.
+        let local = Set(hosts.filter { $0.hostID == pairing.id }.map(\.address))
+        if connection != .connecting || (!local.isEmpty && !local.isSubset(of: attemptAddresses)) { reconnect() }
     }
 
     private var isRefused: Bool { if case .refused = connection { true } else { false } }
@@ -217,7 +222,9 @@ final class RemoteStore {
         retryTask?.cancel()
         hostConnection?.close()
         connection = .connecting
-        let next = RemoteHostConnection(pairing: effectivePairing(pairing), deviceName: Self.deviceName)
+        let effective = effectivePairing(pairing)
+        attemptAddresses = Set(effective.addresses)
+        let next = RemoteHostConnection(pairing: effective, deviceName: Self.deviceName)
         next.onStateChange = { [weak self, weak next] state in
             MainActor.assumeIsolated {
                 guard let self, let next, self.hostConnection === next else { return }

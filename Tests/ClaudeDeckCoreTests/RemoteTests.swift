@@ -253,6 +253,35 @@ import Testing
         #expect(down == bytes)
     }
 
+    /// A dead address first (a black-holed one, like 100.x with Tailscale off) doesn't hold up the
+    /// one that works: addresses race instead of waiting out each timeout.
+    @Test func deadAddressDoesNotDelayTheLiveOne() async throws {
+        let queue = DispatchQueue(label: "remote-test-race")
+        let key = RemotePairing.makeKey()
+        let server = RemoteServer(port: 0, queue: queue, key: { key }, acceptsPeer: Tailscale.isLoopback)
+        queue.sync {
+            server.snapshot = RemoteSnapshot(hostName: "Home", sessions: [])
+            server.start()
+        }
+        defer { queue.sync { server.stop() } }
+        let port = try await RemoteLoopbackTests.listeningPort(server, queue: queue)
+        let pairing = RemotePairing(id: UUID(), hostName: "Home", addresses: ["192.0.2.1", "127.0.0.1"], port: port, key: key, updatedAt: Date())
+        let client = RemoteHostConnection(pairing: pairing, deviceName: "Phone", queue: queue)
+        let started = Date()
+        queue.sync { client.start() }
+        defer { queue.sync { client.close() } }
+        try await waitUntil { queue.sync { if case .connected = client.state { true } else { false } } }
+        #expect(Date().timeIntervalSince(started) < 4)
+        #expect(queue.sync { client.connectedAddress } == "127.0.0.1")
+        #expect(queue.sync { server.peerNames } == ["Phone"])
+    }
+
+    @Test func raceOrderPutsThisNetworkFirst() {
+        let bonjour = RemoteBonjour.addressPrefix + "Mac"
+        let order = RemoteHostConnection.raceOrder(["mac.tail1234.ts.net", "100.101.102.103", "fd7a:115c:a1e0::1", "192.168.1.20", "10.0.0.5", bonjour, "example.com"])
+        #expect(order == ["192.168.1.20", "10.0.0.5", bonjour, "example.com", "mac.tail1234.ts.net", "100.101.102.103", "fd7a:115c:a1e0::1"])
+    }
+
     @Test func wrongKeyIsRefused() async throws {
         let queue = DispatchQueue(label: "remote-test-2")
                 let server = RemoteServer(port: 0, queue: queue, key: { RemotePairing.makeKey() }, acceptsPeer: Tailscale.isLoopback)
