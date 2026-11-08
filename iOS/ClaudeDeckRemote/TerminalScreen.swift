@@ -12,6 +12,29 @@ final class FixedGridTerminalView: TerminalView {
         enforceGrid()
     }
 
+    /// Ctrl+Return (the keyboard bar's Ctrl, then Return): SwiftTerm has no control character for
+    /// Return and sent nothing. Sends Ctrl+J instead, which Claude Code takes as a new line.
+    override func insertText(_ text: String) {
+        let accessory = inputAccessoryView as? TerminalAccessory
+        if text == "\n", accessory?.controlModifier == true || controlModifier {
+            accessory?.controlModifier = false
+            controlModifier = false
+            send(data: [0x0a][...])
+            return
+        }
+        super.insertText(text)
+    }
+
+    /// A hardware keyboard's Ctrl+Return or Shift+Return: a new line too (plain Return still sends).
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.count == 1, let key = presses.first?.key, key.keyCode == .keyboardReturnOrEnter,
+           !key.modifierFlags.intersection([.control, .shift]).isEmpty, !key.modifierFlags.contains(.command) {
+            send(data: [0x0a][...])
+            return
+        }
+        super.pressesBegan(presses, with: event)
+    }
+
     @discardableResult
     func enforceGrid() -> Bool {
         let terminal = getTerminal()
