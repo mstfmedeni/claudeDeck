@@ -207,8 +207,10 @@ public enum ConversationLog {
             } else if let blocks = message["content"] as? [[String: Any]] {
                 for (index, block) in blocks.enumerated() {
                     switch block["type"] as? String {
-                    case "text":
-                        let text = (block["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Claude Code also writes some of what it shows as a reply into a thinking block
+                    // with text (real thinking is stored empty): shown like the terminal shows it.
+                    case "text", "thinking":
+                        let text = (block["text"] as? String ?? block["thinking"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !text.isEmpty else { continue }
                         entries.append(ChatEntry(id: "\(uuid)#\(index)", kind: .assistant, text: String(text.prefix(maxText)), date: date))
                     case "tool_use":
@@ -219,7 +221,7 @@ public enum ConversationLog {
                         entries.append(ChatEntry(id: id, kind: .tool, text: summary(tool: name, input: input), toolName: name, date: date,
                                                  questions: name == "AskUserQuestion" ? ChatQuestion.parse(input) : nil))
                     default:
-                        break // thinking, server tools
+                        break // server tools
                     }
                 }
             }

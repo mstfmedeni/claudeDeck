@@ -585,7 +585,7 @@ import Testing
 @Suite struct ConversationLogTests {
     static let jsonl = """
     {"type":"user","uuid":"u1","timestamp":"2026-10-06T10:00:00.000Z","message":{"role":"user","content":"Fix the login bug"}}
-    {"type":"assistant","uuid":"a1","message":{"content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"Looking at it."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git status\\nmore","description":"Show status"}}]}}
+    {"type":"assistant","uuid":"a1","message":{"content":[{"type":"thinking","thinking":"","signature":"x"},{"type":"text","text":"Looking at it."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git status\\nmore","description":"Show status"}}]}}
     {"type":"user","uuid":"u2","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"On branch main","is_error":false}]}}
     {"type":"assistant","uuid":"a2","isSidechain":true,"message":{"content":[{"type":"text","text":"subagent noise"}]}}
     {"type":"assistant","uuid":"a3","message":{"content":[{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"/Users/me/app/Sources/Login.swift"}}]}}
@@ -612,6 +612,18 @@ import Testing
         #expect(entries[4].text == "/compact")
         #expect(entries[5].kind == .system)
         #expect(!entries.contains { $0.text.contains("subagent") })
+    }
+
+    /// What the terminal shows as a reply but the transcript keeps in a thinking block with text.
+    @Test func thinkingWithTextIsAReply() {
+        let jsonl = """
+        {"type":"assistant","uuid":"a1","apiBlockIndex":0,"message":{"id":"m1","content":[{"type":"thinking","thinking":"","signature":"s"}]}}
+        {"type":"assistant","uuid":"a2","apiBlockIndex":1,"message":{"id":"m1","content":[{"type":"thinking","thinking":"Checking the report now.\\n\\n","signature":"s"}]}}
+        {"type":"assistant","uuid":"a3","apiBlockIndex":2,"message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}
+        """
+        let entries = ConversationLog.entries(fromJSONL: jsonl)
+        #expect(entries.map(\.kind) == [.assistant, .tool])
+        #expect(entries.first?.text == "Checking the report now.")
     }
 
     @Test func pagesLatestBeforeAndAfter() {
