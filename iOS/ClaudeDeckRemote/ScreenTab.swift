@@ -33,8 +33,9 @@ struct ScreenRequest: Equatable {
     let url: URL?
 }
 
-/// The screen tab's content: edge to edge, the navigation bar hidden. On iPhone (where the list
-/// is a stack) a small button goes back to it; the session's own × disconnects.
+/// The screen tab's content: edge to edge, the navigation bar hidden. On iPhone (any orientation:
+/// a Max held sideways is a regular width but still has no list beside it) and narrow iPad windows
+/// a small button goes back to the list; the session's own × disconnects.
 struct ScreenDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     let back: () -> Void
@@ -43,7 +44,7 @@ struct ScreenDetailView: View {
         ScreenSharingView()
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .topLeading) {
-                if sizeClass == .compact {
+                if sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
                     Button(action: back) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .semibold))

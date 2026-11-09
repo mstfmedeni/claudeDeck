@@ -4,7 +4,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
-///   pair.txt (a claudedeck:// link) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
+///   pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
 final class DebugHooks {
     private let store: RemoteStore
@@ -44,6 +44,11 @@ final class DebugHooks {
                 try? FileManager.default.removeItem(at: url)
                 store.agentRegistration(id, approve: file.hasSuffix(".agentapprove"), url: lines.first.flatMap { $0.isEmpty ? nil : $0 },
                                         authHeader: lines.count > 1 && !lines[1].isEmpty ? lines[1] : nil)
+            } else if file == "screen.txt" {
+                // Empty: the paired Mac's screen (like claudedeck://screen); else a vnc:// URL.
+                let text = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                try? FileManager.default.removeItem(at: url)
+                store.screenRequest = ScreenRequest(url: text.isEmpty ? nil : URL(string: text))
             } else if file == "pair.txt", let link = try? String(contentsOf: url, encoding: .utf8) {
                 try? FileManager.default.removeItem(at: url)
                 store.pair(link: link)
