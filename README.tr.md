@@ -1,6 +1,6 @@
 # ClaudeDeck
 
-[English](README.md) · **Türkçe** · [Web sitesi](https://codemagnet-ltd.github.io/claudeDeck/tr/)
+[English](README.md) · **Türkçe** · [Web sitesi](https://mstfmedeni.github.io/claudeDeck/tr/)
 
 **Birden fazla projede aynı anda çalışan Claude Code oturumlarını tek pencereden yöneten macOS uygulaması.**
 
@@ -546,7 +546,7 @@ Sabit bir imza kullanıldığı için macOS'un verdiği izinler (klasör erişim
 - ClaudeDeck açılışta ve günde bir kez yeni sürüm olup olmadığına bakar ve kurmayı önerir: yeni sürüm indirilir,
   doğrulanır, kurulur ve uygulama yeniden açılır. **ClaudeDeck › Güncellemeleri Denetle…**, menü çubuğu penceresindeki
   ⬇︎ düğmesi ve Ayarlar › Genel elle denetler; otomatik denetim oradan kapatılabilir.
-- Güncellemeler [proje sitesinden](https://codemagnet-ltd.github.io/claudeDeck/appcast.xml) ve GitHub Releases'tan
+- Güncellemeler [proje sitesinden](https://mstfmedeni.github.io/claudeDeck/appcast.xml) ve GitHub Releases'tan
   [Sparkle](https://sparkle-project.org) ile gelir. Her güncelleme imzalıdır; ClaudeDeck'in anahtarıyla imzalanmamış olanı kurulmaz.
 
 ### Ayarlar (⚙︎ ya da ⌘,)

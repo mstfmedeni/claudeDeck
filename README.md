@@ -1,6 +1,6 @@
 # ClaudeDeck
 
-**English** · [Türkçe](README.tr.md) · [Website](https://codemagnet-ltd.github.io/claudeDeck/)
+**English** · [Türkçe](README.tr.md) · [Website](https://mstfmedeni.github.io/claudeDeck/)
 
 **A native macOS app for running Claude Code sessions across many projects from one window.**
 
@@ -535,7 +535,7 @@ The app is signed with a Developer ID and notarized by Apple, so Gatekeeper won'
 - ClaudeDeck checks for a new version at launch and once a day, and offers to install it: the new version
   is downloaded, verified and installed, then the app relaunches. **ClaudeDeck › Check for Updates…**, the
   ⬇︎ button in the menu bar window and Settings › General check on demand; automatic checks can be turned off there.
-- Updates come from the [project site](https://codemagnet-ltd.github.io/claudeDeck/appcast.xml) and GitHub Releases
+- Updates come from the [project site](https://mstfmedeni.github.io/claudeDeck/appcast.xml) and GitHub Releases
   via [Sparkle](https://sparkle-project.org). Each update is signed; one that isn't signed with ClaudeDeck's key is refused.
 
 ### Settings (⚙︎ or ⌘,)

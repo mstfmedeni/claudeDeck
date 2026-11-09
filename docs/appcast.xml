@@ -2,7 +2,7 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
     <title>ClaudeDeck</title>
-    <link>https://github.com/CodeMagnet-LTD/claudeDeck</link>
+    <link>https://github.com/mstfmedeni/claudeDeck</link>
     <description>ClaudeDeck updates</description>
     <language>en</language>
     <item>
@@ -11,9 +11,9 @@
       <sparkle:version>18</sparkle:version>
       <sparkle:shortVersionString>0.5.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.5.1</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.5.0...v0.5.1</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.5.1/ClaudeDeck-0.5.1.dmg" sparkle:edSignature="a9R/9F3wRoKGAT4CThT9ilQEQmxgk0Ira0JDDwPNqrh/UWPOwE8Pnux/1r34KxuJ+++xXvpFjfUggxfxeBe1CQ==" length="18431360" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.5.1</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.5.0...v0.5.1</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.5.1/ClaudeDeck-0.5.1.dmg" sparkle:edSignature="a9R/9F3wRoKGAT4CThT9ilQEQmxgk0Ira0JDDwPNqrh/UWPOwE8Pnux/1r34KxuJ+++xXvpFjfUggxfxeBe1CQ==" length="18431360" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.5.0</title>
@@ -21,9 +21,9 @@
       <sparkle:version>17</sparkle:version>
       <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.5.0</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.9...v0.5.0</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.5.0/ClaudeDeck-0.5.0.dmg" sparkle:edSignature="18mg5F4WSBV8C75ubR2WN8Ut68lh4sFzI+pXdRk3JDiNwGO1SgDRaiXMHc93O96/h/1frsqEiTMEgn+lcSVyAQ==" length="18231196" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.5.0</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.9...v0.5.0</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.5.0/ClaudeDeck-0.5.0.dmg" sparkle:edSignature="18mg5F4WSBV8C75ubR2WN8Ut68lh4sFzI+pXdRk3JDiNwGO1SgDRaiXMHc93O96/h/1frsqEiTMEgn+lcSVyAQ==" length="18231196" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.9</title>
@@ -31,9 +31,9 @@
       <sparkle:version>16</sparkle:version>
       <sparkle:shortVersionString>0.4.9</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.9</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.8...v0.4.9</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.9/ClaudeDeck-0.4.9.dmg" sparkle:edSignature="JrdaojocTNjxkJdAwVKCcRt4ZG0RvuS/KI17tmpsdpEQj5fAqDIl9ChhWKHuxoZNxxoPwVoe7r4+OwBOQyqBCw==" length="17947127" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.9</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.8...v0.4.9</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.9/ClaudeDeck-0.4.9.dmg" sparkle:edSignature="JrdaojocTNjxkJdAwVKCcRt4ZG0RvuS/KI17tmpsdpEQj5fAqDIl9ChhWKHuxoZNxxoPwVoe7r4+OwBOQyqBCw==" length="17947127" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.8</title>
@@ -41,9 +41,9 @@
       <sparkle:version>15</sparkle:version>
       <sparkle:shortVersionString>0.4.8</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.8</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.7...v0.4.8</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.8/ClaudeDeck-0.4.8.dmg" sparkle:edSignature="YGMlR50i9B5KG6NMHb5fl3nYQP8URHnrl7wtYzg2YTkaDYiO0Sh7z2p9yYuT+dF+dg3lJ7vNx8lVlMA1vshjCQ==" length="16958752" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.8</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.7...v0.4.8</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.8/ClaudeDeck-0.4.8.dmg" sparkle:edSignature="YGMlR50i9B5KG6NMHb5fl3nYQP8URHnrl7wtYzg2YTkaDYiO0Sh7z2p9yYuT+dF+dg3lJ7vNx8lVlMA1vshjCQ==" length="16958752" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.7</title>
@@ -51,9 +51,9 @@
       <sparkle:version>14</sparkle:version>
       <sparkle:shortVersionString>0.4.7</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.7</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.6...v0.4.7</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.7/ClaudeDeck-0.4.7.dmg" sparkle:edSignature="1jyQJLv94T8RiOBfZ3wKJI8Qkgh1fS9LFAAOf7g8xMRCVMWuOBdvxqpKqs32lnstqI99RqnQhH2cm0bFoYfJDg==" length="16257249" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.7</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.6...v0.4.7</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.7/ClaudeDeck-0.4.7.dmg" sparkle:edSignature="1jyQJLv94T8RiOBfZ3wKJI8Qkgh1fS9LFAAOf7g8xMRCVMWuOBdvxqpKqs32lnstqI99RqnQhH2cm0bFoYfJDg==" length="16257249" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.6</title>
@@ -61,9 +61,9 @@
       <sparkle:version>13</sparkle:version>
       <sparkle:shortVersionString>0.4.6</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.6</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.5...v0.4.6</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.6/ClaudeDeck-0.4.6.dmg" sparkle:edSignature="Fz6QoZj/tehwlYCa/52kz9dGBlC2M/NR+PMIksBnNqWrXZ5PvCpNlDyIhQN8sLubgNkbSxmIM1xJWpScuLpQAA==" length="16167394" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.6</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.5...v0.4.6</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.6/ClaudeDeck-0.4.6.dmg" sparkle:edSignature="Fz6QoZj/tehwlYCa/52kz9dGBlC2M/NR+PMIksBnNqWrXZ5PvCpNlDyIhQN8sLubgNkbSxmIM1xJWpScuLpQAA==" length="16167394" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.5</title>
@@ -71,9 +71,9 @@
       <sparkle:version>12</sparkle:version>
       <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.5</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.4...v0.4.5</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.5/ClaudeDeck-0.4.5.dmg" sparkle:edSignature="BdZ4scgvhr8NBnqPGjgTMHrHnJl/ecxNFdqjV0xtTKjp3y0KdoPZULh4nIISPO76SVat7B8ZIp9uAwuaK7qMCg==" length="16065763" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.5</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.4...v0.4.5</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.5/ClaudeDeck-0.4.5.dmg" sparkle:edSignature="BdZ4scgvhr8NBnqPGjgTMHrHnJl/ecxNFdqjV0xtTKjp3y0KdoPZULh4nIISPO76SVat7B8ZIp9uAwuaK7qMCg==" length="16065763" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.4</title>
@@ -81,9 +81,9 @@
       <sparkle:version>11</sparkle:version>
       <sparkle:shortVersionString>0.4.4</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.4</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.3...v0.4.4</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.4/ClaudeDeck-0.4.4.dmg" sparkle:edSignature="G2R9NO0qZM8oifX/3V0JZ8o58vhAAaicaxQgQAHuozJj4eNDXfk4Wnpr45AoNatvigHZUx8UHhJWbcNwGknCCQ==" length="15903005" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.4</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.3...v0.4.4</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.4/ClaudeDeck-0.4.4.dmg" sparkle:edSignature="G2R9NO0qZM8oifX/3V0JZ8o58vhAAaicaxQgQAHuozJj4eNDXfk4Wnpr45AoNatvigHZUx8UHhJWbcNwGknCCQ==" length="15903005" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.3</title>
@@ -91,9 +91,9 @@
       <sparkle:version>10</sparkle:version>
       <sparkle:shortVersionString>0.4.3</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.3</sparkle:fullReleaseNotesLink>
-      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/CodeMagnet-LTD/claudeDeck/compare/v0.4.2...v0.4.3</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.3/ClaudeDeck-0.4.3.dmg" sparkle:edSignature="vRp+nqNBzQBeizRx2gG3JzcweBZi+vOamLnOnr0ncaSpnV3WlB/xlIqIVloXqdQtxvKg3bUFU31n1Amb2iABBg==" length="15798463" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.3</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.4.2...v0.4.3</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.3/ClaudeDeck-0.4.3.dmg" sparkle:edSignature="vRp+nqNBzQBeizRx2gG3JzcweBZi+vOamLnOnr0ncaSpnV3WlB/xlIqIVloXqdQtxvKg3bUFU31n1Amb2iABBg==" length="15798463" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.2</title>
@@ -101,7 +101,7 @@
       <sparkle:version>9</sparkle:version>
       <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.2</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.2</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>ClaudeDeck 0.4.2 tidies up the sidebar.</p>
 <h3>Fixes</h3>
 <ul>
@@ -109,7 +109,7 @@
 <li><b>The + menu shows on every project row.</b> Single-session projects now show it all the time, not only while the pointer is over the row.</li>
 </ul>
 <p>Installed 0.2.x or later? This update arrives through <b>ClaudeDeck › Check for Updates…</b> (or on its own within a day).</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.2/ClaudeDeck-0.4.2.dmg" sparkle:edSignature="yDXAlW3gytKQMR2oUOLYMnTsYNqw0WVoKNcuMzZWsxFQjIUc3ZDphp+NHK95g3m9qhIHsdb3VsaWFFOCZ7SpAw==" length="15796116" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.2/ClaudeDeck-0.4.2.dmg" sparkle:edSignature="yDXAlW3gytKQMR2oUOLYMnTsYNqw0WVoKNcuMzZWsxFQjIUc3ZDphp+NHK95g3m9qhIHsdb3VsaWFFOCZ7SpAw==" length="15796116" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.1</title>
@@ -117,14 +117,14 @@
       <sparkle:version>8</sparkle:version>
       <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.1</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.1</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>ClaudeDeck 0.4.1 makes pairing links work when opened from outside the app.</p>
 <h3>Fixes</h3>
 <ul>
 <li><b>Opening a <code>claudedeck://pair</code> link pairs this Mac.</b> A link opened from a browser, Messages or Notes used to only bring ClaudeDeck to the front; pairing worked only by pasting the link in Settings › Remote. ClaudeDeck now shows the other Mac's name and addresses and asks first, since the link replaces the current pairing. It then turns on showing another Mac's sessions if needed and connects. A damaged link, or this Mac's own link, says so instead of doing nothing.</li>
 </ul>
 <p>Installed 0.2.x or later? This update arrives through <b>ClaudeDeck › Check for Updates…</b> (or on its own within a day).</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.1/ClaudeDeck-0.4.1.dmg" sparkle:edSignature="0inVGUcH/eBFQSxNIhG6G+2Cjt8U/Yo9AmhfHVGENfzX/CjDK6SmVogsu4n7buG8ZkvwtA671D7qWGQgYZQ4Bg==" length="15776262" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.1/ClaudeDeck-0.4.1.dmg" sparkle:edSignature="0inVGUcH/eBFQSxNIhG6G+2Cjt8U/Yo9AmhfHVGENfzX/CjDK6SmVogsu4n7buG8ZkvwtA671D7qWGQgYZQ4Bg==" length="15776262" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.4.0</title>
@@ -132,7 +132,7 @@
       <sparkle:version>7</sparkle:version>
       <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.4.0</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.4.0</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>ClaudeDeck 0.4.0 adds remote mode: follow and drive one Mac's Claude sessions from another Mac or from the ClaudeDeck iPhone companion.</p>
 <h3>New</h3>
 <ul>
@@ -152,7 +152,7 @@
 <li>"Continue where you left off." waits for Claude to start and keeps retrying Enter while many sessions resume at once, never while a prompt is on screen.</li>
 </ul>
 <p>Installed 0.2.x or 0.3.x? This update arrives through <b>ClaudeDeck › Check for Updates…</b> (or on its own within a day).</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.4.0/ClaudeDeck-0.4.0.dmg" sparkle:edSignature="I7m26Y8YOeHODoB1cIEnB3Vt4aCoZoMfrTqRzXIDS7xbMU/Xp/pPLj/c5tT5JDxsBXITAPsfQmych5Ww3tRRCQ==" length="15775479" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.4.0/ClaudeDeck-0.4.0.dmg" sparkle:edSignature="I7m26Y8YOeHODoB1cIEnB3Vt4aCoZoMfrTqRzXIDS7xbMU/Xp/pPLj/c5tT5JDxsBXITAPsfQmych5Ww3tRRCQ==" length="15775479" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.3.0</title>
@@ -160,7 +160,7 @@
       <sparkle:version>6</sparkle:version>
       <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.3.0</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.3.0</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>ClaudeDeck 0.3.0 adds usage limits, git history and branches, a GitHub inbox, history search, Skills and a live view of each session's agents.</p>
 <h3>New</h3>
 <ul>
@@ -179,7 +179,7 @@
 <li>"Continue where you left off." no longer stays unsent in the input while Claude is still starting up.</li>
 </ul>
 <p>Installed 0.2.x? This update arrives through <b>ClaudeDeck › Check for Updates…</b> (or on its own within a day).</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.3.0/ClaudeDeck-0.3.0.dmg" sparkle:edSignature="RfKaWBhSFxkuvZt1cFJILgbHMDfR9QTSTsC2vxSPs1cZh0ujibjW0ItekU6iXreKwI/5ecCGBVn8wecABPYRCw==" length="13789060" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.3.0/ClaudeDeck-0.3.0.dmg" sparkle:edSignature="RfKaWBhSFxkuvZt1cFJILgbHMDfR9QTSTsC2vxSPs1cZh0ujibjW0ItekU6iXreKwI/5ecCGBVn8wecABPYRCw==" length="13789060" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.2.1</title>
@@ -187,7 +187,7 @@
       <sparkle:version>5</sparkle:version>
       <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.2.1</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.2.1</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>A calmer sidebar that doesn't move under your cursor, and ⌘-click for bare file names.</p>
 <h3>Sidebar</h3>
 <ul>
@@ -204,7 +204,7 @@
 <li><b>⌘-click a bare file name</b> like <code>[file] promo.mp4</code> or <code>README.md</code>: ClaudeDeck finds it in the session's folder, in the files Claude recently wrote or sent in that session, or elsewhere in the project, and shows it in Finder (⌘⌥-click opens it).</li>
 </ul>
 <p>Installed 0.2.0? This update arrives through <b>ClaudeDeck › Check for Updates…</b> (or on its own within a day).</p>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.2.1/ClaudeDeck-0.2.1.dmg" sparkle:edSignature="SJQrr97No5wyv7uOs8V1rw0ru6gZMjTbn/cxeNahO9UAQvtzlq06rHtd9KFu8nN+8FoWq+ubGa1CRG6bw1NSBA==" length="11335371" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.2.1/ClaudeDeck-0.2.1.dmg" sparkle:edSignature="SJQrr97No5wyv7uOs8V1rw0ru6gZMjTbn/cxeNahO9UAQvtzlq06rHtd9KFu8nN+8FoWq+ubGa1CRG6bw1NSBA==" length="11335371" type="application/octet-stream"/>
     </item>
     <item>
       <title>ClaudeDeck 0.2.0</title>
@@ -212,7 +212,7 @@
       <sparkle:version>4</sparkle:version>
       <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/CodeMagnet-LTD/claudeDeck/releases/tag/v0.2.0</sparkle:fullReleaseNotesLink>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.2.0</sparkle:fullReleaseNotesLink>
       <description><![CDATA[<p>ClaudeDeck 0.2.0 turns the deck into a place where you can also read, review and ship the code your Claude sessions write — without leaving the window.</p>
 <h3>New</h3>
 <ul>
@@ -235,7 +235,7 @@
 <li>Requires macOS 15 or later. <code>gh</code> (for GitHub linking) and Pencil are optional.</li>
 <li>Your data file gains new fields (automations, GitHub links, new settings). Going back to 0.1.0 afterwards works, but 0.1.0 drops those fields the next time it saves.</li>
 </ul>]]></description>
-      <enclosure url="https://github.com/CodeMagnet-LTD/claudeDeck/releases/download/v0.2.0/ClaudeDeck-0.2.0.dmg" sparkle:edSignature="eafBm+ppCxg6S3hmwL+PHQVNBvfJRSerLMlGz8zNHHaqK5Loc/qPC19ZpD8XEQgYy2T5PWZX+2hZm/OqkmSpBw==" length="10904398" type="application/octet-stream"/>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.2.0/ClaudeDeck-0.2.0.dmg" sparkle:edSignature="eafBm+ppCxg6S3hmwL+PHQVNBvfJRSerLMlGz8zNHHaqK5Loc/qPC19ZpD8XEQgYy2T5PWZX+2hZm/OqkmSpBw==" length="10904398" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
