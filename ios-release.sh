@@ -36,6 +36,12 @@ ARCHIVE="$OUT/ClaudeDeckRemote-$VERSION-$BUILD.xcarchive"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
+# The screen-sharing library (Go, in the open-screen-sharing submodule): rebuilt every time, it's quick.
+echo "▸ Building Libsharing (open-screen-sharing)…"
+git submodule update --init --quiet Vendor/open-screen-sharing
+PATH="/usr/local/go/bin:$PATH" make -C Vendor/open-screen-sharing lib > "$OUT/libsharing.log" 2>&1 \
+  || { tail -20 "$OUT/libsharing.log" >&2; fail "Libsharing build failed (log: $OUT/libsharing.log)."; }
+
 echo "▸ Archiving ClaudeDeckRemote $VERSION ($BUILD)…"
 # shellcheck disable=SC2086
 xcodebuild archive -scheme ClaudeDeckRemote -configuration Release -destination 'generic/platform=iOS' \

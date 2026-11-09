@@ -1,3 +1,4 @@
+import ScreenSharingKit
 import SwiftUI
 import VisionKit
 
@@ -166,7 +167,9 @@ struct RootView: View {
                         }
                         Group {
                         // A new identity per session: another session opened from a notification starts fresh.
-                        if let selection {
+                        if selection == ScreenTab.id {
+                            ScreenDetailView { selection = nil }
+                        } else if let selection {
                             SessionDetailView(sessionID: selection).id(selection)
                         } else {
                             ContentUnavailableView("No Session Selected", systemImage: "terminal")
@@ -210,6 +213,11 @@ struct RootView: View {
             if phase == .active { store.sceneActivated(sceneID) }
         }
         .onChange(of: selection, initial: true) { _, id in
+            if id == ScreenTab.id {
+                store.sceneSelected(sceneID, session: nil)
+                if sizeClass == .regular, sidebarMode != .full { withAnimation { hiddenOpen = false } }
+                return
+            }
             // Whatever set it (a restored window, an old notification), a session the Mac doesn't
             // have would show an empty "Session" screen: back to the list.
             if let id, let snapshot = store.snapshot, snapshot.session(id) == nil {
@@ -227,7 +235,7 @@ struct RootView: View {
         // A restored (or opened) session the Mac no longer has: back to the list instead of an
         // empty "Session" screen. A new session is in the snapshot before its id comes back.
         .onChange(of: store.snapshot?.sessions.map(\.id)) { _, ids in
-            guard let selection, let ids, !ids.contains(selection) else { return }
+            guard let selection, selection != ScreenTab.id, let ids, !ids.contains(selection) else { return }
             self.selection = nil
             windowSession = nil
         }
@@ -242,6 +250,22 @@ struct RootView: View {
             }
             store.openRequest = nil
             selection = request.session
+        }
+        // `claudedeck://screen` / `vnc://`: the screen tab first, then the connection (so it doesn't
+        // start behind a hidden view). The window in front takes it.
+        .onChange(of: store.screenRequest, initial: true) { _, request in
+            guard let request, store.screenRequest?.token == request.token,
+                  store.activeScene == nil || store.activeScene == sceneID else { return }
+            store.screenRequest = nil
+            selection = ScreenTab.id
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                if let url = request.url {
+                    ScreenSharingStore.shared.open(url)
+                } else if let host = ScreenTab.macHost(store) {
+                    ScreenSharingStore.shared.connect(host: host, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+                }
+            }
         }
         .onChange(of: store.newWindowRequest) { _, request in
             guard let request, store.newWindowRequest?.token == request.token else { return }
@@ -295,6 +319,7 @@ struct SessionListView: View {
         let projectNames = sessions.map(\.project).reduce(into: [String]()) { if !$0.contains($1), !pinnedNames.contains($1) { $0.append($1) } }
         List(selection: $selection) {
             ConnectionBanner()
+            ScreenTabRow()
             if let usage = store.snapshot?.usage { UsageRow(usage: usage) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
                store.snapshot?.supports(RemoteSnapshot.Feature.agentApproval) == true {
@@ -1321,6 +1346,11 @@ struct SettingsView: View {
                         dismiss()
                     }
                 }
+            }
+            Section {
+                NavigationLink("Licenses") { LicensesView() }
+            } footer: {
+                Text("ClaudeDeck for iPhone and iPad is free software under the GNU GPL v3 (it includes open-screen-sharing). Source: github.com/mstfmedeni/claudeDeck")
             }
         }
         .navigationTitle("Settings")

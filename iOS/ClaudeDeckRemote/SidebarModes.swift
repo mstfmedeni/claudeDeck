@@ -42,6 +42,16 @@ struct SessionRail: View {
             Divider()
             ScrollView {
                 VStack(spacing: 7) {
+                    Button { selection = ScreenTab.id } label: {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selection == ScreenTab.id ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12))
+                            .overlay { Image(systemName: "display").font(.system(size: 13)) }
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .help(Text("Mac Screen"))
+                    .accessibilityLabel(Text("Mac Screen"))
                     ForEach(sessions) { session in
                         let color = SessionStyle.color(session.state, custom: customColors)
                         Button { selection = session.id } label: {

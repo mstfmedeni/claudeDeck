@@ -26,6 +26,16 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.0
+  # open-screen-sharing's dependencies (versions as pinned in its Package.resolved).
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 7.11.1
+  Perception:
+    url: https://github.com/pointfreeco/swift-perception
+    from: 2.0.12
+  Atomics:
+    url: https://github.com/apple/swift-atomics
+    from: 1.3.1
 targets:
   ClaudeDeckCore:
     type: library.static
@@ -100,6 +110,14 @@ targets:
     sources:
       - iOS/ClaudeDeckRemote
       - iOS/Assets.xcassets   # AppIcon: the Mac icon, full-bleed (iOS masks the corners)
+      - iOS/PrivacyInfo.xcprivacy   # open-screen-sharing's required-reason APIs (file timestamps, boot time)
+      # Settings › Licenses (the app is GPL-3.0 because of open-screen-sharing).
+      - path: Support/GPL-3.0.txt
+        buildPhase: resources
+      - path: Support/SCREEN_SHARING_LICENSES.txt
+        buildPhase: resources
+      - path: Support/THIRD_PARTY_LICENSES.txt
+        buildPhase: resources
       - Sources/ClaudeDeckCore/RemoteProtocol.swift
       - Sources/ClaudeDeckCore/RemoteTransport.swift
       - Sources/ClaudeDeckCore/RemoteScreen.swift
@@ -115,6 +133,8 @@ targets:
       - Support/Localizable.xcstrings
     dependencies:
       - package: SwiftTerm
+      - target: ScreenSharingKit
+        embed: true
     entitlements:
       path: iOS/ClaudeDeckRemote.entitlements
       properties:
@@ -135,7 +155,45 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSCameraUsageDescription: "Scan the pairing QR code shown on your Mac."
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Find your Mac on this network and connect to it directly."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Send your voice to the Mac while you share its screen."
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+  # The Mac's screen in the iOS app: open-screen-sharing (GPL-3.0, git submodule, branch
+  # `claudedeck`) built as a framework with its own settings. Libsharing.xcframework comes from
+  # `make -C Vendor/open-screen-sharing lib` (Go; build.sh / ios-release.sh run it).
+  ScreenSharingKit:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Vendor/open-screen-sharing/OpenScreenSharing
+        excludes:
+          - "Demo/*.jpg"
+          - "*.plist"
+          - "*.entitlements"
+          - "*.xml"
+          - "PackageScripts/**"
+          - "Resources/AppIcon.icon"
+          - "Resources/InfoPlist.xcstrings"
+          - "Resources/Localizable.xcstrings"
+          - "Resources/PrivacyInfo.xcprivacy"
+    dependencies:
+      - framework: Vendor/open-screen-sharing/Frameworks/Libsharing.xcframework
+        embed: false
+      - package: GRDB
+      - package: Perception
+      - package: Atomics
+        product: Atomics
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        # Perception's back-ported Bindable is unavailable from iOS 17; the views need it.
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) EMBEDDED"
+        PRODUCT_BUNDLE_IDENTIFIER: $(DECK_BUNDLE_PREFIX).ScreenSharingKit
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
   ClaudeDeckCoreTests:
     type: bundle.unit-test
     platform: macOS

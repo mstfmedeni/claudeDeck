@@ -1,5 +1,11 @@
 ClaudeDeck includes the following third-party software.
 
+ClaudeDeck for iPhone and iPad (ClaudeDeckRemote) also includes open-screen-sharing
+(https://github.com/nekohasekai/open-screen-sharing, GPL-3.0) for its Mac Screen tab, so that
+app as a whole is distributed under the GNU General Public License v3 (GPL-3.0.txt). Its
+components' notices are in SCREEN_SHARING_LICENSES.txt. ClaudeDeck for Mac doesn't include it
+and stays under the MIT License.
+
 ================================================================
 SwiftTerm — https://github.com/migueldeicaza/SwiftTerm
 ================================================================

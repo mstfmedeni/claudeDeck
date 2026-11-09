@@ -351,7 +351,7 @@
         }
       }
     },
-    "Agents Waiting for Approval \u00b7 %lld": {
+    "Agents Waiting for Approval · %lld": {
       "localizations": {
         "tr": {
           "stringUnit": {
@@ -6463,16 +6463,6 @@
         }
       }
     },
-    "Show Hidden Files": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gizli Dosyaları Göster"
-          }
-        }
-      }
-    },
     "Show History": {
       "localizations": {
         "tr": {
@@ -10420,6 +10410,4123 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kapatıldı"
+          }
+        }
+      }
+    },
+    "%@×": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@×"
+          }
+        }
+      }
+    },
+    "%lld FPS": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld FPS"
+          }
+        }
+      }
+    },
+    "1. Go to Settings › Privacy & Security › Developer Mode.\n2. Tap “Pair with %@”.\n3. Enter the pairing code shown by Screen Sharing.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Ayarlar › Gizlilik ve Güvenlik › Geliştirici Modu’na gidin.\n2. “Pair with %@” seçeneğine dokunun.\n3. Screen Sharing’in gösterdiği eşleme kodunu girin."
+          }
+        }
+      }
+    },
+    "4-Digit or 6-Digit Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4-Digit or 6-Digit Code"
+          }
+        }
+      }
+    },
+    "A New Nightly Build Is Available": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni Bir Gecelik Derleme Var"
+          }
+        }
+      }
+    },
+    "A New Release Is Available": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni Bir Sürüm Var"
+          }
+        }
+      }
+    },
+    "A Port Is in Use": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir Kapı Kullanımda"
+          }
+        }
+      }
+    },
+    "A custom numeric passcode can contain only digits from 0 to 9.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A custom numeric passcode can contain only digits from 0 to 9."
+          }
+        }
+      }
+    },
+    "About": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hakkında"
+          }
+        }
+      }
+    },
+    "Adaptive": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uyarlanabilir"
+          }
+        }
+      }
+    },
+    "Adaptive Quality": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uyarlanabilir Kalite"
+          }
+        }
+      }
+    },
+    "Add %@ to Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğuna Ekle: %@"
+          }
+        }
+      }
+    },
+    "Add Mapping": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme Ekle"
+          }
+        }
+      }
+    },
+    "Add Quick Input": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı Giriş Ekle"
+          }
+        }
+      }
+    },
+    "All Displays": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tüm Ekranlar"
+          }
+        }
+      }
+    },
+    "Alt Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alt tuşu"
+          }
+        }
+      }
+    },
+    "Another Device Is Using High Performance on “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başka Bir Aygıt “%@” Üzerinde Yüksek Performans Kullanıyor"
+          }
+        }
+      }
+    },
+    "App": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama"
+          }
+        }
+      }
+    },
+    "App Switcher": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama Değiştirici"
+          }
+        }
+      }
+    },
+    "App Windows": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama Pencereleri"
+          }
+        }
+      }
+    },
+    "Apple Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Tuşu"
+          }
+        }
+      }
+    },
+    "Apple Key Mappings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Tuş Eşlemeleri"
+          }
+        }
+      }
+    },
+    "Applies to the next key or click.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonraki tuşa veya tıklamaya uygulanır."
+          }
+        }
+      }
+    },
+    "Apps": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulamalar"
+          }
+        }
+      }
+    },
+    "Ask for Permission Instead": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bunun Yerine İzin İste"
+          }
+        }
+      }
+    },
+    "Ask to Share Their Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekranını Paylaşmasını İste"
+          }
+        }
+      }
+    },
+    "Audio Service": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses Servisi"
+          }
+        }
+      }
+    },
+    "Authentication": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kimlik Doğrulama"
+          }
+        }
+      }
+    },
+    "Automatic Unlock": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic Unlock"
+          }
+        }
+      }
+    },
+    "Automatic unlock supports English letters, numbers, spaces, and standard punctuation. Other characters aren’t supported.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic unlock supports English letters, numbers, spaces, and standard punctuation. Other characters aren’t supported."
+          }
+        }
+      }
+    },
+    "Automatic unlock supports passcodes up to 64 characters.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic unlock supports passcodes up to 64 characters."
+          }
+        }
+      }
+    },
+    "Available": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılabilir"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geri"
+          }
+        }
+      }
+    },
+    "Background Service": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arka Plan Servisi"
+          }
+        }
+      }
+    },
+    "Before sharing this device’s screen, pair and import the disk image.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu aygıtın ekranını paylaşmadan önce eşleme yapın ve disk görüntüsünü içe aktarın."
+          }
+        }
+      }
+    },
+    "Behavior": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Davranış"
+          }
+        }
+      }
+    },
+    "Cache": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önbellek"
+          }
+        }
+      }
+    },
+    "Cache Size": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önbellek Boyutu"
+          }
+        }
+      }
+    },
+    "Canceled": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal edildi"
+          }
+        }
+      }
+    },
+    "Can’t Look for Nearby Computers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yakındaki Bilgisayarlar Aranamıyor"
+          }
+        }
+      }
+    },
+    "Can’t Play the Computer’s Sound": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgisayarın Sesi Çalınamıyor"
+          }
+        }
+      }
+    },
+    "Can’t Play the Mac’s Sound": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’in Sesi Çalınamıyor"
+          }
+        }
+      }
+    },
+    "Can’t Use the Microphone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mikrofon Kullanılamıyor"
+          }
+        }
+      }
+    },
+    "Can’t connect to “%@”.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” ile bağlantı kurulamıyor."
+          }
+        }
+      }
+    },
+    "Can’t find “%@”.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” bulunamıyor."
+          }
+        }
+      }
+    },
+    "Caps Lock": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Büyük Harf Kilidi"
+          }
+        }
+      }
+    },
+    "Changing Resolution…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çözünürlük değiştiriliyor…"
+          }
+        }
+      }
+    },
+    "Check Automatically": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik Olarak Denetle"
+          }
+        }
+      }
+    },
+    "Check for Updates Automatically": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeleri Otomatik Olarak Denetle"
+          }
+        }
+      }
+    },
+    "Check for Updates Automatically?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeler Otomatik Olarak Denetlensin mi?"
+          }
+        }
+      }
+    },
+    "Checking…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denetleniyor…"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temizle"
+          }
+        }
+      }
+    },
+    "Clear Cache": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önbelleği Temizle"
+          }
+        }
+      }
+    },
+    "Clear Shortcut": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kestirmeyi Temizle"
+          }
+        }
+      }
+    },
+    "Click": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tıkla"
+          }
+        }
+      }
+    },
+    "Click %@ to add a connection.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı eklemek için %@ düğmesini tıklayın."
+          }
+        }
+      }
+    },
+    "Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano"
+          }
+        }
+      }
+    },
+    "Clipboard Sync Asks Before Each Paste": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano Eşzamanlama Her Yapıştırmadan Önce Sorar"
+          }
+        }
+      }
+    },
+    "Command Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komut tuşu"
+          }
+        }
+      }
+    },
+    "Configured Apple keys and PC keys take effect when connected to an Apple or PC device, respectively.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yapılandırılan Apple tuşları ve PC tuşları sırasıyla bir Apple aygıtına veya PC’ye bağlıyken geçerli olur."
+          }
+        }
+      }
+    },
+    "Connect Anyway": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de Bağlan"
+          }
+        }
+      }
+    },
+    "Connect a keyboard to set up shortcuts.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kestirmeleri ayarlamak için bir klavye bağlayın."
+          }
+        }
+      }
+    },
+    "Connection interrupted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı kesintiye uğradı"
+          }
+        }
+      }
+    },
+    "Connections": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantılar"
+          }
+        }
+      }
+    },
+    "Control": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrol"
+          }
+        }
+      }
+    },
+    "Control Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Control tuşu"
+          }
+        }
+      }
+    },
+    "Controlling": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrol Ediliyor"
+          }
+        }
+      }
+    },
+    "Couldn’t Cancel Drag": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sürükleme İptal Edilemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Check for Updates": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeler Denetlenemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Clear the Cache": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önbellek Temizlenemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Connect to “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” ile Bağlantı Kurulamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Delete “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Silinemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Find “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Bulunamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Finish Transferring Files": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosya Aktarımı Tamamlanamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Get “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Alınamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Import the Disk Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk Görüntüsü İçe Aktarılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Import the Pairing File": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme Dosyası İçe Aktarılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Import “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” İçe Aktarılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Install the Update": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncelleme Yüklenemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Mount the Developer Disk Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici Disk Görüntüsü Bağlanamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Open the Link": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı Açılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Read the Private Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel Anahtar Okunamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Receive the Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano Alınamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Restart the App": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama Yeniden Başlatılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Save “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Kaydedilemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Send the Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano Gönderilemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Send “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Gönderilemedi"
+          }
+        }
+      }
+    },
+    "Couldn’t Sign In to “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” için Giriş Yapılamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t Verify “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Doğrulanamadı"
+          }
+        }
+      }
+    },
+    "Couldn’t publish the pairing service (error %d).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme servisi yayımlanamadı (hata %d)."
+          }
+        }
+      }
+    },
+    "Ctrl Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ctrl tuşu"
+          }
+        }
+      }
+    },
+    "Cursor Style": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmleç Stili"
+          }
+        }
+      }
+    },
+    "Custom": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel"
+          }
+        }
+      }
+    },
+    "Custom Alphanumeric Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Alphanumeric Code"
+          }
+        }
+      }
+    },
+    "Custom Keys and Text": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel Tuşlar ve Metin"
+          }
+        }
+      }
+    },
+    "Custom Numeric Code": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Numeric Code"
+          }
+        }
+      }
+    },
+    "Customization": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özelleştirme"
+          }
+        }
+      }
+    },
+    "Customize Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Özelleştir"
+          }
+        }
+      }
+    },
+    "Customize Toolbar…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Özelleştir…"
+          }
+        }
+      }
+    },
+    "Debug": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hata Ayıklama"
+          }
+        }
+      }
+    },
+    "Debug Panel": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hata Ayıklama Paneli"
+          }
+        }
+      }
+    },
+    "Delete Mapping": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşlemeyi Sil"
+          }
+        }
+      }
+    },
+    "Delete Quick Input": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı Girişi Sil"
+          }
+        }
+      }
+    },
+    "Desktop": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masaüstü"
+          }
+        }
+      }
+    },
+    "Developer Mode Is Off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici Modu Kapalı"
+          }
+        }
+      }
+    },
+    "Device Passcode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device Passcode"
+          }
+        }
+      }
+    },
+    "Dictation": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dikte"
+          }
+        }
+      }
+    },
+    "Disable UDP": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UDP’yi Devre Dışı Bırak"
+          }
+        }
+      }
+    },
+    "Disconnect": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı Kes"
+          }
+        }
+      }
+    },
+    "Disconnected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı Kesildi"
+          }
+        }
+      }
+    },
+    "Disconnected from “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” ile Bağlantı Kesildi"
+          }
+        }
+      }
+    },
+    "Display %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran %lld"
+          }
+        }
+      }
+    },
+    "Displays": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekranlar"
+          }
+        }
+      }
+    },
+    "Don’t Check": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denetleme"
+          }
+        }
+      }
+    },
+    "Down Arrow": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aşağı Ok"
+          }
+        }
+      }
+    },
+    "Download": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İndir"
+          }
+        }
+      }
+    },
+    "Download Disk Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk Görüntüsünü İndir"
+          }
+        }
+      }
+    },
+    "Edit Connection": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı Düzenle"
+          }
+        }
+      }
+    },
+    "Edit Mapping": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşlemeyi Düzenle"
+          }
+        }
+      }
+    },
+    "Edit Menu": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Edit"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düzen"
+          }
+        }
+      }
+    },
+    "Edit Quick Input": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı Girişi Düzenle"
+          }
+        }
+      }
+    },
+    "Editing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düzenleme"
+          }
+        }
+      }
+    },
+    "End": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sona Git"
+          }
+        }
+      }
+    },
+    "English (US)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İngilizce (ABD)"
+          }
+        }
+      }
+    },
+    "Enter a 4-digit or 6-digit passcode, or select the passcode type used by this device.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a 4-digit or 6-digit passcode, or select the passcode type used by this device."
+          }
+        }
+      }
+    },
+    "Enter a name.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir ad girin."
+          }
+        }
+      }
+    },
+    "Enter a valid server address.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçerli bir sunucu adresi girin."
+          }
+        }
+      }
+    },
+    "Enter the password to sign in to “%@”.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” için parolayı girin."
+          }
+        }
+      }
+    },
+    "Enter the user name and password to sign in to “%@”.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” için kullanıcı adını ve parolayı girin."
+          }
+        }
+      }
+    },
+    "Enter this device’s lock screen passcode.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter this device’s lock screen passcode."
+          }
+        }
+      }
+    },
+    "Escape": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esc"
+          }
+        }
+      }
+    },
+    "Extends the picture to the edges of the screen, where parts of it may be hidden by the rounded corners or the camera. When the pointer moves into a hidden part, that part is also shown nearby.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görüntüyü ekranın kenarlarına kadar genişletir; burada yuvarlatılmış köşeler veya kamera görüntünün bazı kısımlarını gizleyebilir. İmleç gizli bir kısma gittiğinde o kısım yakınında da gösterilir."
+          }
+        }
+      }
+    },
+    "F%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "F%lld"
+          }
+        }
+      }
+    },
+    "File": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosya"
+          }
+        }
+      }
+    },
+    "File transfer failed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosya aktarımı başarısız oldu"
+          }
+        }
+      }
+    },
+    "Forward Delete": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İleri Sil"
+          }
+        }
+      }
+    },
+    "From Files": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dosyalar’dan"
+          }
+        }
+      }
+    },
+    "From URL": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL’den"
+          }
+        }
+      }
+    },
+    "From a Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir Mac’ten"
+          }
+        }
+      }
+    },
+    "Full": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tam"
+          }
+        }
+      }
+    },
+    "Full Quality": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tam Kalite"
+          }
+        }
+      }
+    },
+    "Full Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tam Ekran"
+          }
+        }
+      }
+    },
+    "Function Keys": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İşlev Tuşları"
+          }
+        }
+      }
+    },
+    "Generate a Token": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belirteç Oluştur"
+          }
+        }
+      }
+    },
+    "GitHub Token": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub Belirteci"
+          }
+        }
+      }
+    },
+    "Hide Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavyeyi Gizle"
+          }
+        }
+      }
+    },
+    "Hide Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Gizle"
+          }
+        }
+      }
+    },
+    "High Dynamic Range": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yüksek Dinamik Aralık"
+          }
+        }
+      }
+    },
+    "High Performance Stopped": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yüksek Performans Durdu"
+          }
+        }
+      }
+    },
+    "Home": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başa Git"
+          }
+        }
+      }
+    },
+    "Home Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana Ekran"
+          }
+        }
+      }
+    },
+    "Host": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana Makine"
+          }
+        }
+      }
+    },
+    "Hostname": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana makine adı"
+          }
+        }
+      }
+    },
+    "Icons": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simgeler"
+          }
+        }
+      }
+    },
+    "Import": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İçe Aktar"
+          }
+        }
+      }
+    },
+    "Import Disk Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk Görüntüsünü İçe Aktar"
+          }
+        }
+      }
+    },
+    "Import Disk Image Again": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk Görüntüsünü Yeniden İçe Aktar"
+          }
+        }
+      }
+    },
+    "Import Pairing File": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme Dosyasını İçe Aktar"
+          }
+        }
+      }
+    },
+    "Import from Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’ten İçe Aktar"
+          }
+        }
+      }
+    },
+    "Importing…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İçe aktarılıyor…"
+          }
+        }
+      }
+    },
+    "In More": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“Daha Fazla” menüsünde"
+          }
+        }
+      }
+    },
+    "Internet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İnternet"
+          }
+        }
+      }
+    },
+    "Item": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öğe"
+          }
+        }
+      }
+    },
+    "It’s assigned to “%@”. Replacing it removes that shortcut.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kestirme şu anda “%@” için kullanılıyor. Değiştirirseniz o işlemin kestirmesi kaldırılır."
+          }
+        }
+      }
+    },
+    "It’s mapped to %@. Replacing it removes that mapping.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kestirme %@ ile eşlenmiş. Değiştirirseniz bu eşleme kaldırılır."
+          }
+        }
+      }
+    },
+    "It’s mapped to %@. Replacing it removes those mappings.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kestirme %@ ile eşlenmiş. Değiştirirseniz bu eşlemeler kaldırılır."
+          }
+        }
+      }
+    },
+    "Keep Alive": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etkin Tut"
+          }
+        }
+      }
+    },
+    "Keep Running With": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışır Tutma Yöntemi"
+          }
+        }
+      }
+    },
+    "Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuş"
+          }
+        }
+      }
+    },
+    "Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavye"
+          }
+        }
+      }
+    },
+    "Keyboard Input for Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac için Klavye Girişi"
+          }
+        }
+      }
+    },
+    "Keyboard Layout": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavye Düzeni"
+          }
+        }
+      }
+    },
+    "Keypad": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayısal Tuş Takımı"
+          }
+        }
+      }
+    },
+    "Keypad %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayısal Tuş Takımı %@"
+          }
+        }
+      }
+    },
+    "Keypad Enter": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayısal Tuş Takımı Enter"
+          }
+        }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dil"
+          }
+        }
+      }
+    },
+    "Last connected %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son bağlantı: %@"
+          }
+        }
+      }
+    },
+    "Later": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonra"
+          }
+        }
+      }
+    },
+    "Left Arrow": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sol Ok"
+          }
+        }
+      }
+    },
+    "Letters": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Harfler"
+          }
+        }
+      }
+    },
+    "List": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liste"
+          }
+        }
+      }
+    },
+    "Listen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dinleme"
+          }
+        }
+      }
+    },
+    "Local Network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel Ağ"
+          }
+        }
+      }
+    },
+    "Location Service": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konum Servisi"
+          }
+        }
+      }
+    },
+    "Lock": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilitle"
+          }
+        }
+      }
+    },
+    "Log In to Your Own Session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi Oturumunuzu Aç"
+          }
+        }
+      }
+    },
+    "Looking Up…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aranıyor…"
+          }
+        }
+      }
+    },
+    "Looking for Computers…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgisayarlar aranıyor…"
+          }
+        }
+      }
+    },
+    "Looking for “%@”…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” aranıyor…"
+          }
+        }
+      }
+    },
+    "Loopback through the local network performs poorly.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel ağ üzerinden geri döngü düşük performans gösterir."
+          }
+        }
+      }
+    },
+    "Lost the Connection to “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” ile Bağlantı Koptu"
+          }
+        }
+      }
+    },
+    "Main Display": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana Ekran"
+          }
+        }
+      }
+    },
+    "Maximum Frame Rate": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maksimum Kare Hızı"
+          }
+        }
+      }
+    },
+    "Microphone access is turned off in Settings.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar’da mikrofon erişimi kapalı."
+          }
+        }
+      }
+    },
+    "Microphone access is turned off in System Settings.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem Ayarları’nda mikrofon erişimi kapalı."
+          }
+        }
+      }
+    },
+    "Mission Control": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mission Control"
+          }
+        }
+      }
+    },
+    "Modifier Keys": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değiştirici Tuşlar"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha Fazla"
+          }
+        }
+      }
+    },
+    "Move Down": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aşağı Taşı"
+          }
+        }
+      }
+    },
+    "Move Trackpad": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzleme Dörtgenini Taşı"
+          }
+        }
+      }
+    },
+    "Native": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Doğal"
+          }
+        }
+      }
+    },
+    "Native Touch": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel Dokunma"
+          }
+        }
+      }
+    },
+    "Native Touch for Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac için Yerel Dokunma"
+          }
+        }
+      }
+    },
+    "Native touch is supported when you connect with Apple VNC to a Mac with macOS 27.3 or later.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 27.3 veya sonrasını çalıştıran bir Mac’e Apple VNC ile bağlandığınızda yerel dokunma desteklenir."
+          }
+        }
+      }
+    },
+    "Navigation": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gezinme"
+          }
+        }
+      }
+    },
+    "Network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ"
+          }
+        }
+      }
+    },
+    "Network Quality": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ Kalitesi"
+          }
+        }
+      }
+    },
+    "New Connection": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni Bağlantı"
+          }
+        }
+      }
+    },
+    "New Connection…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni Bağlantı…"
+          }
+        }
+      }
+    },
+    "New connections start with clipboard sync turned off. To sync what you copy to the Mac without being asked each time, choose Allow for Paste from Other Apps in Settings.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bağlantılar pano eşzamanlama kapalı olarak başlar. Kopyaladıklarınızı her seferinde sorulmadan Mac ile eşzamanlamak için Ayarlar’da “Diğer Uygulamalardan Yapıştır” seçeneğini “İzin Ver” olarak ayarlayın."
+          }
+        }
+      }
+    },
+    "New connections start with clipboard sync turned off. To sync what you copy to the Mac without being asked each time, turn on Screen Sharing in Privacy & Security > Paste from Other Apps in System Settings.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bağlantılar pano eşzamanlama kapalı olarak başlar. Kopyaladıklarınızı her seferinde sorulmadan Mac ile eşzamanlamak için Sistem Ayarları’nda Gizlilik ve Güvenlik > Diğer Uygulamalardan Yapıştır bölümünde Screen Sharing’i açın."
+          }
+        }
+      }
+    },
+    "Next": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonraki"
+          }
+        }
+      }
+    },
+    "Next Tip": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonraki İpucu"
+          }
+        }
+      }
+    },
+    "Nightly": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gecelik"
+          }
+        }
+      }
+    },
+    "No Computers Found": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgisayar Bulunamadı"
+          }
+        }
+      }
+    },
+    "No Connection Open": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açık Bağlantı Yok"
+          }
+        }
+      }
+    },
+    "No Connections": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı Yok"
+          }
+        }
+      }
+    },
+    "No Developer Disk Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici Disk Görüntüsü Yok"
+          }
+        }
+      }
+    },
+    "No Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavye Yok"
+          }
+        }
+      }
+    },
+    "No Location Access": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konum Erişimi Yok"
+          }
+        }
+      }
+    },
+    "No loopback address found. Turn on [LocalDevVPN](https://apps.apple.com/app/id6755608044), or [sing-box](https://sing-box.sagernet.org) with `loopback_address` configured.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geri döngü adresi bulunamadı. [LocalDevVPN](https://apps.apple.com/app/id6755608044) uygulamasını ya da `loopback_address` yapılandırılmış [sing-box](https://sing-box.sagernet.org) uygulamasını açın."
+          }
+        }
+      }
+    },
+    "Not Available": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılamaz"
+          }
+        }
+      }
+    },
+    "Not Available on Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’te Kullanılamaz"
+          }
+        }
+      }
+    },
+    "Not available while observing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzleme sırasında kullanılamaz"
+          }
+        }
+      }
+    },
+    "Numbers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rakamlar"
+          }
+        }
+      }
+    },
+    "Observe Mode": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzleme Modu"
+          }
+        }
+      }
+    },
+    "Observing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzleniyor"
+          }
+        }
+      }
+    },
+    "Open System Settings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem Ayarları’nı Aç"
+          }
+        }
+      }
+    },
+    "Option Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Option tuşu"
+          }
+        }
+      }
+    },
+    "Optional": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteğe bağlı"
+          }
+        }
+      }
+    },
+    "Others": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer"
+          }
+        }
+      }
+    },
+    "PC Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PC Tuşu"
+          }
+        }
+      }
+    },
+    "PC Key Mappings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PC Tuş Eşlemeleri"
+          }
+        }
+      }
+    },
+    "Page Down": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayfa Aşağı"
+          }
+        }
+      }
+    },
+    "Page Up": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayfa Yukarı"
+          }
+        }
+      }
+    },
+    "Pair Again": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Eşle"
+          }
+        }
+      }
+    },
+    "Pair in Settings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar’da Eşleyin"
+          }
+        }
+      }
+    },
+    "Pair with This Device": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Aygıtla Eşle"
+          }
+        }
+      }
+    },
+    "Paired": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşlendi"
+          }
+        }
+      }
+    },
+    "Pairing Code: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme Kodu: %@"
+          }
+        }
+      }
+    },
+    "Pairing Failed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme Başarısız Oldu"
+          }
+        }
+      }
+    },
+    "Passcode Type": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passcode Type"
+          }
+        }
+      }
+    },
+    "Passphrase": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parola İfadesi"
+          }
+        }
+      }
+    },
+    "Password Fields Take Only English Characters": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parola Alanları Yalnızca İngilizce Karakterleri Kabul Eder"
+          }
+        }
+      }
+    },
+    "Picture": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görüntü"
+          }
+        }
+      }
+    },
+    "Pinch to Zoom": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kıstırarak Büyütme"
+          }
+        }
+      }
+    },
+    "Pointer Lock": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmleç Kilidi"
+          }
+        }
+      }
+    },
+    "Preparing Remote Cursors…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzak İmleçler Hazırlanıyor…"
+          }
+        }
+      }
+    },
+    "Press %@ to release the pointer": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmleci serbest bırakmak için %@ tuşlarına basın"
+          }
+        }
+      }
+    },
+    "Press Gesture": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Basma Hareketi"
+          }
+        }
+      }
+    },
+    "Privacy & Security › Developer Mode": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizlilik ve Güvenlik › Geliştirici Modu"
+          }
+        }
+      }
+    },
+    "Private Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel Anahtar"
+          }
+        }
+      }
+    },
+    "Public Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genel Anahtar"
+          }
+        }
+      }
+    },
+    "Quality": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalite"
+          }
+        }
+      }
+    },
+    "Quick Input": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı Giriş"
+          }
+        }
+      }
+    },
+    "Raising the resolution by scaling reduces sharpness and increases bandwidth use and picture latency.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çözünürlüğü ölçekleyerek artırmak netliği azaltır, bant genişliği kullanımını ve görüntü gecikmesini artırır."
+          }
+        }
+      }
+    },
+    "Receive Audio": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesi Al"
+          }
+        }
+      }
+    },
+    "Receive Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panoyu Al"
+          }
+        }
+      }
+    },
+    "Receiving “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Alınıyor"
+          }
+        }
+      }
+    },
+    "Reconnecting…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden bağlanıyor…"
+          }
+        }
+      }
+    },
+    "Release Pointer": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmleci Serbest Bırak"
+          }
+        }
+      }
+    },
+    "Remember Password": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parolayı Anımsa"
+          }
+        }
+      }
+    },
+    "Remote Style": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzak Stil"
+          }
+        }
+      }
+    },
+    "Remove from Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğundan Kaldır"
+          }
+        }
+      }
+    },
+    "Replace": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değiştir"
+          }
+        }
+      }
+    },
+    "Required": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerekli"
+          }
+        }
+      }
+    },
+    "Reset Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Sıfırla"
+          }
+        }
+      }
+    },
+    "Reset Toolbar?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğu Sıfırlansın mı?"
+          }
+        }
+      }
+    },
+    "Reset to Default": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saptanmışa Sıfırla"
+          }
+        }
+      }
+    },
+    "Resolution": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çözünürlük"
+          }
+        }
+      }
+    },
+    "Resolution…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çözünürlük…"
+          }
+        }
+      }
+    },
+    "Restart Required": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Başlatma Gerekli"
+          }
+        }
+      }
+    },
+    "Restore Defaults": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saptanmışlara Dön"
+          }
+        }
+      }
+    },
+    "Return": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return"
+          }
+        }
+      }
+    },
+    "Right Arrow": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağ Ok"
+          }
+        }
+      }
+    },
+    "Right-Click": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağ Tıkla"
+          }
+        }
+      }
+    },
+    "Scaling": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ölçek"
+          }
+        }
+      }
+    },
+    "Screen Sharing couldn’t keep waiting for Settings in the background.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Sharing arka planda Ayarlar’ı beklemeyi sürdüremedi."
+          }
+        }
+      }
+    },
+    "Screen Sharing isn’t allowed to use the local network. Allow it in Settings › Privacy & Security › Local Network.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Sharing’in yerel ağı kullanmasına izin verilmiyor. Ayarlar › Gizlilik ve Güvenlik › Yerel Ağ bölümünden izin verin."
+          }
+        }
+      }
+    },
+    "Screen Sharing needs to stay running in the background to keep sharing this device’s screen.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu aygıtın ekranını paylaşmayı sürdürmek için Screen Sharing’in arka planda çalışmaya devam etmesi gerekir."
+          }
+        }
+      }
+    },
+    "Screen Sharing needs your passcode to automatically unlock the device when connected.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Sharing needs your passcode to automatically unlock the device when connected."
+          }
+        }
+      }
+    },
+    "Screen of %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ Ekranı"
+          }
+        }
+      }
+    },
+    "Send Audio": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesi Gönder"
+          }
+        }
+      }
+    },
+    "Send Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panoyu Gönder"
+          }
+        }
+      }
+    },
+    "Send to Desktop": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masaüstüne Gönder"
+          }
+        }
+      }
+    },
+    "Sending “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Gönderiliyor"
+          }
+        }
+      }
+    },
+    "Sends": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gönderilen"
+          }
+        }
+      }
+    },
+    "Server": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu"
+          }
+        }
+      }
+    },
+    "Server Address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu Adresi"
+          }
+        }
+      }
+    },
+    "Server Type": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu Türü"
+          }
+        }
+      }
+    },
+    "Set up a keyboard shortcut in %@ › %@, or add an item in %@ › %@ and choose it from the Quick Input menu, to send a custom sequence of keys and text to the connected device.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ › %2$@ bölümünde bir klavye kestirmesi ayarlayın veya %3$@ › %4$@ bölümünde bir öğe ekleyip “Hızlı Giriş” menüsünden seçin; böylece bağlı aygıta özel bir tuş ve metin dizisi gönderebilirsiniz."
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar…"
+          }
+        }
+      }
+    },
+    "Setup": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurulum"
+          }
+        }
+      }
+    },
+    "Share the Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekranı Paylaş"
+          }
+        }
+      }
+    },
+    "Sharing Stopped": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paylaşım Durdu"
+          }
+        }
+      }
+    },
+    "Sharing this iPad’s screen needs iPadOS 27 or later.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu iPad’in ekranını paylaşmak için iPadOS 27 veya sonrası gerekir."
+          }
+        }
+      }
+    },
+    "Sharing this iPhone’s screen needs iOS 27 or later.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu iPhone’un ekranını paylaşmak için iOS 27 veya sonrası gerekir."
+          }
+        }
+      }
+    },
+    "Shift Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shift tuşu"
+          }
+        }
+      }
+    },
+    "Shortcut": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kestirme"
+          }
+        }
+      }
+    },
+    "Shortcuts": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kestirmeler"
+          }
+        }
+      }
+    },
+    "Show Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavyeyi Göster"
+          }
+        }
+      }
+    },
+    "Show Keyboard for Text Fields": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metin Alanları İçin Klavyeyi Göster"
+          }
+        }
+      }
+    },
+    "Show Tips": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İpuçlarını Göster"
+          }
+        }
+      }
+    },
+    "Show Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Göster"
+          }
+        }
+      }
+    },
+    "Show or Hide Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavyeyi Göster veya Gizle"
+          }
+        }
+      }
+    },
+    "Show/Hide Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavyeyi Göster/Gizle"
+          }
+        }
+      }
+    },
+    "Show/Hide Toolbar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Araç Çubuğunu Göster/Gizle"
+          }
+        }
+      }
+    },
+    "Shows a Mac keyboard with Command, Option and Control keys in place of the device’s keyboard. It sits under the picture with the trackpad, so it covers nothing.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aygıtın klavyesi yerine Command, Option ve Control tuşlarıyla bir Mac klavyesi gösterir. İzleme dörtgeniyle birlikte görüntünün altında durur, böylece hiçbir şeyi kapatmaz."
+          }
+        }
+      }
+    },
+    "Shows the keyboard when you tap a text field on the computer. While no text field has focus, the first tap only focuses one. Tapping text that can be selected may also show it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgisayardaki bir metin alanına dokunduğunuzda klavyeyi gösterir. Hiçbir metin alanı odakta değilken ilk dokunuş yalnızca alanı odaklar. Seçilebilen bir metne dokunmak da klavyeyi gösterebilir."
+          }
+        }
+      }
+    },
+    "Sign In": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş Yap"
+          }
+        }
+      }
+    },
+    "Signing In…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş yapılıyor…"
+          }
+        }
+      }
+    },
+    "Some Characters Can’t Be Typed on “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bazı Karakterler “%@” Üzerinde Yazılamıyor"
+          }
+        }
+      }
+    },
+    "Someone at the Mac needs to accept.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac başındaki birinin kabul etmesi gerekir."
+          }
+        }
+      }
+    },
+    "Sound": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses"
+          }
+        }
+      }
+    },
+    "Source Code": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaynak Kod"
+          }
+        }
+      }
+    },
+    "Space": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boşluk"
+          }
+        }
+      }
+    },
+    "Stable": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kararlı"
+          }
+        }
+      }
+    },
+    "Starting High Performance…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yüksek performans başlatılıyor…"
+          }
+        }
+      }
+    },
+    "Symbols": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simgeler"
+          }
+        }
+      }
+    },
+    "Sync Clipboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panoyu Eşzamanla"
+          }
+        }
+      }
+    },
+    "System Default": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem Saptanmışı"
+          }
+        }
+      }
+    },
+    "System Style": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem Stili"
+          }
+        }
+      }
+    },
+    "Tab": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sekme"
+          }
+        }
+      }
+    },
+    "Tap %@ to add a connection.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı eklemek için %@ düğmesine dokunun."
+          }
+        }
+      }
+    },
+    "Tap to return to Screen Sharing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen Sharing’e dönmek için dokunun"
+          }
+        }
+      }
+    },
+    "Text": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metin"
+          }
+        }
+      }
+    },
+    "The Mac can’t write to the folder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac klasöre yazamıyor"
+          }
+        }
+      }
+    },
+    "The Mac doesn’t allow file transfers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac dosya aktarımlarına izin vermiyor"
+          }
+        }
+      }
+    },
+    "The Mac doesn’t have permission to read the item": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’in öğeyi okuma izni yok"
+          }
+        }
+      }
+    },
+    "The Mac doesn’t support file transfers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac dosya aktarımlarını desteklemiyor"
+          }
+        }
+      }
+    },
+    "The Mac’s disk is full": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’in diski dolu"
+          }
+        }
+      }
+    },
+    "The Screen Is Shared Elsewhere": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran Başka Bir Yerde Paylaşılıyor"
+          }
+        }
+      }
+    },
+    "The VPN Gives a Loopback Address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN Bir Geri Döngü Adresi Veriyor"
+          }
+        }
+      }
+    },
+    "The item isn’t available on the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öğe Mac’te mevcut değil"
+          }
+        }
+      }
+    },
+    "The new language takes effect after you restart the app.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulamayı yeniden başlattığınızda yeni dil geçerli olur."
+          }
+        }
+      }
+    },
+    "The password is incorrect.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parola yanlış."
+          }
+        }
+      }
+    },
+    "The user name or password is incorrect.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanıcı adı veya parola yanlış."
+          }
+        }
+      }
+    },
+    "This Device Can’t Play High Performance Video": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Aygıt Yüksek Performans Videosunu Oynatamıyor"
+          }
+        }
+      }
+    },
+    "This Device Can’t Share Its Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Aygıt Ekranını Paylaşamıyor"
+          }
+        }
+      }
+    },
+    "This Device Can’t Show HDR": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Aygıt HDR Gösteremiyor"
+          }
+        }
+      }
+    },
+    "This Device Rejected the Pairing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Aygıt Eşlemeyi Reddetti"
+          }
+        }
+      }
+    },
+    "This computer only offers an older sign-in method that can’t confirm its identity. If another device is pretending to be this computer, it could see your password.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu bilgisayar yalnızca kimliğini doğrulayamayan eski bir giriş yöntemi sunuyor. Başka bir aygıt kendini bu bilgisayar gibi gösteriyorsa parolanızı görebilir."
+          }
+        }
+      }
+    },
+    "This device can’t read or write the file": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu aygıt dosyayı okuyamıyor veya yazamıyor"
+          }
+        }
+      }
+    },
+    "This is expected after the Mac is reinstalled. If it wasn’t, another device may be pretending to be this Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yeniden yüklendikten sonra bu beklenen bir durumdur. Yeniden yüklenmediyse başka bir aygıt kendini bu Mac gibi gösteriyor olabilir."
+          }
+        }
+      }
+    },
+    "This is expected after the computer is reinstalled or renews its certificate. If neither happened, another device may be pretending to be this computer.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgisayar yeniden yüklendikten veya sertifikasını yeniledikten sonra bu beklenen bir durumdur. İkisi de olmadıysa başka bir aygıt kendini bu bilgisayar gibi gösteriyor olabilir."
+          }
+        }
+      }
+    },
+    "Tips": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İpuçları"
+          }
+        }
+      }
+    },
+    "Touch and hold anywhere on the screen for a while to simulate a press.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Basmayı taklit etmek için ekranda herhangi bir yere bir süre basılı tutun."
+          }
+        }
+      }
+    },
+    "Trackpad": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzleme Dörtgeni"
+          }
+        }
+      }
+    },
+    "Turkish Q": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Türkçe Q"
+          }
+        }
+      }
+    },
+    "Type Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuşa Basın"
+          }
+        }
+      }
+    },
+    "Type Shortcut": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kestirmeyi Yazın"
+          }
+        }
+      }
+    },
+    "URL": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL"
+          }
+        }
+      }
+    },
+    "Unlock": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilidi Aç"
+          }
+        }
+      }
+    },
+    "Unsupported iOS Version": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desteklenmeyen iOS Sürümü"
+          }
+        }
+      }
+    },
+    "Unsupported iPadOS Version": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desteklenmeyen iPadOS Sürümü"
+          }
+        }
+      }
+    },
+    "Up Arrow": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yukarı Ok"
+          }
+        }
+      }
+    },
+    "Update": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncelle"
+          }
+        }
+      }
+    },
+    "Update Track": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncelleme Kanalı"
+          }
+        }
+      }
+    },
+    "Updates": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeler"
+          }
+        }
+      }
+    },
+    "Use Mac Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Klavyesini Kullan"
+          }
+        }
+      }
+    },
+    "Use User Name and Password from Another Connection": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başka Bir Bağlantının Kullanıcı Adını ve Parolasını Kullan"
+          }
+        }
+      }
+    },
+    "Use this app on an iPhone or iPad to share that device’s screen.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir iPhone’un veya iPad’in ekranını paylaşmak için bu uygulamayı o aygıtta kullanın."
+          }
+        }
+      }
+    },
+    "User Name": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanıcı Adı"
+          }
+        }
+      }
+    },
+    "Username": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanıcı Adı"
+          }
+        }
+      }
+    },
+    "View As": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görüntüleme Biçimi"
+          }
+        }
+      }
+    },
+    "View Details": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntıları Görüntüle"
+          }
+        }
+      }
+    },
+    "View Release": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sürümü Görüntüle"
+          }
+        }
+      }
+    },
+    "View as Icons": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simge Olarak Görüntüle"
+          }
+        }
+      }
+    },
+    "View as List": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liste Olarak Görüntüle"
+          }
+        }
+      }
+    },
+    "Virtual Display": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sanal Ekran"
+          }
+        }
+      }
+    },
+    "Waiting for Permission…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzin bekleniyor…"
+          }
+        }
+      }
+    },
+    "Waiting for the VPN": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN Bekleniyor"
+          }
+        }
+      }
+    },
+    "When Magic Keyboard is connected, you can also use %@ Dictation and the %@ emoji keyboard on this iPad.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Magic Keyboard bağlıyken bu iPad’in dikte özelliğini %1$@ ve emoji klavyesini %2$@ de kullanabilirsiniz."
+          }
+        }
+      }
+    },
+    "When using a mouse or trackpad, turn on %@ › %@ so moving to the edge of the screen won’t open the Dock or Control Center.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fare veya izleme dörtgeni kullanırken %1$@ › %2$@ seçeneğini açın; böylece ekranın kenarına gittiğinizde Dock veya Denetim Merkezi açılmaz."
+          }
+        }
+      }
+    },
+    "When you connect with Apple VNC to a Mac with macOS 27.3 or later, you can turn on %@ › %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS 27.3 veya sonrasını çalıştıran bir Mac’e Apple VNC ile bağlandığınızda %1$@ › %2$@ seçeneğini açabilirsiniz."
+          }
+        }
+      }
+    },
+    "Windows Key": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Windows tuşu"
+          }
+        }
+      }
+    },
+    "You can’t control your own screen.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi ekranınızı kontrol edemezsiniz."
+          }
+        }
+      }
+    },
+    "Your account is logged in at the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac’te hesabınızla oturum açık."
+          }
+        }
+      }
+    },
+    "You’re Up to Date": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her Şey Güncel"
+          }
+        }
+      }
+    },
+    "Zoom Mode": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Büyütme Modu"
+          }
+        }
+      }
+    },
+    "Zoom to Actual Size": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerçek Boyuta Getir"
+          }
+        }
+      }
+    },
+    "Zoom to Fit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sığdır"
+          }
+        }
+      }
+    },
+    "Zoom to Fit / Actual Size": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sığdır / Gerçek Boyuta Getir"
+          }
+        }
+      }
+    },
+    "as Icons": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simge Olarak"
+          }
+        }
+      }
+    },
+    "as List": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liste Olarak"
+          }
+        }
+      }
+    },
+    "iPad Style": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad Stili"
+          }
+        }
+      }
+    },
+    "“%@” Declined the Request": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” İsteği Reddetti"
+          }
+        }
+      }
+    },
+    "“%@” Doesn’t Support High Performance": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Yüksek Performansı Desteklemiyor"
+          }
+        }
+      }
+    },
+    "“%@” Ended Screen Sharing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Ekran Paylaşımını Sonlandırdı"
+          }
+        }
+      }
+    },
+    "“%@” Ended the Session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Oturumu Sonlandırdı"
+          }
+        }
+      }
+    },
+    "“%@” Has a New Certificate": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Yeni Bir Sertifika Kullanıyor"
+          }
+        }
+      }
+    },
+    "“%@” Is Already in Use": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Zaten Kullanımda"
+          }
+        }
+      }
+    },
+    "“%@” Is in Use": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Kullanımda"
+          }
+        }
+      }
+    },
+    "“%@” Isn’t Supported": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Desteklenmiyor"
+          }
+        }
+      }
+    },
+    "“%@” Refused High Performance": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” Yüksek Performansı Reddetti"
+          }
+        }
+      }
+    },
+    "“%@” is the Mac you’re using.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”, kullandığınız Mac’tir."
+          }
+        }
+      }
+    },
+    "“%@” is using it right now.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şu anda “%@” tarafından kullanılıyor."
+          }
+        }
+      }
+    },
+    "“%@” isn’t a valid address.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” geçerli bir adres değil."
+          }
+        }
+      }
+    },
+    "“%@” offers no sign-in method this app supports.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” bu uygulamanın desteklediği bir giriş yöntemi sunmuyor."
+          }
+        }
+      }
+    },
+    "Mac Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Ekranı"
+          }
+        }
+      }
+    },
+    "Licenses": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lisanslar"
+          }
+        }
+      }
+    },
+    "ClaudeDeck for iPhone and iPad is free software under the GNU GPL v3 (it includes open-screen-sharing). Source: github.com/mstfmedeni/claudeDeck": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone ve iPad için ClaudeDeck, GNU GPL v3 lisanslı özgür yazılımdır (open-screen-sharing'i içerir). Kaynak kodu: github.com/mstfmedeni/claudeDeck"
+          }
+        }
+      }
+    },
+    "GNU General Public License v3": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GNU Genel Kamu Lisansı v3"
+          }
+        }
+      }
+    },
+    "Mac Screen (open-screen-sharing and its components)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Ekranı (open-screen-sharing ve bileşenleri)"
+          }
+        }
+      }
+    },
+    "Other components": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer bileşenler"
+          }
+        }
+      }
+    },
+    "1 Hour": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 Saat"
+          }
+        }
+      }
+    },
+    "10 Minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "10 Dakika"
+          }
+        }
+      }
+    },
+    "30 Minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 Dakika"
+          }
+        }
+      }
+    },
+    "Briefly": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kısa Süre"
+          }
+        }
+      }
+    },
+    "Stay Connected in Background": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arka Planda Bağlı Kal"
+          }
+        }
+      }
+    },
+    "Until Disconnected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı Kesilene Kadar"
           }
         }
       }

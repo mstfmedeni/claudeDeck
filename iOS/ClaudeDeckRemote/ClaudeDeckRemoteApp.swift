@@ -12,7 +12,15 @@ struct ClaudeDeckRemoteApp: App {
         WindowGroup(for: UUID.self) { $session in
             RootView(windowSession: $session)
                 .environment(delegate.store)
-                .onOpenURL { url in delegate.store.pair(link: url.absoluteString) }
+                .onOpenURL { url in
+                    if ScreenTab.isScreenLink(url) {
+                        delegate.store.screenRequest = ScreenRequest(url: nil)
+                    } else if ScreenTab.isVNCLink(url) {
+                        delegate.store.screenRequest = ScreenRequest(url: url)
+                    } else {
+                        delegate.store.pair(link: url.absoluteString)
+                    }
+                }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     // Inactive (a system alert, Notification Center pulled down) still counts as in front.
                     delegate.store.setActive(phase != .background)

@@ -559,6 +559,17 @@ Sabit bir imza kullanıldığı için macOS'un verdiği izinler (klasör erişim
 - Claude Code hook'ları: durum, yeniden kur, kaldır.
 
 
+### Mac Ekranı (iPhone ve iPad uygulaması)
+
+iOS uygulamasının kenar çubuğunun en üstünde **Mac Ekranı** var: eşleşmiş Mac'in ekranı, macOS Ekran
+Paylaşımı üzerinden (Mac'te Sistem Ayarları › Genel › Paylaşma › Ekran Paylaşma açık olmalı). Bir
+oturuma dönmek ekran bağlantısını kapatmaz; geri gelince yeniden bağlanmak gerekmez.
+`claudedeck://screen` onu doğrudan açar (önce bu ağdaki adres, sonra Tailscale), `vnc://host` linkleri de
+orada açılır. nekohasekai'nin [open-screen-sharing](https://github.com/nekohasekai/open-screen-sharing)
+projesi üzerine kuruludur (GPL-3.0; derleme, git alt modülü olarak
+[mstfmedeni/open-screen-sharing](https://github.com/mstfmedeni/open-screen-sharing) fork'unun
+`claudedeck` dalını kullanır). ClaudeDeck o projeyle bağlantılı değildir, onun tarafından onaylanmamıştır.
+
 ## Ajanlar (isteğe bağlı)
 
 Bir oturum hakkında başka modellere sorabilirsin: bu Mac'te webhook arkasında çalışan bir bot
@@ -649,6 +660,11 @@ fixture dosyalarından cevap veren sahte bir `gh` kullanılır). Demo modu `~/.c
 
 [MIT](LICENSE) © 2026 [CODE MAGNET YAZILIM LTD. ŞTİ.](https://codemagnet.co)
 Üçüncü taraf lisansları: [Support/THIRD_PARTY_LICENSES.txt](Support/THIRD_PARTY_LICENSES.txt) (SwiftTerm, MIT; Sparkle, MIT).
+
+**iPhone ve iPad için ClaudeDeck (ClaudeDeckRemote) [GNU GPL v3](Support/GPL-3.0.txt) ile dağıtılır**,
+çünkü Mac Ekranı sekmesi için [open-screen-sharing](https://github.com/nekohasekai/open-screen-sharing)'i
+(GPL-3.0) içerir; bileşenlerinin lisans metinleri [Support/SCREEN_SHARING_LICENSES.txt](Support/SCREEN_SHARING_LICENSES.txt)
+dosyasında ve uygulamada (Ayarlar › Lisanslar). Mac için ClaudeDeck bunu içermez, MIT olarak kalır.
 
 ClaudeDeck bağımsız bir açık kaynak projedir; Anthropic ile bağlantılı değildir, Anthropic tarafından
 onaylanmamış ya da desteklenmemektedir. "Claude" ve "Claude Code", Anthropic PBC'nin ticari markalarıdır.

@@ -1,0 +1,4 @@
+[submodule "Vendor/open-screen-sharing"]
+	path = Vendor/open-screen-sharing
+	url = https://github.com/mstfmedeni/open-screen-sharing
+	branch = claudedeck

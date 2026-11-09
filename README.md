@@ -547,6 +547,17 @@ The app is signed with a Developer ID and notarized by Apple, so Gatekeeper won'
 - iCloud sync (below).
 - Claude Code hooks: status, reinstall, uninstall.
 
+### Mac Screen (iPhone and iPad app)
+
+The iOS app has a **Mac Screen** entry at the top of its sidebar: the paired Mac's screen, through
+macOS Screen Sharing (turn on System Settings › General › Sharing › Screen Sharing on the Mac).
+Going back to a session leaves the screen connected, so returning to it doesn't reconnect.
+`claudedeck://screen` opens it straight away (this network's address first, then Tailscale), and
+`vnc://host` links open there too. It's built on
+[open-screen-sharing](https://github.com/nekohasekai/open-screen-sharing) by nekohasekai (GPL-3.0;
+the build uses the fork [mstfmedeni/open-screen-sharing](https://github.com/mstfmedeni/open-screen-sharing),
+branch `claudedeck`, as a git submodule). ClaudeDeck isn't affiliated with or endorsed by that project.
+
 ## Agents (optional)
 
 Ask other models about a session: a bot on this Mac behind a webhook (for example a Grok Bot
@@ -698,6 +709,12 @@ Recording permission:
 
 [MIT](LICENSE) © 2026 [CODE MAGNET YAZILIM LTD. ŞTİ.](https://codemagnet.co)
 Third-party licenses: [Support/THIRD_PARTY_LICENSES.txt](Support/THIRD_PARTY_LICENSES.txt) (SwiftTerm, MIT; Sparkle, MIT).
+
+**ClaudeDeck for iPhone and iPad (ClaudeDeckRemote) is distributed under the
+[GNU GPL v3](Support/GPL-3.0.txt)**, because it includes
+[open-screen-sharing](https://github.com/nekohasekai/open-screen-sharing) (GPL-3.0) for its Mac Screen
+tab; its components' notices are in [Support/SCREEN_SHARING_LICENSES.txt](Support/SCREEN_SHARING_LICENSES.txt)
+and in the app (Settings › Licenses). ClaudeDeck for Mac doesn't include it and stays MIT.
 
 ClaudeDeck is an independent open-source project. It is not affiliated with, endorsed by or sponsored
 by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic PBC.

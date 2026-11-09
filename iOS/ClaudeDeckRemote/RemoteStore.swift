@@ -75,12 +75,14 @@ final class RemoteStore {
         let token = UUID()
     }
     var openRequest: OpenRequest?
+    /// Show the Mac's screen (a `claudedeck://screen` or `vnc://` link).
+    var screenRequest: ScreenRequest?
     /// Debug hooks: open a session in a new window.
     var newWindowRequest: OpenRequest?
     /// Open windows and what each shows.
     @ObservationIgnored private(set) var scenes: [UUID: UUID?] = [:]
     /// The window last brought to the front: notification taps open there.
-    @ObservationIgnored private var activeScene: UUID?
+    @ObservationIgnored private(set) var activeScene: UUID?
     /// The window that last started a session: it shows it once the Mac has it.
     @ObservationIgnored private var startingScene: UUID?
 
