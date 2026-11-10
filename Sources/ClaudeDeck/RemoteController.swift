@@ -724,8 +724,11 @@ final class RemoteController {
 
     // MARK: Host — conversation for remotes
 
-    /// Parsed transcripts by session, reused while the file doesn't change.
-    @ObservationIgnored private var historyCache: [UUID: (path: String, size: Int, entries: [ChatEntry], tokens: Int?)] = [:]
+    /// Parsed transcripts by session: reused while the file doesn't change, and only what was
+    /// added is read when it grows (a phone polls an open conversation every few seconds).
+    @ObservationIgnored private var historyCache: [UUID: (path: String, size: Int, reader: ConversationLog.Reader, tokens: Int?)] = [:]
+    /// Requests waiting for a read already under way, by session.
+    @ObservationIgnored private var historyWaiting: [UUID: [(before: String?, after: String?, limit: Int, reply: @Sendable (ChatPage?) -> Void)]] = [:]
 
     private func history(_ id: UUID, before: String?, after: String?, limit: Int, reply: @escaping @Sendable (ChatPage?) -> Void) {
         // The hook's path follows /clear (a new transcript); the deck's is the one it resumed.
@@ -735,20 +738,38 @@ final class RemoteController {
         }
         let size = ((try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber)?.intValue ?? 0
         if let cached = historyCache[id], cached.path == path, cached.size == size {
-            var page = ConversationLog.page(cached.entries, before: before, after: after, limit: limit)
+            var page = ConversationLog.page(cached.reader.entries, before: before, after: after, limit: limit)
             page.contextTokens = cached.tokens
             page.agentNotes = model.agentNotes[id] ?? []
             reply(page)
             return
         }
+        // One read at a time per session; requests coming in meanwhile get its result.
+        let reading = historyWaiting[id] != nil
+        historyWaiting[id, default: []].append((before, after, limit, reply))
+        guard !reading else { return }
+        let previous = historyCache[id].flatMap { $0.path == path ? $0.reader : nil } ?? ConversationLog.Reader()
         Task { @MainActor [weak self] in
             let url = URL(fileURLWithPath: path)
-            let (entries, tokens) = await Task.detached { (ConversationLog.entries(of: url), Transcript.contextTokens(of: url)) }.value
-            self?.historyCache[id] = (path, size, entries, tokens)
-            var page = ConversationLog.page(entries, before: before, after: after, limit: limit)
-            page.contextTokens = tokens
-            page.agentNotes = self?.model?.agentNotes[id] ?? []
-            reply(page)
+            let (reader, tokens) = await Task.detached {
+                var reader = previous
+                // Shorter than what was read: rewritten, read it again.
+                if !reader.read(url) {
+                    reader = ConversationLog.Reader()
+                    _ = reader.read(url)
+                }
+                return (reader, Transcript.contextTokens(of: url))
+            }.value
+            guard let self else { return }
+            // Keyed by what was read: a line still being written makes the next request read on.
+            self.historyCache[id] = (path, Int(reader.offset), reader, tokens)
+            let notes = self.model?.agentNotes[id] ?? []
+            for request in self.historyWaiting.removeValue(forKey: id) ?? [] {
+                var page = ConversationLog.page(reader.entries, before: request.before, after: request.after, limit: request.limit)
+                page.contextTokens = tokens
+                page.agentNotes = notes
+                request.reply(page)
+            }
         }
     }
 

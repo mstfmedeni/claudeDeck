@@ -155,78 +155,127 @@ public enum ConversationLog {
     }
 
     public static func entries(fromJSONL text: String) -> [ChatEntry] {
-        var entries: [ChatEntry] = []
-        var toolIndex: [String: Int] = [:]
+        var reader = Reader()
+        reader.append(text)
+        return reader.entries
+    }
+
+    /// A transcript read a piece at a time: the first `read` takes its last `tailBytes`, later ones
+    /// only what was appended since. A running session's transcript grows a few lines at a time,
+    /// so a conversation kept current from a phone doesn't parse megabytes on every change.
+    public struct Reader: Sendable {
+        public private(set) var entries: [ChatEntry] = []
+        private var toolIndex: [String: Int] = [:]
         // Messages typed while Claude was busy are logged as queued commands; on the rare
         // occasion the same text is logged again as a user message, it shows once.
-        var queued: Set<String> = []
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
-            let type = object["type"] as? String
-            guard type == "user" || type == "assistant" || type == "attachment" else { continue }
-            if object["isSidechain"] as? Bool == true { continue }
-            let uuid = object["uuid"] as? String ?? UUID().uuidString
-            let date = (object["timestamp"] as? String).flatMap { iso.date(from: $0) }
-            let message = object["message"] as? [String: Any] ?? [:]
+        private var queued: Set<String> = []
+        /// Where the next read starts: just after the last complete line read.
+        public private(set) var offset: UInt64 = 0
+        private var started = false
 
-            if object["isCompactSummary"] as? Bool == true {
-                entries.append(ChatEntry(id: uuid, kind: .system, text: String(localized: "Conversation compacted"), date: date))
-                continue
-            }
-            if type == "attachment" {
-                if let text = queuedPrompt(object["attachment"] as? [String: Any]), let entry = userEntry(text, id: uuid, date: date) {
-                    queued.insert(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                    entries.append(entry)
+        public init() {}
+
+        /// Reads the lines added since the last read. False when the file is shorter than what was
+        /// read (not the same file any more): read it with a new reader.
+        public mutating func read(_ url: URL, tailBytes: Int = 16 << 20) -> Bool {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return true }
+            defer { try? handle.close() }
+            let size = (try? handle.seekToEnd()) ?? 0
+            guard size >= offset else { return false }
+            var dropPartial = false
+            if !started {
+                started = true
+                if size > UInt64(tailBytes) {
+                    offset = size - UInt64(tailBytes)
+                    dropPartial = true
                 }
-                continue
             }
-            if type == "user" {
-                if object["isMeta"] as? Bool == true { continue }
-                if let content = message["content"] as? String {
-                    if queued.remove(content.trimmingCharacters(in: .whitespacesAndNewlines)) != nil { continue }
-                    if let entry = userEntry(content, id: uuid, date: date) { entries.append(entry) }
+            guard size > offset else { return true }
+            try? handle.seek(toOffset: offset)
+            guard let data = try? handle.readToEnd(), !data.isEmpty else { return true }
+            var from = data.startIndex
+            // Started mid-line: drop the partial first line.
+            if dropPartial {
+                guard let newline = data.firstIndex(of: 0x0A) else { return true }
+                from = newline + 1
+                offset += UInt64(from - data.startIndex)
+            }
+            // Complete lines only: one being written now is read next time.
+            guard let last = data.lastIndex(of: 0x0A), last >= from else { return true }
+            append(String(decoding: data[from...last], as: UTF8.self))
+            offset += UInt64(last + 1 - from)
+            return true
+        }
+
+        /// Adds the entries of these JSONL lines (tool results fill in calls read earlier).
+        public mutating func append(_ text: String) {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
+                let type = object["type"] as? String
+                guard type == "user" || type == "assistant" || type == "attachment" else { continue }
+                if object["isSidechain"] as? Bool == true { continue }
+                let uuid = object["uuid"] as? String ?? UUID().uuidString
+                let date = (object["timestamp"] as? String).flatMap { iso.date(from: $0) }
+                let message = object["message"] as? [String: Any] ?? [:]
+
+                if object["isCompactSummary"] as? Bool == true {
+                    entries.append(ChatEntry(id: uuid, kind: .system, text: String(localized: "Conversation compacted"), date: date))
+                    continue
+                }
+                if type == "attachment" {
+                    if let text = ConversationLog.queuedPrompt(object["attachment"] as? [String: Any]), let entry = ConversationLog.userEntry(text, id: uuid, date: date) {
+                        queued.insert(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                        entries.append(entry)
+                    }
+                    continue
+                }
+                if type == "user" {
+                    if object["isMeta"] as? Bool == true { continue }
+                    if let content = message["content"] as? String {
+                        if queued.remove(content.trimmingCharacters(in: .whitespacesAndNewlines)) != nil { continue }
+                        if let entry = ConversationLog.userEntry(content, id: uuid, date: date) { entries.append(entry) }
+                    } else if let blocks = message["content"] as? [[String: Any]] {
+                        for (index, block) in blocks.enumerated() {
+                            switch block["type"] as? String {
+                            case "text":
+                                if let text = block["text"] as? String, let entry = ConversationLog.userEntry(text, id: "\(uuid)#\(index)", date: date) { entries.append(entry) }
+                            case "tool_result":
+                                guard let toolID = block["tool_use_id"] as? String, let at = toolIndex[toolID] else { continue }
+                                entries[at].result = ConversationLog.resultText(block["content"])
+                                entries[at].isError = block["is_error"] as? Bool ?? false
+                                if entries[at].questions != nil {
+                                    entries[at].answers = (object["toolUseResult"] as? [String: Any])?["answers"] as? [String: String]
+                                }
+                            default:
+                                break
+                            }
+                        }
+                    }
                 } else if let blocks = message["content"] as? [[String: Any]] {
                     for (index, block) in blocks.enumerated() {
                         switch block["type"] as? String {
-                        case "text":
-                            if let text = block["text"] as? String, let entry = userEntry(text, id: "\(uuid)#\(index)", date: date) { entries.append(entry) }
-                        case "tool_result":
-                            guard let toolID = block["tool_use_id"] as? String, let at = toolIndex[toolID] else { continue }
-                            entries[at].result = resultText(block["content"])
-                            entries[at].isError = block["is_error"] as? Bool ?? false
-                            if entries[at].questions != nil {
-                                entries[at].answers = (object["toolUseResult"] as? [String: Any])?["answers"] as? [String: String]
-                            }
+                        // Claude Code also writes some of what it shows as a reply into a thinking block
+                        // with text (real thinking is stored empty): shown like the terminal shows it.
+                        case "text", "thinking":
+                            let text = (block["text"] as? String ?? block["thinking"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !text.isEmpty else { continue }
+                            entries.append(ChatEntry(id: "\(uuid)#\(index)", kind: .assistant, text: String(text.prefix(ConversationLog.maxText)), date: date))
+                        case "tool_use":
+                            let name = block["name"] as? String ?? "Tool"
+                            let id = block["id"] as? String ?? "\(uuid)#\(index)"
+                            toolIndex[id] = entries.count
+                            let input = block["input"] as? [String: Any] ?? [:]
+                            entries.append(ChatEntry(id: id, kind: .tool, text: ConversationLog.summary(tool: name, input: input), toolName: name, date: date,
+                                                     questions: name == "AskUserQuestion" ? ChatQuestion.parse(input) : nil))
                         default:
-                            break
+                            break // server tools
                         }
-                    }
-                }
-            } else if let blocks = message["content"] as? [[String: Any]] {
-                for (index, block) in blocks.enumerated() {
-                    switch block["type"] as? String {
-                    // Claude Code also writes some of what it shows as a reply into a thinking block
-                    // with text (real thinking is stored empty): shown like the terminal shows it.
-                    case "text", "thinking":
-                        let text = (block["text"] as? String ?? block["thinking"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !text.isEmpty else { continue }
-                        entries.append(ChatEntry(id: "\(uuid)#\(index)", kind: .assistant, text: String(text.prefix(maxText)), date: date))
-                    case "tool_use":
-                        let name = block["name"] as? String ?? "Tool"
-                        let id = block["id"] as? String ?? "\(uuid)#\(index)"
-                        toolIndex[id] = entries.count
-                        let input = block["input"] as? [String: Any] ?? [:]
-                        entries.append(ChatEntry(id: id, kind: .tool, text: summary(tool: name, input: input), toolName: name, date: date,
-                                                 questions: name == "AskUserQuestion" ? ChatQuestion.parse(input) : nil))
-                    default:
-                        break // server tools
                     }
                 }
             }
         }
-        return entries
     }
 
     /// A message the user typed while Claude was busy (Claude Code queues it and reads it in at
