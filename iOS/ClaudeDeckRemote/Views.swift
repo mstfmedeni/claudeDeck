@@ -277,7 +277,7 @@ struct RootView: View {
                 if let url = request.url {
                     ScreenSharingStore.shared.open(url)
                 } else {
-                    ScreenTab.connect(store)
+                    await ScreenTab.connect(store)
                 }
             }
         }

@@ -1,3 +1,5 @@
+import Network
+import os
 import ScreenSharingKit
 import SwiftUI
 
@@ -35,10 +37,80 @@ enum ScreenTab {
     }
 
     /// The paired Mac's screen at `host` (nil: `macHost`); the address used is remembered for the sidebar.
-    @MainActor static func connect(_ store: RemoteStore, host: String? = nil) {
-        guard let host = host ?? macHost(store) else { return }
+    /// Picked automatically while ClaudeDeck isn't connected (the Mac logged out, the app not running,
+    /// away from home), there's no address known to work: the first one Screen Sharing answers on wins
+    /// instead of always the first in the list, which may be this network's while away.
+    @MainActor static func connect(_ store: RemoteStore, host: String? = nil) async {
+        var host = host ?? macHost(store)
+        if !hasKnownHost(store) {
+            host = await firstAnswering(hosts(store)) ?? host
+        }
+        guard let host else { return }
         UserDefaults.standard.set(host, forKey: usedHostKey)
         ScreenSharingStore.shared.connect(host: host, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+    }
+
+    /// An address picked by hand, or the one ClaudeDeck is connected on: no need to look.
+    @MainActor static func hasKnownHost(_ store: RemoteStore) -> Bool {
+        let preferred = UserDefaults.standard.string(forKey: preferredHostKey) ?? ""
+        if !preferred.isEmpty, hosts(store).contains(preferred) { return true }
+        if let via = store.connectedVia, RemoteBonjour.serviceName(of: via) == nil { return true }
+        return false
+    }
+
+    /// The first of `hosts` taking a TCP connection on Screen Sharing's port, tried in order a moment
+    /// apart (like ClaudeDeck's own connection); nil when none answers within `timeout`.
+    static func firstAnswering(_ hosts: [String], port: UInt16 = 5900, timeout: Duration = .seconds(5)) async -> String? {
+        guard hosts.count > 1, let port = NWEndpoint.Port(rawValue: port) else { return hosts.first }
+        return await withTaskGroup(of: String?.self) { group in
+            for (index, host) in hosts.enumerated() {
+                group.addTask {
+                    try? await Task.sleep(for: .milliseconds(300 * index))
+                    guard !Task.isCancelled else { return nil }
+                    return await answers(host, port: port, timeout: timeout) ? host : nil
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout + .milliseconds(300 * hosts.count))
+                return nil
+            }
+            var finished = 0
+            for await result in group {
+                finished += 1
+                if let result { group.cancelAll(); return result }
+                if finished == hosts.count { break }   // every address failed; don't wait for the timer
+            }
+            group.cancelAll()
+            return nil
+        }
+    }
+
+    /// Whether `host` takes a TCP connection on `port` within `timeout`.
+    private static func answers(_ host: String, port: NWEndpoint.Port, timeout: Duration) async -> Bool {
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
+        let result: Bool = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let done = OSAllocatedUnfairLock(initialState: false)
+                let finish: @Sendable (Bool) -> Void = { value in
+                    guard done.withLock({ let first = !$0; $0 = true; return first }) else { return }
+                    continuation.resume(returning: value)
+                }
+                connection.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready: finish(true)
+                    case .failed, .cancelled: finish(false)
+                    case .waiting: finish(false)   // no route / refused: not this one
+                    default: break
+                    }
+                }
+                connection.start(queue: .global(qos: .userInitiated))
+                DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeout.components.seconds * 1000))) { finish(false) }
+            }
+        } onCancel: {
+            connection.cancel()
+        }
+        connection.cancel()
+        return result
     }
 
     /// The address picked by hand in the screen tab ("" = automatic).
@@ -63,6 +135,8 @@ struct ScreenDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(RemoteStore.self) private var store
     @AppStorage(ScreenTab.preferredHostKey) private var preferredHost = ""
+    /// Connect pressed while ClaudeDeck is away: the addresses are being tried.
+    @State private var finding = false
     let back: () -> Void
 
     var body: some View {
@@ -112,20 +186,30 @@ extension ScreenDetailView {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(host ?? String(localized: "No address")).font(.callout.monospaced())
+                        // Not connected and automatic: whichever answers first, found on Connect.
+                        let label = host.map { ScreenTab.hasKnownHost(store) ? $0 : String(localized: "Automatic") }
+                        Text(label ?? String(localized: "No address")).font(.callout.monospaced())
                         Image(systemName: "chevron.up.chevron.down").font(.caption2)
                     }
                 }
                 .disabled(hosts.isEmpty)
             }
             Button {
-                ScreenTab.connect(store)
+                finding = true
+                Task {
+                    await ScreenTab.connect(store)
+                    finding = false
+                }
             } label: {
-                Label("Connect to This Mac", systemImage: "play.display").frame(maxWidth: .infinity)
+                if finding {
+                    Label { Text("Finding the Mac…") } icon: { ProgressView() }.frame(maxWidth: .infinity)
+                } else {
+                    Label("Connect to This Mac", systemImage: "play.display").frame(maxWidth: .infinity)
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(host == nil)
+            .disabled(host == nil || finding)
             HStack(alignment: .firstTextBaseline) {
                 Text("The Mac needs Screen Sharing on: System Settings › General › Sharing.")
                     .font(.caption).foregroundStyle(.secondary)

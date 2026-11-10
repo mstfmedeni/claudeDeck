@@ -14960,6 +14960,16 @@
           }
         }
       }
+    },
+    "Finding the Mac…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac aranıyor…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
