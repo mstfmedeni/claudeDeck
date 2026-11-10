@@ -108,6 +108,9 @@ final class RemoteStore {
         return projects.first { $0.id == id }
     }
 
+    /// Simulator testing: a screen for the session list to open (DebugHooks' show.txt).
+    var debugScreen: String?
+
     /// Why the Mac couldn't rename a project's folder (shown, then cleared).
     var projectError: String?
 

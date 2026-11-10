@@ -14870,6 +14870,96 @@
           }
         }
       }
+    },
+    "Edit Connection…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı Düzenle…"
+          }
+        }
+      }
+    },
+    "Keep Alive: after 30 seconds without input, sends a signal that changes nothing, so Windows doesn’t end an idle session or go to sleep.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etkin Tut: 30 saniye girdi olmazsa hiçbir şeyi değiştirmeyen bir sinyal gönderir; böylece Windows boşta kalan oturumu kapatmaz ve uyku moduna geçmez."
+          }
+        }
+      }
+    },
+    "Keep Alive: keeps the Mac awake, with no sleep or screen saver, for as long as you’re connected, even while this app is in the background or shows something else. When it’s off, the Mac is kept awake only while its screen is showing here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etkin Tut: Bağlı olduğunuz sürece Mac’i uyanık tutar; uyku moduna geçmez, ekran koruyucu açılmaz. Bu uygulama arka plandayken ya da başka bir şey gösterirken de geçerlidir. Kapalıyken Mac yalnızca ekranı burada görünürken uyanık tutulur."
+          }
+        }
+      }
+    },
+    "Keeps the connection open while you use other apps, for as long as you choose. Otherwise iOS ends it within about half a minute. This doesn’t keep the computer awake; for that, turn on Keep Alive in the computer’s options.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siz başka uygulamaları kullanırken bağlantıyı seçtiğiniz süre boyunca açık tutar. Aksi halde iOS bağlantıyı yarım dakika içinde sonlandırır. Bilgisayarı uyanık tutmaz; bunun için bilgisayarın seçeneklerinde Etkin Tut’u açın."
+          }
+        }
+      }
+    },
+    "Screen Sharing Settings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran Paylaşımı Ayarları"
+          }
+        }
+      }
+    },
+    "This network (Bonjour)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu ağ (Bonjour)"
+          }
+        }
+      }
+    },
+    "This network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu ağ"
+          }
+        }
+      }
+    },
+    "This device": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cihaz"
+          }
+        }
+      }
+    },
+    "Other": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

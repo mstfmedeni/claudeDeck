@@ -322,6 +322,8 @@ struct SessionListView: View {
     @AppStorage("list.inactiveExpanded") private var inactiveExpanded = true
     @State private var showAddProject = false
     @State private var showFiles = false
+    @State private var debugSheet: DebugSheet?
+    struct DebugSheet: Identifiable { let id: String }
     @AppStorage(ConversationTextSize.sidebarKey) private var textSize = ConversationTextSize.standard
     @AppStorage(ConversationTextSize.densityKey) private var density = 0
 
@@ -475,6 +477,7 @@ struct SessionListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel(Text("Settings"))
             }
             ToolbarItem(placement: .topBarTrailing) {
                 // A sheet with its own stack: pushed from the sidebar it replaced the session
@@ -505,6 +508,27 @@ struct SessionListView: View {
             }
         }
         .sheet(isPresented: $showSettings) { NavigationStack { SettingsView() } }
+        // Simulator testing (DebugHooks' show.txt): a screen opened without taps.
+        .onChange(of: store.debugScreen) { _, screen in
+            guard let screen else { return }
+            store.debugScreen = nil
+            switch screen {
+            case "settings": showSettings = true
+            case "files": showFiles = true
+            case "newsession": newSessionProject = nil; newSessionKind = .claude; showNewSession = true
+            default: debugSheet = DebugSheet(id: screen)
+            }
+        }
+        .sheet(item: $debugSheet) { sheet in
+            NavigationStack {
+                switch sheet.id {
+                case "addresses": AddressesView()
+                case "licenses": LicensesView()
+                case "homefiles": DirectoryView(projectID: RemoteFiles.homeID, path: "", title: store.fileProject(RemoteFiles.homeID)?.name ?? "Home")
+                default: Text(sheet.id)
+                }
+            }
+        }
         .sheet(isPresented: $showFiles) {
             NavigationStack {
                 ProjectFilesView()
@@ -1363,12 +1387,17 @@ struct SettingsView: View {
                 Section("Mac") {
                     LabeledContent("Name", value: store.snapshot?.hostName ?? pairing.hostName)
                     NavigationLink { AddressesView() } label: {
-                        LabeledContent("Addresses", value: store.addressOrder.isEmpty ? String(localized: "Automatic") : store.addressOrder.first ?? "")
+                        LabeledContent("Addresses", value: !store.addressOrder.isEmpty ? store.addressOrder.first ?? ""
+                                       : store.macOrdered ? String(localized: "The Mac's order") : String(localized: "Automatic"))
                     }
                     LabeledContent("Connection", value: connectionText)
                     if store.connection == .connected, let via = store.connectedVia {
-                        let local = RemoteBonjour.serviceName(of: via) != nil || Tailscale.isPrivateLAN(via)
-                        LabeledContent("Via", value: local ? String(localized: "This Wi-Fi (direct)") : String(localized: "Tailscale"))
+                        LabeledContent("Via") {
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(RemoteBonjour.serviceName(of: via) ?? via).font(.callout.monospaced())
+                                Text(AddressKind(via).title).font(.caption)
+                            }
+                        }
                     }
                     if store.localNetworkDenied { LocalNetworkDeniedHint() }
                     if store.snapshot?.supports(RemoteSnapshot.Feature.agentDetails) == true {

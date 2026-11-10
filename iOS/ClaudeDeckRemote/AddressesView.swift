@@ -87,20 +87,51 @@ private struct AddressRow: View {
     let address: String
 
     var body: some View {
+        let kind = AddressKind(address)
         HStack {
-            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 22)
-            Text(RemoteBonjour.serviceName(of: address).map { "\($0) (Bonjour)" } ?? address)
-                .font(.body.monospaced())
+            Image(systemName: kind.symbol).foregroundStyle(.secondary).frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(RemoteBonjour.serviceName(of: address) ?? address).font(.body.monospaced())
+                Text(kind.title).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
             if store.connection == .connected, store.connectedVia == address {
                 Text("Connected").font(.caption).foregroundStyle(.green)
             }
         }
     }
+}
 
-    private var icon: String {
-        if RemoteBonjour.serviceName(of: address) != nil || Tailscale.isPrivateLAN(address) { return "wifi" }
-        if Tailscale.isTailscaleIP(address) || address.lowercased().hasSuffix(".ts.net") { return "network" }
-        return "globe"
+/// What an address is, for the lists: this network, Tailscale or something else.
+enum AddressKind {
+    case bonjour, lan, tailscale, loopback, other
+
+    init(_ address: String) {
+        let lower = address.lowercased()
+        if RemoteBonjour.serviceName(of: address) != nil { self = .bonjour }
+        // Tailscale first: its IPv6 range is a unique-local one, which would count as this network.
+        else if Tailscale.isTailscaleIP(address) || lower.hasSuffix(".ts.net") { self = .tailscale }
+        else if address == "127.0.0.1" || address == "::1" || lower == "localhost" { self = .loopback }
+        else if Tailscale.isPrivateLAN(address) || lower.hasSuffix(".local") { self = .lan }
+        else { self = .other }
+    }
+
+    var symbol: String {
+        switch self {
+        case .bonjour, .lan: "wifi"
+        case .tailscale: "lock.shield"
+        case .loopback: "laptopcomputer"
+        case .other: "globe"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .bonjour: String(localized: "This network (Bonjour)")
+        case .lan: String(localized: "This network")
+        case .tailscale: String(localized: "Tailscale")
+        case .loopback: String(localized: "This device")
+        case .other: String(localized: "Other")
+        }
     }
 }

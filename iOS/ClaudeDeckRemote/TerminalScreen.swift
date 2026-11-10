@@ -368,6 +368,7 @@ struct SessionDetailView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { keyboardToggle += 1 } label: { Image(systemName: "keyboard") }
+                        .accessibilityLabel(Text("Keyboard"))
                         .disabled(store.terminalStates[sessionID] != .live)
                 }
             } else {

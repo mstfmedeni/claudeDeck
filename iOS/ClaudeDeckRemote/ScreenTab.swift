@@ -126,8 +126,18 @@ extension ScreenDetailView {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(host == nil)
-            Text("The Mac needs Screen Sharing on: System Settings › General › Sharing.")
-                .font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text("The Mac needs Screen Sharing on: System Settings › General › Sharing.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                // Staying connected in the background, quality and the rest (also in a session's More menu).
+                Button {
+                    ScreenSharingStore.shared.showSettings()
+                } label: {
+                    Label("Screen Sharing Settings", systemImage: "gearshape").font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))

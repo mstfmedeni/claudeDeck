@@ -44,6 +44,11 @@ final class DebugHooks {
                 try? FileManager.default.removeItem(at: url)
                 store.agentRegistration(id, approve: file.hasSuffix(".agentapprove"), url: lines.first.flatMap { $0.isEmpty ? nil : $0 },
                                         authHeader: lines.count > 1 && !lines[1].isEmpty ? lines[1] : nil)
+            } else if file == "show.txt" {
+                // settings · files · newsession · addresses · licenses · homefiles
+                let screen = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                try? FileManager.default.removeItem(at: url)
+                store.debugScreen = screen
             } else if file == "screen.txt" {
                 // Empty: the paired Mac's screen (like claudedeck://screen); else a vnc:// URL.
                 let text = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
