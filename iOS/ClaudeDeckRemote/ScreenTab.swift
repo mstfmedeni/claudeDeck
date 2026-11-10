@@ -210,6 +210,21 @@ extension ScreenDetailView {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(host == nil || finding)
+            // In Screen Sharing's own list it opens with a tap even while ClaudeDeck can't reach the Mac.
+            if let host {
+                if hosts.contains(where: { ScreenSharingStore.shared.isSaved(host: $0) }) {
+                    Label("In Connections: tap it there even when ClaudeDeck isn't connected", systemImage: "checkmark.circle.fill")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        ScreenSharingStore.shared.add(host: host, name: name)
+                    } label: {
+                        Label("Add to Connections", systemImage: "plus.circle").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(finding)
+                }
+            }
             HStack(alignment: .firstTextBaseline) {
                 Text("The Mac needs Screen Sharing on: System Settings › General › Sharing.")
                     .font(.caption).foregroundStyle(.secondary)

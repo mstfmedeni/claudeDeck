@@ -1,3 +1,4 @@
+import ScreenSharingKit
 import SwiftTerm
 import UIKit
 
@@ -50,10 +51,16 @@ final class DebugHooks {
                 try? FileManager.default.removeItem(at: url)
                 store.debugScreen = screen
             } else if file == "screen.txt" {
-                // Empty: the paired Mac's screen (like claudedeck://screen); else a vnc:// URL.
+                // Empty: the paired Mac's screen (like claudedeck://screen); "tab": just the tab; "add": Add to Connections; else a vnc:// URL.
                 let text = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 try? FileManager.default.removeItem(at: url)
-                store.screenRequest = text == "tab" ? ScreenRequest(url: nil, connect: false) : ScreenRequest(url: text.isEmpty ? nil : URL(string: text))
+                if text == "add" {
+                    // Mac Screen › Add to Connections.
+                    store.screenRequest = ScreenRequest(url: nil, connect: false)
+                    if let host = ScreenTab.macHost(store) { ScreenSharingStore.shared.add(host: host, name: store.pairing?.hostName) }
+                } else {
+                    store.screenRequest = text == "tab" ? ScreenRequest(url: nil, connect: false) : ScreenRequest(url: text.isEmpty ? nil : URL(string: text))
+                }
             } else if file == "pair.txt", let link = try? String(contentsOf: url, encoding: .utf8) {
                 try? FileManager.default.removeItem(at: url)
                 store.pair(link: link)

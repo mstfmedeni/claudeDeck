@@ -14970,6 +14970,26 @@
           }
         }
       }
+    },
+    "Add to Connections": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantılara Ekle"
+          }
+        }
+      }
+    },
+    "In Connections: tap it there even when ClaudeDeck isn't connected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantılarda: ClaudeDeck bağlı değilken de oradan dokunup açabilirsin"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
