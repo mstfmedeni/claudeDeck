@@ -15020,6 +15020,16 @@
           }
         }
       }
+    },
+    "Fit Around Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klavyeye Göre Sığdır"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
