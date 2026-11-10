@@ -66,8 +66,12 @@ struct ScreenDetailView: View {
     let back: () -> Void
 
     var body: some View {
+        let live = ScreenSharingStore.shared.hasSession
         ScreenSharingView()
-            .toolbar(.hidden, for: .navigationBar)
+            // Only while a session fills the screen: the computer list's own bar has its + and settings.
+            .toolbar(live ? .hidden : .automatic, for: .navigationBar)
+            // iPhone's tab bar: out of the way while the Mac's screen fills it (the button below goes back).
+            .toolbar(live ? .hidden : .automatic, for: .tabBar)
             // No session yet: the paired Mac one tap away, on the address shown (or one picked).
             .safeAreaInset(edge: .bottom) {
                 if !ScreenSharingStore.shared.hasSession, store.pairing != nil {
@@ -75,7 +79,7 @@ struct ScreenDetailView: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
+                if live, sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
                     Button(action: back) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .semibold))

@@ -129,6 +129,7 @@ struct RootView: View {
     @Binding var windowSession: UUID?
     @State private var sceneID = UUID()
     @State private var selection: UUID?
+    @State private var phoneTab = PhoneTab.sessions
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage(SidebarMode.key) private var sidebarMode = SidebarMode.full
     /// Icons / hidden mode: the full list is out (the pointer on the strip or the edge tab).
@@ -189,11 +190,23 @@ struct RootView: View {
                     }
                 }
                 // Hidden mode: the list opens over the session instead of squeezing it.
-                Group {
+                let sessions = Group {
                     if mode != .full { split.navigationSplitViewStyle(.prominentDetail) } else { split }
                 }
                 .onChange(of: mode, initial: true) { _, mode in
                     hiddenOpen = false
+                }
+                // iPhone: Sessions and the Mac's screen as tabs, one tap apart (the iPad's sidebar
+                // has the screen as its first row instead).
+                if Self.usesTabs {
+                    TabView(selection: $phoneTab) {
+                        Tab("Sessions", systemImage: "terminal", value: PhoneTab.sessions) { sessions }
+                        Tab("Mac Screen", systemImage: "display", value: PhoneTab.screen) {
+                            NavigationStack { ScreenDetailView { phoneTab = .sessions } }
+                        }
+                    }
+                } else {
+                    sessions
                 }
             }
         }
@@ -257,7 +270,7 @@ struct RootView: View {
             guard let request, store.screenRequest?.token == request.token,
                   store.activeScene == nil || store.activeScene == sceneID else { return }
             store.screenRequest = nil
-            selection = ScreenTab.id
+            if Self.usesTabs { phoneTab = .screen } else { selection = ScreenTab.id }
             guard request.connect else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(300))
@@ -279,6 +292,10 @@ struct RootView: View {
 // MARK: Sessions
 
 extension RootView {
+    enum PhoneTab: Hashable { case sessions, screen }
+    /// iPhone: a tab bar (Sessions / Mac Screen); iPad keeps the screen in its sidebar.
+    static var usesTabs: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+
     /// Hidden mode: open while the pointer is on the list; a moment's grace after it leaves.
     func hoverList(_ hovering: Bool) {
         closeTask?.cancel()
@@ -320,7 +337,7 @@ struct SessionListView: View {
         let projectNames = sessions.map(\.project).reduce(into: [String]()) { if !$0.contains($1), !pinnedNames.contains($1) { $0.append($1) } }
         List(selection: $selection) {
             ConnectionBanner()
-            ScreenTabRow()
+            if !RootView.usesTabs { ScreenTabRow() }
             if let usage = store.snapshot?.usage { UsageRow(usage: usage) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
                store.snapshot?.supports(RemoteSnapshot.Feature.agentApproval) == true {
