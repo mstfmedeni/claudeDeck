@@ -130,7 +130,8 @@ struct ScreenRequest: Equatable {
 
 /// The screen tab's content: edge to edge, the navigation bar hidden. On iPhone (any orientation:
 /// a Max held sideways is a regular width but still has no list beside it) and narrow iPad windows
-/// a small button goes back to the list; the session's own × disconnects.
+/// a small button goes back to the list; on a wide iPad it shows and hides the list beside the
+/// screen (put away when a session starts). The session's own × disconnects.
 struct ScreenDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(RemoteStore.self) private var store
@@ -138,6 +139,8 @@ struct ScreenDetailView: View {
     /// Connect pressed while ClaudeDeck is away: the addresses are being tried.
     @State private var finding = false
     let back: () -> Void
+    /// Wide iPad: show / hide the session list beside the screen.
+    var toggleList: (() -> Void)?
 
     var body: some View {
         let live = ScreenSharingStore.shared.hasSession
@@ -153,9 +156,10 @@ struct ScreenDetailView: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if live, sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
-                    Button(action: back) {
-                        Image(systemName: "chevron.left")
+                if live {
+                    let goesBack = sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone || toggleList == nil
+                    Button(action: goesBack ? back : { toggleList?() }) {
+                        Image(systemName: goesBack ? "chevron.left" : "sidebar.left")
                             .font(.system(size: 15, weight: .semibold))
                             .frame(width: 34, height: 34)
                             .background(.ultraThinMaterial, in: Circle())

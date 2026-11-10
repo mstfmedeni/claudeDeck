@@ -135,6 +135,8 @@ struct RootView: View {
     /// Icons / hidden mode: the full list is out (the pointer on the strip or the edge tab).
     @State private var hiddenOpen = false
     @State private var closeTask: Task<Void, Never>?
+    /// The Mac's screen in a session (iPad): the list is put away; its corner button brings it back.
+    @State private var screenListOpen = false
 
     var body: some View {
         // iPhone and narrow windows: the list is a stack, the modes don't apply.
@@ -144,9 +146,15 @@ struct RootView: View {
                 NavigationStack { PairingView() }
             } else {
                 // From the mode, every time: a stored visibility got reset by the split view at launch.
+                let screenLive = selection == ScreenTab.id && ScreenSharingStore.shared.hasSession && !Self.usesTabs
                 let visibility = Binding<NavigationSplitViewVisibility>(
-                    get: { mode == .full || hiddenOpen ? .all : .detailOnly },
-                    set: { value in if mode != .full { hiddenOpen = value != .detailOnly } }
+                    get: {
+                        if screenLive { return screenListOpen ? .all : .detailOnly }
+                        return mode == .full || hiddenOpen ? .all : .detailOnly
+                    },
+                    set: { value in
+                        if screenLive { screenListOpen = value != .detailOnly } else if mode != .full { hiddenOpen = value != .detailOnly }
+                    }
                 )
                 let split = NavigationSplitView(columnVisibility: visibility) {
                     SessionListView(selection: $selection)
@@ -158,7 +166,7 @@ struct RootView: View {
                     HStack(spacing: 0) {
                         // Icons: the split view won't make its sidebar this narrow, so the strip
                         // sits in the detail and the sidebar column stays closed.
-                        if mode == .icons {
+                        if mode == .icons, !screenLive {
                             SessionRail(selection: $selection, mode: $sidebarMode)
                                 .frame(width: 52)
                                 // The pointer on the strip: the full list opens over the session.
@@ -169,7 +177,7 @@ struct RootView: View {
                         Group {
                         // A new identity per session: another session opened from a notification starts fresh.
                         if selection == ScreenTab.id {
-                            ScreenDetailView { selection = nil }
+                            ScreenDetailView(back: { selection = nil }, toggleList: { withAnimation { screenListOpen.toggle() } })
                         } else if let selection {
                             SessionDetailView(sessionID: selection).id(selection)
                         } else {
@@ -179,7 +187,7 @@ struct RootView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .overlay(alignment: .leading) {
-                        if mode == .hidden, !hiddenOpen {
+                        if mode == .hidden, !hiddenOpen, !screenLive {
                             SidebarEdgeTab { withAnimation { hiddenOpen = true } }
                         }
                     }
@@ -202,7 +210,7 @@ struct RootView: View {
                     TabView(selection: $phoneTab) {
                         Tab("Sessions", systemImage: "terminal", value: PhoneTab.sessions) { sessions }
                         Tab("Mac Screen", systemImage: "display", value: PhoneTab.screen) {
-                            NavigationStack { ScreenDetailView { phoneTab = .sessions } }
+                            NavigationStack { ScreenDetailView(back: { phoneTab = .sessions }) }
                         }
                     }
                 } else {
@@ -280,6 +288,10 @@ struct RootView: View {
                     await ScreenTab.connect(store)
                 }
             }
+        }
+        // A new session of the Mac's screen starts with the list put away.
+        .onChange(of: ScreenSharingStore.shared.hasSession) { _, live in
+            if live { screenListOpen = false }
         }
         .onChange(of: store.newWindowRequest) { _, request in
             guard let request, store.newWindowRequest?.token == request.token else { return }
