@@ -466,6 +466,25 @@ public struct DeckData: Codable, Sendable, Equatable {
         change(&projects[i])
     }
 
+    /// The project's folder moved (`ProjectFolderRename`): its path, its sessions' working
+    /// directories and transcripts follow.
+    public mutating func relocateProject(_ id: UUID, from old: String, to new: String, transcripts: [String: String]) {
+        updateProject(id) { $0.path = new }
+        for index in sessions.indices where sessions[index].projectID == id {
+            if let directory = sessions[index].workingDirectory, let moved = ProjectFolderRename.moved(directory, from: old, to: new) {
+                sessions[index].workingDirectory = moved
+            }
+            if let transcript = sessions[index].transcriptPath {
+                for (from, to) in transcripts {
+                    if let moved = ProjectFolderRename.moved(transcript, from: from, to: to) {
+                        sessions[index].transcriptPath = moved
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     @discardableResult
     public mutating func addGroup(name: String) -> ProjectGroup {
         let group = ProjectGroup(name: name, colorIndex: groups.count % 8)

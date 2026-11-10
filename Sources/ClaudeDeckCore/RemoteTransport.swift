@@ -289,7 +289,8 @@ public final class RemoteServer: @unchecked Sendable {
     /// The session menu's actions.
     public var onSessionAction: ((_ sessionID: UUID, _ action: RemoteSessionAction) -> Void)?
     /// Pin / rename one of the host's projects.
-    public var onProjectAction: ((_ projectID: UUID, _ action: RemoteProjectAction) -> Void)?
+    /// `reply` answers a `renameFolder` (nil: done, else why not).
+    public var onProjectAction: ((_ projectID: UUID, _ action: RemoteProjectAction, _ reply: @escaping (String?) -> Void) -> Void)?
     /// Files to paste into a watched terminal; reply nil once they're going in, else why not.
     public var onPasteFiles: ((_ sessionID: UUID, _ files: [RemoteUpload], _ reply: @escaping @Sendable (String?) -> Void) -> Void)?
     /// A phone registered for push notifications.
@@ -524,7 +525,10 @@ public final class RemoteServer: @unchecked Sendable {
                     queue.async { channel.send(.permissionModeIs(sessionID: sessionID, mode: mode)) }
                 }
             case .projectAction(let projectID, let action):
-                onProjectAction?(projectID, action)
+                let channel = peer.channel
+                onProjectAction?(projectID, action) { [queue] error in
+                    queue.async { channel.send(.projectActionResult(projectID: projectID, error: error)) }
+                }
             case .sessionAction(let sessionID, let action):
                 onSessionAction?(sessionID, action)
             case .browseFolder(let path):
@@ -638,6 +642,7 @@ public final class RemoteHostConnection: @unchecked Sendable {
     public var onHistory: ((_ sessionID: UUID, _ page: ChatPage) -> Void)?
     public var onSessionStarted: ((UUID) -> Void)?
     public var onPromptResult: ((_ sessionID: UUID, _ error: String?) -> Void)?
+    public var onProjectActionResult: ((_ projectID: UUID, _ error: String?) -> Void)?
     public var onPermissionMode: ((_ sessionID: UUID, _ mode: String?) -> Void)?
     public var onAgentDetails: ((RemoteAgentDetails) -> Void)?
     /// `.folder` answers (project picker).
@@ -864,6 +869,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
             self.onHistory?(id, page)
         case .sessionStarted(let id) where authenticated:
             self.onSessionStarted?(id)
+        case .projectActionResult(let id, let error) where authenticated:
+            self.onProjectActionResult?(id, error)
         case .promptResult(let id, let error) where authenticated:
             self.onPromptResult?(id, error)
         case .permissionModeIs(let id, let mode) where authenticated:

@@ -464,16 +464,16 @@ final class RemoteController {
                     self?.publishSnapshot()
                 }
             }
-            server.onProjectAction = { [weak self] id, action in
+            server.onProjectAction = { [weak self] id, action, reply in
                 MainActor.assumeIsolated {
                     guard let model = self?.model, model.deck.project(id) != nil else { return }
                     switch action {
                     case .pin(let pinned):
                         model.mutate { $0.updateProject(id) { $0.pinned = pinned } }
                     case .rename(let name):
-                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        model.mutate { $0.updateProject(id) { $0.name = String(trimmed.prefix(200)) } }
+                        model.renameProject(id, to: name, folder: false)
+                    case .renameFolder(let name):
+                        reply(model.renameProject(id, to: name, folder: true))
                     }
                     self?.publishSnapshot()
                 }

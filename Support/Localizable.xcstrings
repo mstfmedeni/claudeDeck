@@ -14640,6 +14640,96 @@
           }
         }
       }
+    },
+    "A folder name can't be empty, contain \"/\" or be \".\" or \"..\".": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klasör adı boş olamaz, \"/\" içeremez ve \".\" ya da \"..\" olamaz."
+          }
+        }
+      }
+    },
+    "A file or folder with that name is already there.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Orada bu adda bir dosya ya da klasör zaten var."
+          }
+        }
+      }
+    },
+    "The project's folder isn't there any more.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projenin klasörü artık yerinde değil."
+          }
+        }
+      }
+    },
+    "Stop the project's sessions and terminals first: they're running in that folder.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önce projenin oturumlarını ve terminallerini durdur: o klasörde çalışıyorlar."
+          }
+        }
+      }
+    },
+    "Rename the folder too (“%@”)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klasörü de yeniden adlandır (“%@”)"
+          }
+        }
+      }
+    },
+    "The folder wasn't renamed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klasör yeniden adlandırılmadı"
+          }
+        }
+      }
+    },
+    "Rename the Folder Too": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klasörü de Yeniden Adlandır"
+          }
+        }
+      }
+    },
+    "The folder is “%@”. Renaming it too moves Claude's past conversations along; the project's sessions must be stopped.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klasör: “%@”. Onu da yeniden adlandırmak Claude'un eski konuşmalarını da taşır; projenin oturumları durdurulmuş olmalı."
+          }
+        }
+      }
+    },
+    "5 Minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 Dakika"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

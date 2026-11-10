@@ -101,6 +101,9 @@ final class RemoteStore {
         return projects.first { $0.id == id }
     }
 
+    /// Why the Mac couldn't rename a project's folder (shown, then cleared).
+    var projectError: String?
+
     /// Show the Mac's screen (a `claudedeck://screen` or `vnc://` link).
     var screenRequest: ScreenRequest?
     /// Debug hooks: open a session in a new window.
@@ -296,6 +299,9 @@ final class RemoteStore {
         }
         next.onAgentDetails = { [weak self] details in
             MainActor.assumeIsolated { self?.agentDetails = details }
+        }
+        next.onProjectActionResult = { [weak self] _, error in
+            MainActor.assumeIsolated { self?.projectError = error }
         }
         next.onPromptResult = { [weak self] id, error in
             MainActor.assumeIsolated {

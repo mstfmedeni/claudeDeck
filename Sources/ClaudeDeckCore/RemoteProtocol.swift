@@ -176,6 +176,8 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case permissionModeIs(sessionID: UUID, mode: String?)
     /// Remote → host: pin / unpin or rename one of its projects (the next snapshot shows it).
     case projectAction(projectID: UUID, action: RemoteProjectAction)
+    /// Host → remote: why a `renameFolder` didn't rename the folder (nil: it did).
+    case projectActionResult(projectID: UUID, error: String?)
     /// Remote → host: the folders in `path` ("" = home), to pick a new project. Answered with `folder`.
     case browseFolder(path: String)
     /// Host → remote: `path` resolved (absolute) and its subfolders (no hidden ones).
@@ -212,6 +214,9 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
 public enum RemoteProjectAction: Codable, Sendable, Equatable {
     case pin(Bool)
     case rename(String)
+    /// Rename the project and its folder on disk (hosts with `Feature.renameFolder`); answered
+    /// with `projectActionResult`.
+    case renameFolder(String)
 }
 
 /// The Mac's session menu, for a remote.
@@ -317,8 +322,10 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let agentCompletion = "agentCompletion"
         /// File requests for `RemoteFiles.homeID`: the Mac's home folder, not just projects.
         public static let homeFiles = "homeFiles"
+        /// `RemoteProjectAction.renameFolder`, answered with `projectActionResult`.
+        public static let renameFolder = "renameFolder"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
-                                              agentDetails, agentCompletion, homeFiles]
+                                              agentDetails, agentCompletion, homeFiles, renameFolder]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

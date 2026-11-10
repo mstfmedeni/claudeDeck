@@ -106,6 +106,9 @@ final class DebugHooks {
             } else if file.hasSuffix(".pin"), let id, let project = store.projects.first(where: { $0.id == id }) {
                 try? FileManager.default.removeItem(at: url)
                 store.projectAction(id, .pin(!project.pinned))
+            } else if file.hasSuffix(".renamefolder"), let id, let name = try? String(contentsOf: url, encoding: .utf8) {
+                try? FileManager.default.removeItem(at: url)
+                store.projectAction(id, .renameFolder(name.trimmingCharacters(in: .whitespacesAndNewlines)))
             } else if file.hasSuffix(".rename"), let id, let name = try? String(contentsOf: url, encoding: .utf8) {
                 try? FileManager.default.removeItem(at: url)
                 store.projectAction(id, .rename(name))
@@ -150,7 +153,8 @@ final class DebugHooks {
             }
         }
         let push = PushRegistration.shared
-        var lines = ["addresses: \(store.addressesInOrder) custom=\(!store.addressOrder.isEmpty) via=\(store.connectedVia ?? "-") home=\(store.snapshot?.homePath ?? "-")",
+        var lines = ["projectError: \(store.projectError ?? "-") projectPaths=\(store.projects.map { "\($0.name)=\(($0.path ?? "-") as NSString).lastPathComponent)" })",
+                     "addresses: \(store.addressesInOrder) custom=\(!store.addressOrder.isEmpty) via=\(store.connectedVia ?? "-") home=\(store.snapshot?.homePath ?? "-")",
                      "connection: \(store.connection) modes=\(store.permissionModes.values.sorted()) sendingFiles=\(store.sendingFiles.count) promptError=\(store.promptError ?? "-") windows=\(store.scenes.map { "\($0.key.uuidString.prefix(8)):\($0.value?.uuidString.suffix(4) ?? "-")" }.sorted()) projects=\(store.projects.map { ($0.pinned ? "📌" : "") + $0.name })", "files: dirs=\(store.directories.values.map { $0.entries.map(\.name) }) file=\(store.files.values.map { "\($0.size):\($0.text?.prefix(30) ?? "")|\($0.error ?? "")" })",
                      "terminals: \(store.terminalStates) usage=\(store.snapshot?.usage.map { "\($0.fiveHour ?? -1)/\($0.week ?? -1)" } ?? "-") past=\(store.pastConversations.values.map(\.count))",
                      "home: \(store.folders[""].map { "\($0.path) \($0.folders.count) folders" } ?? "-") lan: \(store.lanHosts.map(\.name)) via=\(store.connectedVia ?? "-") pairing=\(store.pairing?.addresses ?? [])",

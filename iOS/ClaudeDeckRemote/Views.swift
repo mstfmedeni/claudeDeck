@@ -512,7 +512,22 @@ struct SessionListView: View {
                 if let project = renamingProject { store.projectAction(project.id, .rename(renameText)) }
                 renamingProject = nil
             }
+            if store.snapshot?.supports(RemoteSnapshot.Feature.renameFolder) == true {
+                Button("Rename the Folder Too") {
+                    if let project = renamingProject { store.projectAction(project.id, .renameFolder(renameText)) }
+                    renamingProject = nil
+                }
+            }
             Button("Cancel", role: .cancel) { renamingProject = nil }
+        } message: {
+            if store.snapshot?.supports(RemoteSnapshot.Feature.renameFolder) == true, let path = renamingProject?.path {
+                Text("The folder is “\((path as NSString).lastPathComponent)”. Renaming it too moves Claude's past conversations along; the project's sessions must be stopped.")
+            }
+        }
+        .alert("The folder wasn't renamed", isPresented: Binding(get: { store.projectError != nil }, set: { if !$0 { store.projectError = nil } })) {
+            Button("OK") { store.projectError = nil }
+        } message: {
+            Text(store.projectError ?? "")
         }
     }
 }

@@ -134,6 +134,12 @@ public enum Git {
         FileListing.relativePath(of: file.resolvingSymlinksInPath(), in: repo.resolvingSymlinksInPath())
     }
 
+    /// After a repository folder moved: worktrees point at it by absolute path.
+    public static func repairWorktrees(in repo: URL) {
+        guard FileManager.default.fileExists(atPath: repo.appending(path: ".git").path) else { return }
+        _ = run(["worktree", "repair"], in: repo)
+    }
+
     static func run(_ args: [String], in dir: URL) -> String? {
         guard let executable else { return nil }
         let p = Process()

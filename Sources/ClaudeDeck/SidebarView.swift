@@ -762,8 +762,15 @@ struct ProjectMenu: View {
             }
         }
         Button("Rename…") {
-            if let name = TextPrompt.ask(title: String(localized: "Rename Project"), placeholder: String(localized: "Name"), initial: project.name) {
-                model.mutate { $0.updateProject(project.id) { $0.name = name } }
+            let folder = (project.path as NSString).lastPathComponent
+            if let (name, renameFolder) = TextPrompt.ask(title: String(localized: "Rename Project"), placeholder: String(localized: "Name"),
+                                                         initial: project.name,
+                                                         option: String(localized: "Rename the folder too (“\(folder)”)")),
+               let problem = model.renameProject(project.id, to: name, folder: renameFolder) {
+                let alert = NSAlert()
+                alert.messageText = String(localized: "The folder wasn't renamed")
+                alert.informativeText = problem
+                alert.runAsSheet()
             }
         }
         Button("Reveal in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path) }
@@ -830,6 +837,30 @@ enum TextPrompt {
         guard alert.runAsSheet() == .alertFirstButtonReturn else { return nil }
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty && !allowEmpty ? nil : value
+    }
+
+    /// The same with a checkbox under the field (off at first); nil on cancel.
+    @MainActor
+    static func ask(title: String, placeholder: String, initial: String = "", option: String) -> (String, Bool)? {
+        let alert = NSAlert()
+        alert.messageText = title
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.placeholderString = placeholder
+        field.stringValue = initial
+        let checkbox = NSButton(checkboxWithTitle: option, target: nil, action: nil)
+        let stack = NSStackView(views: [field, checkbox])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.frame = NSRect(x: 0, y: 0, width: 300, height: 56)
+        field.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        alert.accessoryView = stack
+        alert.addButton(withTitle: String(localized: "Save"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.window.initialFirstResponder = field
+        guard alert.runAsSheet() == .alertFirstButtonReturn else { return nil }
+        let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : (value, checkbox.state == .on)
     }
 }
 
