@@ -20,9 +20,31 @@ enum ScreenTab {
     /// is a real host, else this network's addresses before Tailscale's (Bonjour names only find
     /// ClaudeDeck, not Screen Sharing).
     @MainActor static func macHost(_ store: RemoteStore) -> String? {
+        let preferred = UserDefaults.standard.string(forKey: preferredHostKey) ?? ""
+        if !preferred.isEmpty, hosts(store).contains(preferred) { return preferred }
         if let via = store.connectedVia, RemoteBonjour.serviceName(of: via) == nil { return via }
-        return store.addressesInOrder.first { RemoteBonjour.serviceName(of: $0) == nil }
+        return hosts(store).first
     }
+
+    /// The Mac's addresses Screen Sharing can use (Bonjour names find ClaudeDeck only), in order.
+    @MainActor static func hosts(_ store: RemoteStore) -> [String] {
+        var list = store.addressesInOrder.filter { RemoteBonjour.serviceName(of: $0) == nil }
+        if list.count > 1 { list.removeAll { $0 == "127.0.0.1" } }   // the demo Mac's loopback, only when it's all there is
+        if let via = store.connectedVia, RemoteBonjour.serviceName(of: via) == nil, !list.contains(via) { list.insert(via, at: 0) }
+        return list
+    }
+
+    /// The paired Mac's screen at `host` (nil: `macHost`); the address used is remembered for the sidebar.
+    @MainActor static func connect(_ store: RemoteStore, host: String? = nil) {
+        guard let host = host ?? macHost(store) else { return }
+        UserDefaults.standard.set(host, forKey: usedHostKey)
+        ScreenSharingStore.shared.connect(host: host, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+    }
+
+    /// The address picked by hand in the screen tab ("" = automatic).
+    static let preferredHostKey = "screen.preferredHost"
+    /// The address the last connection went to.
+    static let usedHostKey = "screen.usedHost"
 }
 
 /// A request to show the screen, from a link (any window picks it up; the frontmost one wins).
@@ -30,6 +52,8 @@ struct ScreenRequest: Equatable {
     let token = UUID()
     /// nil: the paired Mac; else a `vnc://` URL.
     let url: URL?
+    /// false: only show the tab (its Connect card).
+    var connect = true
 }
 
 /// The screen tab's content: edge to edge, the navigation bar hidden. On iPhone (any orientation:
@@ -37,11 +61,19 @@ struct ScreenRequest: Equatable {
 /// a small button goes back to the list; the session's own × disconnects.
 struct ScreenDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(RemoteStore.self) private var store
+    @AppStorage(ScreenTab.preferredHostKey) private var preferredHost = ""
     let back: () -> Void
 
     var body: some View {
         ScreenSharingView()
             .toolbar(.hidden, for: .navigationBar)
+            // No session yet: the paired Mac one tap away, on the address shown (or one picked).
+            .safeAreaInset(edge: .bottom) {
+                if !ScreenSharingStore.shared.hasSession, store.pairing != nil {
+                    connectCard
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone {
                     Button(action: back) {
@@ -59,11 +91,65 @@ struct ScreenDetailView: View {
     }
 }
 
+extension ScreenDetailView {
+    private var connectCard: some View {
+        let hosts = ScreenTab.hosts(store)
+        let host = ScreenTab.macHost(store)
+        let name = store.snapshot?.hostName ?? store.pairing?.hostName ?? "Mac"
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "display").foregroundStyle(Color.accentColor)
+                Text(name).font(.headline).lineLimit(1)
+                Spacer(minLength: 4)
+                Menu {
+                    Picker("Address", selection: $preferredHost) {
+                        Text("Automatic (\(ScreenTab.automaticHost(store) ?? "–"))").tag("")
+                        ForEach(hosts, id: \.self) { Text($0).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(host ?? String(localized: "No address")).font(.callout.monospaced())
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2)
+                    }
+                }
+                .disabled(hosts.isEmpty)
+            }
+            Button {
+                ScreenTab.connect(store)
+            } label: {
+                Label("Connect to This Mac", systemImage: "play.display").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(host == nil)
+            Text("The Mac needs Screen Sharing on: System Settings › General › Sharing.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+}
+
+extension ScreenTab {
+    /// What "automatic" picks right now (shown next to it in the address menu).
+    @MainActor static func automaticHost(_ store: RemoteStore) -> String? {
+        if let via = store.connectedVia, RemoteBonjour.serviceName(of: via) == nil { return via }
+        return hosts(store).first
+    }
+}
+
 /// The sidebar row for the screen.
 struct ScreenTabRow: View {
     var body: some View {
         Label {
-            Text("Mac Screen").listFont(.body)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mac Screen").listFont(.body)
+                if ScreenSharingStore.shared.hasSession, let host = UserDefaults.standard.string(forKey: ScreenTab.usedHostKey) {
+                    Text(host).listFont(.caption).foregroundStyle(.secondary)
+                }
+            }
         } icon: {
             Image(systemName: "display")
                 .symbolRenderingMode(.hierarchical)

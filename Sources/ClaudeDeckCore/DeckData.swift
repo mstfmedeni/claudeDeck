@@ -174,6 +174,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var remoteClient = false
     /// Remote mode, host side: also reachable on the local network (Bonjour), not only Tailscale.
     public var remoteLAN = false
+    /// Remote mode, host side: the addresses devices should try, in order (Settings › Remote ›
+    /// Addresses). Empty: what the Mac finds (Tailscale, then this network). Published to every
+    /// paired device, ahead of the found ones.
+    public var remoteAddresses: [String] = []
     /// Agents to ask about a session (Grok bots through the xAI API, or webhooks); see Agents.swift.
     public var agents: [AgentProfile] = []
     /// The agents' local API (127.0.0.1 only; the token is in the keychain).
@@ -214,6 +218,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         remoteHost = try c.decodeIfPresent(Bool.self, forKey: .remoteHost) ?? d.remoteHost
         remoteClient = try c.decodeIfPresent(Bool.self, forKey: .remoteClient) ?? d.remoteClient
         remoteLAN = try c.decodeIfPresent(Bool.self, forKey: .remoteLAN) ?? d.remoteLAN
+        remoteAddresses = try c.decodeIfPresent([String].self, forKey: .remoteAddresses) ?? d.remoteAddresses
         agents = (try? c.decodeIfPresent([AgentProfile].self, forKey: .agents)) ?? d.agents
         agentAPIEnabled = try c.decodeIfPresent(Bool.self, forKey: .agentAPIEnabled) ?? d.agentAPIEnabled
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort

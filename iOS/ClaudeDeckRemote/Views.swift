@@ -258,12 +258,13 @@ struct RootView: View {
                   store.activeScene == nil || store.activeScene == sceneID else { return }
             store.screenRequest = nil
             selection = ScreenTab.id
+            guard request.connect else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(300))
                 if let url = request.url {
                     ScreenSharingStore.shared.open(url)
-                } else if let host = ScreenTab.macHost(store) {
-                    ScreenSharingStore.shared.connect(host: host, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+                } else {
+                    ScreenTab.connect(store)
                 }
             }
         }

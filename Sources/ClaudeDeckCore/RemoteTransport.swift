@@ -726,6 +726,13 @@ public final class RemoteHostConnection: @unchecked Sendable {
         init(address: String, channel: RemoteChannel) { self.address = address; self.channel = channel }
     }
 
+    /// The Mac's published addresses: its own order (Settings › Remote › Addresses) first, then
+    /// the found ones it doesn't list.
+    public static func publishedOrder(custom: [String], found: [String]) -> [String] {
+        let custom = custom.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return custom + found.filter { !custom.contains($0) }
+    }
+
     /// This network first (Bonjour names, private IPs), Tailscale last: a 100.x address with
     /// Tailscale off only times out.
     public static func raceOrder(_ addresses: [String]) -> [String] {

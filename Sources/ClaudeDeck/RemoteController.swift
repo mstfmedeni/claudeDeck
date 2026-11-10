@@ -21,6 +21,8 @@ final class RemoteController {
     private(set) var connectedRemotes: [String] = []
     /// Addresses remotes are told to use (MagicDNS first); empty while Tailscale isn't up.
     private(set) var hostAddresses: [String] = []
+    /// What the Mac found (Tailscale, then this network), before Settings' own order.
+    private(set) var foundAddresses: [String] = []
     private(set) var hostError: String?
     /// Last answer a remote sent (diagnostics, DebugSnapshot).
     @ObservationIgnored private(set) var lastRemoteAnswer: String?
@@ -544,13 +546,21 @@ final class RemoteController {
                 return (addresses, lan ? Tailscale.lanAddresses() : [])
             }.value
             guard let self, !Task.isCancelled else { return }
-            let all = found.tailscale + found.lan
-            self.hostAddresses = Self.allowLoopback ? all + ["127.0.0.1"] : all
+            self.foundAddresses = found.tailscale + found.lan
+            self.applyAddressOrder()
             self.hostError = found.tailscale.isEmpty && found.lan.isEmpty
                 ? String(localized: "Tailscale isn't running on this Mac. Install it and sign in, then try again.")
                 : nil
-            self.publishPairing()
         }
+    }
+
+    /// The order set in Settings › Remote › Addresses, ahead of the found addresses; republished
+    /// to paired devices (snapshot and pairing code).
+    func applyAddressOrder() {
+        let ordered = RemoteHostConnection.publishedOrder(custom: model?.deck.settings.remoteAddresses ?? [], found: foundAddresses)
+        hostAddresses = Self.allowLoopback ? ordered + ["127.0.0.1"] : ordered
+        publishPairing()
+        publishSnapshot()
     }
 
     var hostPairing: RemotePairing? {
@@ -615,6 +625,7 @@ final class RemoteController {
                                          week: usage.sevenDay?.usedPercent, weekResetsAt: usage.sevenDay?.resetsAt)
         }
         snapshot.addresses = hostAddresses.filter { $0 != "127.0.0.1" }
+        snapshot.addressesOrdered = model.deck.settings.remoteAddresses.isEmpty ? nil : true
         snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
         server.snapshot = snapshot
     }

@@ -86,11 +86,18 @@ final class RemoteStore {
     }
     static let addressOrderKey = "remote.addressOrder"
 
+    /// The Mac set the order of its addresses (Settings › Remote › Addresses on the Mac): tried as
+    /// listed, unless this device has its own order. Kept for launches before the first snapshot.
+    var macOrdered: Bool = UserDefaults.standard.bool(forKey: RemoteStore.macOrderedKey) {
+        didSet { UserDefaults.standard.set(macOrdered, forKey: Self.macOrderedKey) }
+    }
+    static let macOrderedKey = "remote.macOrdered"
+
     /// The order addresses are tried in now (the user's, or the automatic one).
     var addressesInOrder: [String] {
         guard let pairing else { return [] }
         let effective = effectivePairing(pairing).addresses
-        return addressOrder.isEmpty ? RemoteHostConnection.raceOrder(effective) : effective
+        return addressOrder.isEmpty && !macOrdered ? RemoteHostConnection.raceOrder(effective) : effective
     }
 
     /// A project for file requests, or the Mac's home folder (`RemoteFiles.homeID`) as one.
@@ -166,6 +173,12 @@ final class RemoteStore {
             copy.addresses = addressOrder + pairing.addresses.filter { !addressOrder.contains($0) && RemoteBonjour.serviceName(of: $0) == nil }
             return copy
         }
+        // The Mac's own order: as it listed them, this network's Bonjour name after them.
+        if macOrdered {
+            let local = lanHosts.filter { $0.hostID == pairing.id }.map(\.address)
+            copy.addresses = pairing.addresses + local.filter { !pairing.addresses.contains($0) }
+            return copy
+        }
         let local = lanHosts.filter { $0.hostID == pairing.id }.map(\.address)
         copy.addresses = local + pairing.addresses.filter { !local.contains($0) }
         return copy
@@ -180,8 +193,10 @@ final class RemoteStore {
         if let remote = snapshot.addresses, !remote.isEmpty {
             let bonjour = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) != nil }
             let typed = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) == nil && !remote.contains($0) }
-            stored.addresses = bonjour + remote + typed
+            // Ordered on the Mac: its list as is, the rest after it.
+            stored.addresses = snapshot.addressesOrdered == true ? remote + bonjour + typed : bonjour + remote + typed
         }
+        if macOrdered != (snapshot.addressesOrdered == true) { macOrdered = snapshot.addressesOrdered == true }
         guard stored != before else { return }
         stored.updatedAt = Date()
         PairingKeychain.save(stored)
@@ -229,6 +244,7 @@ final class RemoteStore {
     func forget() {
         PairingKeychain.delete()
         addressOrder = []
+        macOrdered = false
         close()
         pairing = nil
         snapshot = nil
@@ -263,7 +279,7 @@ final class RemoteStore {
         let effective = effectivePairing(pairing)
         attemptAddresses = Set(effective.addresses)
         let next = RemoteHostConnection(pairing: effective, deviceName: Self.deviceName)
-        next.keepsOrder = !addressOrder.isEmpty
+        next.keepsOrder = !addressOrder.isEmpty || macOrdered
         next.onStateChange = { [weak self, weak next] state in
             MainActor.assumeIsolated {
                 guard let self, let next, self.hostConnection === next else { return }

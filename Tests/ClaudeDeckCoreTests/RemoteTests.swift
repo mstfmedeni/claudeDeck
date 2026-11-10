@@ -276,6 +276,12 @@ import Testing
         #expect(queue.sync { server.peerNames } == ["Phone"])
     }
 
+    @Test func publishedOrderPutsTheMacsListFirst() {
+        #expect(RemoteHostConnection.publishedOrder(custom: [" 192.168.1.20 ", "", "mac.ts.net"], found: ["mac.ts.net", "100.1.2.3", "192.168.1.20", "10.0.0.2"])
+                == ["192.168.1.20", "mac.ts.net", "100.1.2.3", "10.0.0.2"])
+        #expect(RemoteHostConnection.publishedOrder(custom: [], found: ["a", "b"]) == ["a", "b"])
+    }
+
     @Test func raceOrderPutsThisNetworkFirst() {
         let bonjour = RemoteBonjour.addressPrefix + "Mac"
         let order = RemoteHostConnection.raceOrder(["mac.tail1234.ts.net", "100.101.102.103", "fd7a:115c:a1e0::1", "192.168.1.20", "10.0.0.5", bonjour, "example.com"])

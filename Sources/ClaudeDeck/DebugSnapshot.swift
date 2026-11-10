@@ -112,6 +112,14 @@ enum DebugSnapshot {
         }
         // `remote.cmd`: "host" / "client" / "off" turns remote mode on that side (demo testing);
         // `<session-uuid>.remote-approve` / `.remote-deny` answer a prompt on the paired Mac.
+        // `remote.addresses`: the host's address order, one per line (empty: automatic).
+        for file in files where file == "remote.addresses" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let lines = contents(path).split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            try? FileManager.default.removeItem(atPath: path)
+            model.mutate { $0.settings.remoteAddresses = lines }
+            model.remote.applyAddressOrder()
+        }
         for file in files where file == "remote.cmd" {
             let path = (dir as NSString).appendingPathComponent(file)
             let command = contents(path).trimmingCharacters(in: .whitespacesAndNewlines)

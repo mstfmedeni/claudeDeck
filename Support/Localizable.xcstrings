@@ -14730,6 +14730,146 @@
           }
         }
       }
+    },
+    "The Mac's order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'in sırası"
+          }
+        }
+      }
+    },
+    "As set on the Mac (Settings › Remote › Addresses). Add an address or tap Edit to use your own order on this device.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te belirlendiği gibi (Ayarlar › Uzaktan › Adresler). Bu cihazda kendi sıranı kullanmak için bir adres ekle ya da Düzenle'ye dokun."
+          }
+        }
+      }
+    },
+    "Try earlier": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha önce dene"
+          }
+        }
+      }
+    },
+    "Try later": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha sonra dene"
+          }
+        }
+      }
+    },
+    "Remove from the list": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listeden çıkar"
+          }
+        }
+      }
+    },
+    "Put it in your order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sırana ekle"
+          }
+        }
+      }
+    },
+    "Add an address (192.168.1.20, mac.tailnet.ts.net…)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adres ekle (192.168.1.20, mac.tailnet.ts.net…)"
+          }
+        }
+      }
+    },
+    "Back to the found addresses in their own order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bulunan adreslere, kendi sıralarıyla dön"
+          }
+        }
+      }
+    },
+    "Automatic: Tailscale first, then this network. Add addresses (or + a found one) to set the order your devices try them in.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik: önce Tailscale, sonra bu ağ. Cihazlarının deneyeceği sırayı belirlemek için adres ekle (ya da bulunan birinin yanındaki +'ya bas)."
+          }
+        }
+      }
+    },
+    "Your devices try these top to bottom, each a moment after the one before; the first to answer is used. Gray ones were found and come after yours. Paired devices pick the list up the next time they connect.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cihazların bunları yukarıdan aşağıya, her birini bir öncekinden kısa süre sonra dener; ilk cevap veren kullanılır. Gri olanlar bulunan adreslerdir, seninkilerden sonra gelir. Eşleşmiş cihazlar listeyi bir sonraki bağlanışlarında alır."
+          }
+        }
+      }
+    },
+    "Automatic (%@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik (%@)"
+          }
+        }
+      }
+    },
+    "No address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adres yok"
+          }
+        }
+      }
+    },
+    "Connect to This Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Mac'e Bağlan"
+          }
+        }
+      }
+    },
+    "The Mac needs Screen Sharing on: System Settings › General › Sharing.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te Ekran Paylaşma açık olmalı: Sistem Ayarları › Genel › Paylaşma."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

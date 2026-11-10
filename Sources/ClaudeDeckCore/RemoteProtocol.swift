@@ -287,6 +287,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// paired on the local network learns how to reach the host when away.
     public var hostID: UUID?
     public var addresses: [String]?
+    /// `addresses` are in the order set on the Mac: devices try them as listed (no re-sorting).
+    public var addressesOrdered: Bool?
     /// What the host understands beyond the basics (`Feature`); nil from hosts older than 0.4.6,
     /// which skip messages they don't know, so a remote checks before sending them.
     public var features: Set<String>?

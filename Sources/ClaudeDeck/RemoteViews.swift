@@ -106,9 +106,7 @@ struct RemoteSettingsSection: View {
             case .stopped: Text("Starting…").foregroundStyle(.secondary)
             }
         }
-        if let first = remote.hostAddresses.first {
-            LabeledContent("Address", value: first).textSelection(.enabled)
-        }
+        RemoteAddressOrderEditor()
         if let error = remote.hostError {
             Text(error).font(.caption).foregroundStyle(.orange)
         }
@@ -776,5 +774,81 @@ struct RemoteCheck: Identifiable {
             return Fix(title: String(localized: "Open Tailscale")) { NSWorkspace.shared.open(app) }
         }
         return nil
+    }
+}
+
+/// Settings › Remote: the addresses paired devices try, in order. Empty: what the Mac finds
+/// (Tailscale first, then this network). Every paired device learns the list the next time it
+/// connects, and the pairing code carries it; a device's own order (its Settings) still wins.
+struct RemoteAddressOrderEditor: View {
+    @Environment(AppModel.self) private var model
+    @State private var newAddress = ""
+    @State private var selection: String?
+
+    var body: some View {
+        let custom = model.deck.settings.remoteAddresses
+        let remote = model.remote
+        LabeledContent("Addresses") {
+            VStack(alignment: .trailing, spacing: 2) {
+                ForEach(Array(remote.hostAddresses.filter { $0 != "127.0.0.1" }.enumerated()), id: \.element) { index, address in
+                    HStack(spacing: 6) {
+                        Text(address).textSelection(.enabled).font(.callout.monospaced())
+                            .foregroundStyle(custom.contains(address) ? .primary : .secondary)
+                        if custom.contains(address) {
+                            Button { move(address, by: -1) } label: { Image(systemName: "chevron.up") }
+                                .disabled(custom.first == address).help("Try earlier")
+                            Button { move(address, by: 1) } label: { Image(systemName: "chevron.down") }
+                                .disabled(custom.last == address).help("Try later")
+                            Button { remove(address) } label: { Image(systemName: "minus.circle") }.help("Remove from the list")
+                        } else {
+                            Button { add(address) } label: { Image(systemName: "plus.circle") }.help("Put it in your order")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        HStack {
+            TextField("Add an address (192.168.1.20, mac.tailnet.ts.net…)", text: $newAddress)
+                .onSubmit { addTyped() }
+            Button("Add") { addTyped() }.disabled(newAddress.trimmingCharacters(in: .whitespaces).isEmpty)
+            if !custom.isEmpty {
+                Button("Automatic") { set([]) }.help("Back to the found addresses in their own order")
+            }
+        }
+        Text(custom.isEmpty
+             ? String(localized: "Automatic: Tailscale first, then this network. Add addresses (or + a found one) to set the order your devices try them in.")
+             : String(localized: "Your devices try these top to bottom, each a moment after the one before; the first to answer is used. Gray ones were found and come after yours. Paired devices pick the list up the next time they connect."))
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    private func set(_ addresses: [String]) {
+        model.mutate { $0.settings.remoteAddresses = addresses }
+        model.remote.applyAddressOrder()
+    }
+
+    private func add(_ address: String) {
+        var list = model.deck.settings.remoteAddresses
+        guard !list.contains(address) else { return }
+        list.append(address)
+        set(list)
+    }
+
+    private func addTyped() {
+        let address = newAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "^[a-z]+://", with: "", options: .regularExpression)
+            .split(separator: "/").first.map(String.init) ?? ""
+        guard !address.isEmpty else { return }
+        add(address)
+        newAddress = ""
+    }
+
+    private func remove(_ address: String) { set(model.deck.settings.remoteAddresses.filter { $0 != address }) }
+
+    private func move(_ address: String, by step: Int) {
+        var list = model.deck.settings.remoteAddresses
+        guard let index = list.firstIndex(of: address), list.indices.contains(index + step) else { return }
+        list.swapAt(index, index + step)
+        set(list)
     }
 }

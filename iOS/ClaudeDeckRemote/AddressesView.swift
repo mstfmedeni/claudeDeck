@@ -23,10 +23,12 @@ struct AddressesView: View {
                     .onDelete { store.addressOrder.remove(atOffsets: $0) }
                 }
             } header: {
-                Text(store.addressOrder.isEmpty ? "Automatic order" : "Your order")
+                Text(!store.addressOrder.isEmpty ? "Your order" : store.macOrdered ? "The Mac's order" : "Automatic order")
             } footer: {
                 Text(store.addressOrder.isEmpty
-                     ? "This network's addresses first, Tailscale last. Add an address or tap Edit to set your own order."
+                     ? (store.macOrdered
+                        ? "As set on the Mac (Settings › Remote › Addresses). Add an address or tap Edit to use your own order on this device."
+                        : "This network's addresses first, Tailscale last. Add an address or tap Edit to set your own order.")
                      : "Tried top to bottom, each a moment after the one before; the first to answer is used. Addresses the Mac reports later are tried after these.")
             }
             Section("Add an Address") {
