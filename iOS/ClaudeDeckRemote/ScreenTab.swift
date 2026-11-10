@@ -42,12 +42,37 @@ enum ScreenTab {
     /// instead of always the first in the list, which may be this network's while away.
     @MainActor static func connect(_ store: RemoteStore, host: String? = nil) async {
         var host = host ?? macHost(store)
+        // In Screen Sharing's list with all the Mac's addresses: it tries them itself, in the Mac's order.
+        if host == nil || !hasKnownHost(store), let saved = savedHost(store) {
+            UserDefaults.standard.set(saved, forKey: usedHostKey)
+            ScreenSharingStore.shared.connect(host: saved, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+            return
+        }
         if !hasKnownHost(store) {
             host = await firstAnswering(hosts(store)) ?? host
         }
         guard let host else { return }
         UserDefaults.standard.set(host, forKey: usedHostKey)
         ScreenSharingStore.shared.connect(host: host, name: store.snapshot?.hostName ?? store.pairing?.hostName)
+    }
+
+    /// The Mac's addresses for its Screen Sharing connection, in the Mac's order (Settings › Addresses).
+    @MainActor static func syncedHosts(_ store: RemoteStore) -> [String] {
+        var list = store.addressesInOrder.filter { RemoteBonjour.serviceName(of: $0) == nil }
+        if list.count > 1 { list.removeAll { $0 == "127.0.0.1" } }
+        return list
+    }
+
+    /// One of the Mac's addresses its saved Screen Sharing connection has, if there is one.
+    @MainActor static func savedHost(_ store: RemoteStore) -> String? {
+        syncedHosts(store).first { ScreenSharingStore.shared.isSaved(host: $0) }
+    }
+
+    /// Puts the Mac's addresses, in its order, on its saved Screen Sharing connection (if there is one).
+    @MainActor static func syncAddresses(_ store: RemoteStore) {
+        let hosts = syncedHosts(store)
+        guard !hosts.isEmpty else { return }
+        ScreenSharingStore.shared.syncAddresses(hosts, name: store.snapshot?.hostName ?? store.pairing?.hostName)
     }
 
     /// An address picked by hand, or the one ClaudeDeck is connected on: no need to look.
@@ -144,6 +169,7 @@ struct ScreenDetailView: View {
 
     var body: some View {
         let live = ScreenSharingStore.shared.hasSession
+        let saved = ScreenTab.savedHost(store) != nil
         ScreenSharingView()
             // Only while a session fills the screen: the computer list's own bar has its + and settings.
             .toolbar(live ? .hidden : .automatic, for: .navigationBar)
@@ -155,6 +181,9 @@ struct ScreenDetailView: View {
                     connectCard
                 }
             }
+            // The Mac's addresses follow it onto its saved connection (also once it's been added).
+            .onChange(of: ScreenTab.syncedHosts(store), initial: true) { _, _ in ScreenTab.syncAddresses(store) }
+            .onChange(of: saved) { _, saved in if saved { ScreenTab.syncAddresses(store) } }
             .overlay(alignment: .topLeading) {
                 if live {
                     let goesBack = sizeClass == .compact || UIDevice.current.userInterfaceIdiom == .phone || toggleList == nil
@@ -216,7 +245,7 @@ extension ScreenDetailView {
             .disabled(host == nil || finding)
             // In Screen Sharing's own list it opens with a tap even while ClaudeDeck can't reach the Mac.
             if let host {
-                if hosts.contains(where: { ScreenSharingStore.shared.isSaved(host: $0) }) {
+                if ScreenTab.savedHost(store) != nil {
                     Label("In Connections: tap it there even when ClaudeDeck isn't connected", systemImage: "checkmark.circle.fill")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {

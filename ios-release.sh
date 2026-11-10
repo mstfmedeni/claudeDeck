@@ -42,6 +42,9 @@ git submodule update --init --quiet Vendor/open-screen-sharing
 PATH="/usr/local/go/bin:$PATH" make -C Vendor/open-screen-sharing lib > "$OUT/libsharing.log" 2>&1 \
   || { tail -20 "$OUT/libsharing.log" >&2; fail "Libsharing build failed (log: $OUT/libsharing.log)."; }
 
+# The project is generated: new source files (here or in the submodule) only build once it's regenerated.
+if command -v xcodegen >/dev/null 2>&1; then xcodegen generate --quiet; fi
+
 echo "▸ Archiving ClaudeDeckRemote $VERSION ($BUILD)…"
 # shellcheck disable=SC2086
 xcodebuild archive -scheme ClaudeDeckRemote -configuration Release -destination 'generic/platform=iOS' \

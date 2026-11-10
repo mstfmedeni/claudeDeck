@@ -289,6 +289,8 @@ struct RootView: View {
                 }
             }
         }
+        // The Mac's addresses (its order) onto its saved Screen Sharing connection, whichever tab is showing.
+        .onChange(of: store.addressesInOrder, initial: true) { _, _ in ScreenTab.syncAddresses(store) }
         // A new session of the Mac's screen starts with the list put away.
         .onChange(of: ScreenSharingStore.shared.hasSession) { _, live in
             if live { screenListOpen = false }

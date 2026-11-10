@@ -9639,7 +9639,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yukarı taşı"
+            "value": "Yukarı Taşı"
           }
         }
       }
@@ -14986,7 +14986,37 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bağlantılarda: ClaudeDeck bağlı değilken de oradan dokunup açabilirsin"
+            "value": "Bağlantılarda, Mac'in tüm adresleriyle: ClaudeDeck bağlı değilken de oradan dokunup açabilirsin"
+          }
+        }
+      }
+    },
+    "Other Addresses": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer Adresler"
+          }
+        }
+      }
+    },
+    "Add Address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adres Ekle"
+          }
+        }
+      }
+    },
+    "Tried after the server address, in this order, when connecting; the first that answers is used.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlanırken sunucu adresinden sonra bu sırayla denenir; ilk cevap veren kullanılır."
           }
         }
       }
