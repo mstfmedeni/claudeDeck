@@ -316,25 +316,25 @@ final class RemoteController {
                 MainActor.assumeIsolated {
                     switch request {
                     case .listDirectory(let projectID, let path):
-                        guard let root = self?.model?.deck.project(projectID)?.path else { return }
+                        guard let root = self?.fileRoot(projectID) else { return }
                         Task.detached {
                             let result = RemoteFiles.list(path, in: root)
                             reply(.directory(projectID: projectID, path: path, entries: result.entries, error: result.error))
                         }
                     case .readFile(let projectID, let path):
-                        guard let root = self?.model?.deck.project(projectID)?.path else { return }
+                        guard let root = self?.fileRoot(projectID) else { return }
                         Task.detached {
                             let result = RemoteFiles.read(path, in: root)
                             reply(.file(projectID: projectID, path: path, text: result.text, size: result.size, error: result.error))
                         }
                     case .downloadFile(let projectID, let path, let offset):
-                        guard let root = self?.model?.deck.project(projectID)?.path else { return }
+                        guard let root = self?.fileRoot(projectID) else { return }
                         Task.detached {
                             let piece = RemoteTransfer.read(path, in: root, offset: offset)
                             reply(.fileChunk(projectID: projectID, path: path, offset: offset, total: piece.total, data: piece.data, error: piece.error))
                         }
                     case .uploadFile(let projectID, let folder, let name, let offset, let total, let data):
-                        guard let self, let root = self.model?.deck.project(projectID)?.path else { return }
+                        guard let self, let root = self.fileRoot(projectID) else { return }
                         let receiver = self.receiver
                         Task.detached {
                             let result = receiver.receive(root: root, folder: folder, name: name, offset: offset, total: total, data: data)
@@ -615,6 +615,7 @@ final class RemoteController {
                                          week: usage.sevenDay?.usedPercent, weekResetsAt: usage.sevenDay?.resetsAt)
         }
         snapshot.addresses = hostAddresses.filter { $0 != "127.0.0.1" }
+        snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
         server.snapshot = snapshot
     }
 
@@ -653,6 +654,12 @@ final class RemoteController {
                 reason: "Streaming a terminal to another Mac"
             )
         }
+    }
+
+    /// The folder a file request is about: a project's, or the home folder for `RemoteFiles.homeID`
+    /// (the paired device can already open a shell here, so this exposes nothing new).
+    private func fileRoot(_ projectID: UUID) -> String? {
+        projectID == RemoteFiles.homeID ? FileManager.default.homeDirectoryForCurrentUser.path : model?.deck.project(projectID)?.path
     }
 
     private func terminalStart(_ id: UUID) -> RemoteServer.TerminalStart? {

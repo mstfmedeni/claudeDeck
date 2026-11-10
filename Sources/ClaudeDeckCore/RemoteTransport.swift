@@ -650,6 +650,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
     public var handshakeTimeout: TimeInterval = 10
     /// Addresses are tried in parallel, each this long after the one before (unless one has connected).
     public var raceStagger: TimeInterval = 0.3
+    /// The addresses' order is the user's (Settings › Mac › Addresses): no re-sorting.
+    public var keepsOrder = false
 
     public init(pairing: RemotePairing, deviceName: String, queue: DispatchQueue = .main) {
         self.pairing = pairing
@@ -661,7 +663,7 @@ public final class RemoteHostConnection: @unchecked Sendable {
         refusal = nil
         attempts = []
         winner = nil
-        remaining = Self.raceOrder(pairing.addresses)
+        remaining = keepsOrder ? pairing.addresses : Self.raceOrder(pairing.addresses)
         guard !remaining.isEmpty, NWEndpoint.Port(rawValue: pairing.port) != nil else {
             end(.disconnected(String(localized: "Couldn't reach the Mac")))
             return

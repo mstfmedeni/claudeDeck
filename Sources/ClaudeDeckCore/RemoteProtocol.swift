@@ -289,6 +289,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     public var agents: [RemoteAgent]?
     /// Agents waiting for approval (hosts with `Feature.agentApproval`).
     public var pendingAgents: [RemotePendingAgent]?
+    /// The host's home folder (hosts with `Feature.homeFiles`): Files' "Home" entry, absolute paths there.
+    public var homePath: String?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -313,8 +315,10 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let agentDetails = "agentDetails"
         /// `agentRegistration` with `url` / `authHeader`, `needs` in `pendingAgents`.
         public static let agentCompletion = "agentCompletion"
+        /// File requests for `RemoteFiles.homeID`: the Mac's home folder, not just projects.
+        public static let homeFiles = "homeFiles"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
-                                              agentDetails, agentCompletion]
+                                              agentDetails, agentCompletion, homeFiles]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

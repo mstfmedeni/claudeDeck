@@ -1329,7 +1329,9 @@ struct SettingsView: View {
             if let pairing = store.pairing {
                 Section("Mac") {
                     LabeledContent("Name", value: store.snapshot?.hostName ?? pairing.hostName)
-                    LabeledContent("Address", value: pairing.addresses.first ?? "")
+                    NavigationLink { AddressesView() } label: {
+                        LabeledContent("Addresses", value: store.addressOrder.isEmpty ? String(localized: "Automatic") : store.addressOrder.first ?? "")
+                    }
                     LabeledContent("Connection", value: connectionText)
                     if store.connection == .connected, let via = store.connectedVia {
                         let local = RemoteBonjour.serviceName(of: via) != nil || Tailscale.isPrivateLAN(via)

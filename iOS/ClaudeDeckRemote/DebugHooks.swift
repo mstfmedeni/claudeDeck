@@ -4,7 +4,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
-///   pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
+///   homefiles.txt (a folder in the Mac's home) · addresses.txt (one per line; empty: automatic) · pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
 final class DebugHooks {
     private let store: RemoteStore
@@ -63,6 +63,16 @@ final class DebugHooks {
                 try? FileManager.default.removeItem(at: url)
                 store.listDirectory(project.id, path: "")
                 store.readFile(project.id, path: target.trimmingCharacters(in: .whitespacesAndNewlines))
+            } else if file == "homefiles.txt" {
+                // A folder in the Mac's home ("" = the home itself).
+                let path = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                try? FileManager.default.removeItem(at: url)
+                store.listDirectory(RemoteFiles.homeID, path: path)
+            } else if file == "addresses.txt" {
+                // One address per line, in order; empty: automatic.
+                let lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                try? FileManager.default.removeItem(at: url)
+                store.addressOrder = lines
             } else if file.hasSuffix(".stop"), let id {
                 try? FileManager.default.removeItem(at: url)
                 store.stopSession(id)
@@ -140,7 +150,8 @@ final class DebugHooks {
             }
         }
         let push = PushRegistration.shared
-        var lines = ["connection: \(store.connection) modes=\(store.permissionModes.values.sorted()) sendingFiles=\(store.sendingFiles.count) promptError=\(store.promptError ?? "-") windows=\(store.scenes.map { "\($0.key.uuidString.prefix(8)):\($0.value?.uuidString.suffix(4) ?? "-")" }.sorted()) projects=\(store.projects.map { ($0.pinned ? "📌" : "") + $0.name })", "files: dirs=\(store.directories.values.map { $0.entries.map(\.name) }) file=\(store.files.values.map { "\($0.size):\($0.text?.prefix(30) ?? "")|\($0.error ?? "")" })",
+        var lines = ["addresses: \(store.addressesInOrder) custom=\(!store.addressOrder.isEmpty) via=\(store.connectedVia ?? "-") home=\(store.snapshot?.homePath ?? "-")",
+                     "connection: \(store.connection) modes=\(store.permissionModes.values.sorted()) sendingFiles=\(store.sendingFiles.count) promptError=\(store.promptError ?? "-") windows=\(store.scenes.map { "\($0.key.uuidString.prefix(8)):\($0.value?.uuidString.suffix(4) ?? "-")" }.sorted()) projects=\(store.projects.map { ($0.pinned ? "📌" : "") + $0.name })", "files: dirs=\(store.directories.values.map { $0.entries.map(\.name) }) file=\(store.files.values.map { "\($0.size):\($0.text?.prefix(30) ?? "")|\($0.error ?? "")" })",
                      "terminals: \(store.terminalStates) usage=\(store.snapshot?.usage.map { "\($0.fiveHour ?? -1)/\($0.week ?? -1)" } ?? "-") past=\(store.pastConversations.values.map(\.count))",
                      "home: \(store.folders[""].map { "\($0.path) \($0.folders.count) folders" } ?? "-") lan: \(store.lanHosts.map(\.name)) via=\(store.connectedVia ?? "-") pairing=\(store.pairing?.addresses ?? [])",
                      "push: token=\(push.token?.count ?? 0) env=\(PushRegistration.environment) error=\(push.lastError ?? "-")"]

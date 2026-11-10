@@ -5,6 +5,10 @@ import Foundation
 public enum RemoteFiles {
     public static let maxFileSize = 400_000
 
+    /// The "project" id that stands for the Mac's home folder in file requests (hosts with
+    /// `Feature.homeFiles`): the whole home, like Add Project's folder picker.
+    public static let homeID = UUID(uuidString: "00000000-0000-0000-0000-00000000F01D")!
+
     /// The file or folder at `relative` inside `root`, or nil when it would leave the project.
     public static func resolve(_ relative: String, in root: String) -> URL? {
         let base = URL(fileURLWithPath: root).resolvingSymlinksInPath().standardizedFileURL

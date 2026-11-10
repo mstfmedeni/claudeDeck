@@ -10,9 +10,21 @@ struct ProjectFilesView: View {
     @Environment(RemoteStore.self) private var store
 
     var body: some View {
-        List(store.projects) { project in
-            NavigationLink { DirectoryView(projectID: project.id, path: "", title: project.name) } label: {
-                Label(project.name, systemImage: project.pinned ? "pin.fill" : "folder")
+        List {
+            // The whole home folder, like Add Project's picker (newer Macs).
+            if store.snapshot?.supports(RemoteSnapshot.Feature.homeFiles) == true, let home = store.fileProject(RemoteFiles.homeID) {
+                Section {
+                    NavigationLink { DirectoryView(projectID: home.id, path: "", title: home.name) } label: {
+                        Label("Home (\(home.name))", systemImage: "house")
+                    }
+                }
+            }
+            Section("Projects") {
+                ForEach(store.projects) { project in
+                    NavigationLink { DirectoryView(projectID: project.id, path: "", title: project.name) } label: {
+                        Label(project.name, systemImage: project.pinned ? "pin.fill" : "folder")
+                    }
+                }
             }
         }
         .navigationTitle("Files")
@@ -293,7 +305,7 @@ struct FileDetailView: View {
     private var transfer: Bool { store.snapshot?.supports(RemoteSnapshot.Feature.transfer) == true }
 
     private var folderLabel: String {
-        let project = store.projects.first { $0.id == projectID }?.name ?? ""
+        let project = store.fileProject(projectID)?.name ?? ""
         let folder = (path as NSString).deletingLastPathComponent
         return folder.isEmpty ? project : project + "/" + folder
     }
@@ -313,7 +325,7 @@ struct FileActionButtons: View {
     var onPreview: (() -> Void)?
 
     var body: some View {
-        let project = store.projects.first { $0.id == projectID }
+        let project = store.fileProject(projectID)
         let absolute = project?.path.map { ($0 as NSString).appendingPathComponent(path) }
         let sessions = FileActions.sessions(of: project, in: store)
         let transfer = store.snapshot?.supports(RemoteSnapshot.Feature.transfer) == true
@@ -357,7 +369,7 @@ struct FileActions: View {
     let path: String
 
     var body: some View {
-        let project = store.projects.first { $0.id == projectID }
+        let project = store.fileProject(projectID)
         let absolute = project?.path.map { ($0 as NSString).appendingPathComponent(path) }
         if store.snapshot?.supports(RemoteSnapshot.Feature.transfer) == true {
             Button { store.transfers.download(projectID, path: path) } label: {
@@ -377,10 +389,12 @@ struct FileActions: View {
         }
     }
 
-    /// The project's running Claude sessions.
+    /// The project's running Claude sessions (every one for a file in the home folder).
     static func sessions(of project: RemoteProject?, in store: RemoteStore) -> [RemoteSession] {
         guard let project else { return [] }
-        return (store.snapshot?.sessions ?? []).filter { $0.project == project.name && $0.state != .notStarted && $0.state != .shell }
+        return (store.snapshot?.sessions ?? []).filter {
+            (project.id == RemoteFiles.homeID || $0.project == project.name) && $0.state != .notStarted && $0.state != .shell
+        }
     }
 
     /// The file's @mention into the session's prompt (no Enter), with a tap of feedback.
@@ -452,7 +466,7 @@ struct TransfersBar: View {
 
     @ViewBuilder
     private func addToSession(path: String, projectID: UUID) -> some View {
-        let project = store.projects.first { $0.id == projectID }
+        let project = store.fileProject(projectID)
         let sessions = FileActions.sessions(of: project, in: store)
         if let root = project?.path, !sessions.isEmpty {
             let absolute = (root as NSString).appendingPathComponent(path)

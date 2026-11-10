@@ -21,8 +21,7 @@ enum ScreenTab {
     /// ClaudeDeck, not Screen Sharing).
     @MainActor static func macHost(_ store: RemoteStore) -> String? {
         if let via = store.connectedVia, RemoteBonjour.serviceName(of: via) == nil { return via }
-        let addresses = store.pairing?.addresses ?? []
-        return RemoteHostConnection.raceOrder(addresses).first { RemoteBonjour.serviceName(of: $0) == nil }
+        return store.addressesInOrder.first { RemoteBonjour.serviceName(of: $0) == nil }
     }
 }
 

@@ -14530,6 +14530,116 @@
           }
         }
       }
+    },
+    "Home (%@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana dizin (%@)"
+          }
+        }
+      }
+    },
+    "Addresses": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresler"
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik"
+          }
+        }
+      }
+    },
+    "Automatic order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik sıra"
+          }
+        }
+      }
+    },
+    "Your order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senin sıran"
+          }
+        }
+      }
+    },
+    "This network's addresses first, Tailscale last. Add an address or tap Edit to set your own order.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önce bu ağdaki adresler, en son Tailscale. Kendi sıranı belirlemek için bir adres ekle ya da Düzenle'ye dokun."
+          }
+        }
+      }
+    },
+    "Tried top to bottom, each a moment after the one before; the first to answer is used. Addresses the Mac reports later are tried after these.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yukarıdan aşağıya, her biri bir öncekinden kısa süre sonra denenir; ilk cevap veren kullanılır. Mac'in sonradan bildirdiği adresler bunlardan sonra denenir."
+          }
+        }
+      }
+    },
+    "Add an Address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adres Ekle"
+          }
+        }
+      }
+    },
+    "192.168.1.20 or mac.tailnet.ts.net": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "192.168.1.20 ya da mac.tailnet.ts.net"
+          }
+        }
+      }
+    },
+    "Back to Automatic Order": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik Sıraya Dön"
+          }
+        }
+      }
+    },
+    "%@ (Bonjour)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (Bonjour)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

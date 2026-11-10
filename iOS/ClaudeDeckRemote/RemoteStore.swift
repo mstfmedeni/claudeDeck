@@ -75,6 +75,32 @@ final class RemoteStore {
         let token = UUID()
     }
     var openRequest: OpenRequest?
+    /// Addresses to try in this order (Settings › Mac › Addresses); empty: automatic (this
+    /// network first, Tailscale last). Changing it reconnects.
+    var addressOrder: [String] = UserDefaults.standard.stringArray(forKey: RemoteStore.addressOrderKey) ?? [] {
+        didSet {
+            guard addressOrder != oldValue else { return }
+            UserDefaults.standard.set(addressOrder, forKey: Self.addressOrderKey)
+            if isActive, pairing != nil, !isRefused { reconnect() }
+        }
+    }
+    static let addressOrderKey = "remote.addressOrder"
+
+    /// The order addresses are tried in now (the user's, or the automatic one).
+    var addressesInOrder: [String] {
+        guard let pairing else { return [] }
+        let effective = effectivePairing(pairing).addresses
+        return addressOrder.isEmpty ? RemoteHostConnection.raceOrder(effective) : effective
+    }
+
+    /// A project for file requests, or the Mac's home folder (`RemoteFiles.homeID`) as one.
+    func fileProject(_ id: UUID) -> RemoteProject? {
+        if id == RemoteFiles.homeID, let home = snapshot?.homePath {
+            return RemoteProject(id: id, name: (home as NSString).lastPathComponent, path: home)
+        }
+        return projects.first { $0.id == id }
+    }
+
     /// Show the Mac's screen (a `claudedeck://screen` or `vnc://` link).
     var screenRequest: ScreenRequest?
     /// Debug hooks: open a session in a new window.
@@ -131,6 +157,12 @@ final class RemoteStore {
     /// advertising here, then the stored ones (Tailscale).
     private func effectivePairing(_ pairing: RemotePairing) -> RemotePairing {
         var copy = pairing
+        // The user's order (Settings › Mac › Addresses) comes first, as typed; what the Mac
+        // reports and doesn't appear there still follows, so a new address isn't lost.
+        if !addressOrder.isEmpty {
+            copy.addresses = addressOrder + pairing.addresses.filter { !addressOrder.contains($0) && RemoteBonjour.serviceName(of: $0) == nil }
+            return copy
+        }
         let local = lanHosts.filter { $0.hostID == pairing.id }.map(\.address)
         copy.addresses = local + pairing.addresses.filter { !local.contains($0) }
         return copy
@@ -193,6 +225,7 @@ final class RemoteStore {
 
     func forget() {
         PairingKeychain.delete()
+        addressOrder = []
         close()
         pairing = nil
         snapshot = nil
@@ -227,6 +260,7 @@ final class RemoteStore {
         let effective = effectivePairing(pairing)
         attemptAddresses = Set(effective.addresses)
         let next = RemoteHostConnection(pairing: effective, deviceName: Self.deviceName)
+        next.keepsOrder = !addressOrder.isEmpty
         next.onStateChange = { [weak self, weak next] state in
             MainActor.assumeIsolated {
                 guard let self, let next, self.hostConnection === next else { return }
