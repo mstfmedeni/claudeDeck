@@ -128,6 +128,7 @@ targets:
       - Sources/ClaudeDeckCore/ConversationLog.swift
       - Sources/ClaudeDeckCore/SessionChanges.swift
       - Sources/ClaudeDeckCore/UnifiedDiff.swift
+      - Sources/ClaudeDeckCore/RemoteEdits.swift
       - Sources/ClaudeDeckCore/RemoteFiles.swift
       - Sources/ClaudeDeckCore/RemoteTransferClient.swift
       - Sources/ClaudeDeckCore/PromptQueue.swift

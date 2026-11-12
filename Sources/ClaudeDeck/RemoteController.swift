@@ -276,6 +276,12 @@ final class RemoteController {
             server.onHistoryRequest = { [weak self] id, before, after, limit, reply in
                 MainActor.assumeIsolated { self?.history(id, before: before, after: after, limit: limit, reply: reply) }
             }
+            server.onEditsRequest = { [weak self] id, after, reply in
+                MainActor.assumeIsolated { self?.edits(id, after: after, reply: reply) }
+            }
+            server.onNetDiffRequest = { [weak self] id, path, reply in
+                MainActor.assumeIsolated { self?.netDiff(id, path: path, reply: reply) }
+            }
             server.onStartSession = { [weak self] projectID, prompt in
                 MainActor.assumeIsolated { self?.startSession(in: projectID, prompt: prompt) }
             }
@@ -770,6 +776,37 @@ final class RemoteController {
                 page.agentNotes = notes
                 request.reply(page)
             }
+        }
+    }
+
+    // MARK: Host — edits for remotes
+
+    /// The tracker of the session's transcript (shared with the Edits page) and its folder; nil
+    /// for a session without a transcript. Only a remote's request reads the transcript.
+    private func editsSource(_ id: UUID) -> (tracker: SessionChangesTracker, root: String)? {
+        guard let model, let session = model.deck.session(id), session.kind == .claude,
+              let path = model.hookStatuses[id]?.transcriptPath ?? model.deck.transcriptPath(for: id) else { return nil }
+        let root = session.workingDirectory ?? model.deck.project(session.projectID)?.path ?? "/"
+        return (EditsTrackers.tracker(for: path), root)
+    }
+
+    private func edits(_ id: UUID, after: String?, reply: @escaping @Sendable (RemoteEditsPage?) -> Void) {
+        guard let (tracker, root) = editsSource(id) else { reply(nil); return }
+        Task.detached {
+            // Reads only what the transcript gained since the last poll.
+            let polled = await tracker.poll()
+            let latest = await tracker.latest
+            let changes = polled ?? latest ?? SessionChanges()
+            reply(RemoteEdits.page(changes, after: after, root: root))
+        }
+    }
+
+    private func netDiff(_ id: UUID, path: String, reply: @escaping @Sendable (RemoteNetDiff?) -> Void) {
+        guard let (tracker, _) = editsSource(id) else { reply(nil); return }
+        Task.detached {
+            let polled = await tracker.poll()
+            let latest = await tracker.latest
+            reply(RemoteEdits.netDiff(polled ?? latest ?? SessionChanges(), path: path))
         }
     }
 

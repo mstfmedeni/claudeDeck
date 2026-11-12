@@ -256,6 +256,9 @@ public final class RemoteServer: @unchecked Sendable {
     /// A remote asked for a page of a conversation; answer through the reply (any queue hop is fine,
     /// it is sent on the server's queue).
     public var onHistoryRequest: ((_ sessionID: UUID, _ before: String?, _ after: String?, _ limit: Int, _ reply: @escaping @Sendable (ChatPage?) -> Void) -> Void)?
+    /// A remote asked for a page of a session's edits / a file's net diff; answer through the reply.
+    public var onEditsRequest: ((_ sessionID: UUID, _ after: String?, _ reply: @escaping @Sendable (RemoteEditsPage?) -> Void) -> Void)?
+    public var onNetDiffRequest: ((_ sessionID: UUID, _ path: String, _ reply: @escaping @Sendable (RemoteNetDiff?) -> Void) -> Void)?
     public var onMarkSeen: ((UUID) -> Void)?
     /// Start a session in a project; return its id (sent back to the remote that asked).
     public var onStartSession: ((_ projectID: UUID, _ prompt: String?) -> UUID?)?
@@ -468,6 +471,20 @@ public final class RemoteServer: @unchecked Sendable {
                         channel.send(.history(sessionID: sessionID, page: page ?? ChatPage(entries: [], hasMoreBefore: false, reset: true)))
                     }
                 }
+            case .editsRequest(let sessionID, let after):
+                let channel = peer.channel
+                onEditsRequest?(sessionID, after) { [queue] page in
+                    queue.async {
+                        channel.send(.edits(sessionID: sessionID, page: page ?? RemoteEditsPage(changes: [], reset: true)))
+                    }
+                }
+            case .netDiffRequest(let sessionID, let path):
+                let channel = peer.channel
+                onNetDiffRequest?(sessionID, path) { [queue] diff in
+                    queue.async {
+                        channel.send(.netDiff(sessionID: sessionID, path: path, diff: diff ?? RemoteNetDiff(hunks: nil, changes: 0)))
+                    }
+                }
             case .terminalFit(let sessionID, let cols, let rows) where peer.watching.contains(sessionID):
                 onTerminalFit?(sessionID, cols == 0 ? 0 : min(max(cols, 20), 500), min(max(rows, 5), 300))
             case .startSession(let projectID, let prompt):
@@ -640,6 +657,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
     public var onTerminalOutput: ((_ sessionID: UUID, _ bytes: Data) -> Void)?
     public var onTerminalEnded: ((_ sessionID: UUID) -> Void)?
     public var onHistory: ((_ sessionID: UUID, _ page: ChatPage) -> Void)?
+    public var onEdits: ((_ sessionID: UUID, _ page: RemoteEditsPage) -> Void)?
+    public var onNetDiff: ((_ sessionID: UUID, _ path: String, _ diff: RemoteNetDiff) -> Void)?
     public var onSessionStarted: ((UUID) -> Void)?
     public var onPromptResult: ((_ sessionID: UUID, _ error: String?) -> Void)?
     public var onProjectActionResult: ((_ projectID: UUID, _ error: String?) -> Void)?
@@ -874,6 +893,10 @@ public final class RemoteHostConnection: @unchecked Sendable {
             self.onTerminalEnded?(id)
         case .history(let id, let page) where authenticated:
             self.onHistory?(id, page)
+        case .edits(let id, let page) where authenticated:
+            self.onEdits?(id, page)
+        case .netDiff(let id, let path, let diff) where authenticated:
+            self.onNetDiff?(id, path, diff)
         case .sessionStarted(let id) where authenticated:
             self.onSessionStarted?(id)
         case .projectActionResult(let id, let error) where authenticated:

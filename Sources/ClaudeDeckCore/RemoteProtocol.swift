@@ -106,6 +106,15 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case historyRequest(sessionID: UUID, before: String?, after: String?, limit: Int)
     /// Host → remote: the answer.
     case history(sessionID: UUID, page: ChatPage)
+    /// Remote → host: Claude's edits in a session after the change `after` (nil: from the first),
+    /// a page at a time (RemoteEdits.swift). Hosts with `Feature.edits`.
+    case editsRequest(sessionID: UUID, after: String?)
+    /// Host → remote: the answer.
+    case edits(sessionID: UUID, page: RemoteEditsPage)
+    /// Remote → host: a changed file's net diff. Hosts with `Feature.edits`.
+    case netDiffRequest(sessionID: UUID, path: String)
+    /// Host → remote: the answer.
+    case netDiff(sessionID: UUID, path: String, diff: RemoteNetDiff)
     /// Remote → host: start a Claude session in a project (and type `prompt` once it's ready).
     case startSession(projectID: UUID, prompt: String?)
     /// Host → remote: the session `startSession` created (the phone opens it).
@@ -326,8 +335,10 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let homeFiles = "homeFiles"
         /// `RemoteProjectAction.renameFolder`, answered with `projectActionResult`.
         public static let renameFolder = "renameFolder"
+        /// `editsRequest` / `netDiffRequest`.
+        public static let edits = "edits"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
-                                              agentDetails, agentCompletion, homeFiles, renameFolder]
+                                              agentDetails, agentCompletion, homeFiles, renameFolder, edits]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
