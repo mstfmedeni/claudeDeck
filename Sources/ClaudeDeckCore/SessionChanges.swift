@@ -65,7 +65,7 @@ public struct SessionChanges: Sendable, Equatable {
     mutating func record(toolUseID: String, tool: String, result: Any?, date: Date?) {
         guard let result = result as? [String: Any], let path = result["filePath"] as? String,
               let patch = result["structuredPatch"] as? [[String: Any]] else { return }
-        let original = result["originalFile"] as? String
+        let original = result["originalFile"] as? String ?? result["originalFileContents"] as? String
         let content = result["content"] as? String
         let created = result["type"] as? String == "create"
         var hunks = patch.compactMap(Self.hunk)
@@ -306,6 +306,9 @@ public actor SessionChangesTracker {
         url = transcriptURL
         self.tailBytes = tailBytes
     }
+
+    /// The changes last reported (nil before the first poll): what a view shown again starts from.
+    public var latest: SessionChanges? { reported == nil ? nil : reader.changes }
 
     /// The changes when they differ from the last ones reported, else nil.
     public func poll() -> SessionChanges? {

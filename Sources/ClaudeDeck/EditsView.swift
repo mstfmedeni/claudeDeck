@@ -61,7 +61,8 @@ private struct EditsSessionView: View {
             changes = nil
             guard let transcriptPath else { return }
             // Polls only while the page is shown; each poll reads just what the transcript gained.
-            let tracker = SessionChangesTracker(transcriptURL: URL(fileURLWithPath: transcriptPath))
+            let tracker = EditsTrackers.tracker(for: transcriptPath)
+            changes = await tracker.latest
             while !Task.isCancelled {
                 if let next = await tracker.poll() { changes = next }
                 try? await Task.sleep(for: .seconds(1))
@@ -97,6 +98,22 @@ private struct EditsSessionView: View {
     }
 }
 
+/// Trackers of the transcripts shown lately, so coming back to a session's edits reads on from
+/// where it was instead of parsing the transcript again.
+@MainActor
+enum EditsTrackers {
+    private static var recent: [(path: String, tracker: SessionChangesTracker)] = []
+    private static let limit = 6
+
+    static func tracker(for path: String) -> SessionChangesTracker {
+        let tracker = recent.first { $0.path == path }?.tracker ?? SessionChangesTracker(transcriptURL: URL(fileURLWithPath: path))
+        recent.removeAll { $0.path == path }
+        recent.append((path, tracker))
+        if recent.count > limit { recent.removeFirst() }
+        return tracker
+    }
+}
+
 /// What a change card needs to know about its session.
 struct EditsContext {
     let sessionID: UUID
@@ -127,12 +144,13 @@ private struct EditsStream: View {
                 }
                 .padding(8)
             }
+            // Opens on the latest change.
+            .defaultScrollAnchor(.bottom)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 40
             } action: { _, bottom in
                 atBottom = bottom
             }
-            .onAppear { proxy.scrollTo(Self.bottom, anchor: .bottom) }
             .onChange(of: changes.all.count) {
                 guard atBottom else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottom, anchor: .bottom) }

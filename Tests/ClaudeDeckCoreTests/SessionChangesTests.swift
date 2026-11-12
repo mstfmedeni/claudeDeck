@@ -191,4 +191,14 @@ import Testing
         try call.write(to: url, atomically: true, encoding: .utf8)
         #expect(await tracker.poll()?.all.isEmpty == true)
     }
+
+    @Test func latestIsWhatWasLastReported() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "tracker-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try "".write(to: url, atomically: true, encoding: .utf8)
+        let tracker = SessionChangesTracker(transcriptURL: url)
+        #expect(await tracker.latest == nil)
+        _ = await tracker.poll()
+        #expect(await tracker.latest?.all.isEmpty == true)
+    }
 }
