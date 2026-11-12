@@ -172,8 +172,16 @@ public enum ConversationLog {
         /// Where the next read starts: just after the last complete line read.
         public private(set) var offset: UInt64 = 0
         private var started = false
+        /// The file changes of Edit / Write / MultiEdit calls, when `collectsChanges`.
+        public private(set) var changes = SessionChanges()
+        private let collectsChanges: Bool
+        /// Edit / Write / MultiEdit calls waiting for their result: tool name by call id.
+        private var changeCalls: [String: String] = [:]
 
-        public init() {}
+        /// `collectsChanges`: also gather `changes` (the Changes panel; others leave them out).
+        public init(collectsChanges: Bool = false) {
+            self.collectsChanges = collectsChanges
+        }
 
         /// Reads the lines added since the last read. False when the file is shorter than what was
         /// read (not the same file any more): read it with a new reader.
@@ -242,6 +250,10 @@ public enum ConversationLog {
                             case "text":
                                 if let text = block["text"] as? String, let entry = ConversationLog.userEntry(text, id: "\(uuid)#\(index)", date: date) { entries.append(entry) }
                             case "tool_result":
+                                if collectsChanges, let toolID = block["tool_use_id"] as? String, let tool = changeCalls.removeValue(forKey: toolID),
+                                   block["is_error"] as? Bool != true {
+                                    changes.record(toolUseID: toolID, tool: tool, result: object["toolUseResult"], date: date)
+                                }
                                 guard let toolID = block["tool_use_id"] as? String, let at = toolIndex[toolID] else { continue }
                                 entries[at].result = ConversationLog.resultText(block["content"])
                                 entries[at].isError = block["is_error"] as? Bool ?? false
@@ -266,6 +278,7 @@ public enum ConversationLog {
                             let name = block["name"] as? String ?? "Tool"
                             let id = block["id"] as? String ?? "\(uuid)#\(index)"
                             toolIndex[id] = entries.count
+                            if collectsChanges, ["Edit", "Write", "MultiEdit"].contains(name) { changeCalls[id] = name }
                             let input = block["input"] as? [String: Any] ?? [:]
                             entries.append(ChatEntry(id: id, kind: .tool, text: ConversationLog.summary(tool: name, input: input), toolName: name, date: date,
                                                      questions: name == "AskUserQuestion" ? ChatQuestion.parse(input) : nil))

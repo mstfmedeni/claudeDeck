@@ -51,12 +51,14 @@ import Testing
     }
 
     @Test func aLineBeingWrittenWaits() {
-        let url = file(lines[0] + String(lines[3].dropLast(5)))
+        // One serialization: dictionaries can come out in another key order on each `lines`.
+        let last = lines[3]
+        let url = file(lines[0] + String(last.dropLast(5)))
         defer { try? FileManager.default.removeItem(at: url) }
         var reader = ConversationLog.Reader()
         _ = reader.read(url)
         #expect(reader.entries.map(\.id) == ["u1"])
-        append(String(lines[3].suffix(5)), to: url)
+        append(String(last.suffix(5)), to: url)
         _ = reader.read(url)
         #expect(reader.entries.map(\.id) == ["u1", "a2#0"])
     }
