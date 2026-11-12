@@ -15220,6 +15220,36 @@
           }
         }
       }
+    },
+    "Update ClaudeDeck on the Mac to see Claude’s edits here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude’un düzenlemelerini burada görmek için Mac’teki ClaudeDeck’i güncelle."
+          }
+        }
+      }
+    },
+    "%lld more lines weren’t sent from the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld satır daha Mac’ten gönderilmedi."
+          }
+        }
+      }
+    },
+    "Edits in the Conversation": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşmada Düzenlemeler"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

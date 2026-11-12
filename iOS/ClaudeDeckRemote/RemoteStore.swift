@@ -42,6 +42,14 @@ final class RemoteStore {
     @ObservationIgnored private var openConversations: [UUID: Int] = [:]
     @ObservationIgnored private var conversationTimer: Timer?
 
+    // Claude's edits (EditsView, and the diffs in ConversationView); hosts with `Feature.edits`.
+    private(set) var edits: [UUID: RemoteEditsState] = [:]
+    /// Sessions whose edits are on screen (counted like `openConversations`): only these are asked for.
+    @ObservationIgnored private var openEdits: [UUID: Int] = [:]
+    @ObservationIgnored private var editsTimer: Timer?
+    /// Requests waiting for the Mac's page, by session (one at a time).
+    @ObservationIgnored private var editsAsked: [UUID: Date] = [:]
+
     // Live terminals (RemoteTerminalView).
     enum TerminalState: Equatable { case waiting, live, ended }
     private(set) var terminalStates: [UUID: TerminalState] = [:]
@@ -350,6 +358,15 @@ final class RemoteStore {
         next.onHistory = { [weak self] id, page in
             MainActor.assumeIsolated { self?.received(page, for: id) }
         }
+        next.onEdits = { [weak self] id, page in
+            MainActor.assumeIsolated { self?.received(page, for: id) }
+        }
+        next.onNetDiff = { [weak self] id, path, diff in
+            MainActor.assumeIsolated {
+                guard let self, self.edits[id] != nil else { return }
+                self.edits[id]?.netDiffs[path] = diff
+            }
+        }
         next.onTerminalStart = { [weak self] id, cols, rows, screen in
             MainActor.assumeIsolated {
                 guard let self, let sinks = self.sinks[id] else { return }
@@ -392,6 +409,8 @@ final class RemoteStore {
                 if let grid = fitGrids[id] { hostConnection?.send(.terminalFit(sessionID: id, cols: grid.0, rows: grid.1)) }
             }
             for id in openConversations.keys { requestLatest(id) }
+            editsAsked = [:]
+            for id in openEdits.keys { requestEdits(id) }
             onConnected?()
         case .disconnected(let reason):
             hostConnection = nil
@@ -427,6 +446,9 @@ final class RemoteStore {
             // Watching it finish here counts as seeing it.
             if session.state == .idle, session.unseen { _ = send(.markSeen(sessionID: id)) }
             if old?.session(id) != session { requestNewer(id) }
+        }
+        for id in openEdits.keys where old?.session(id) != new.session(id) || old?.supports(RemoteSnapshot.Feature.edits) != true {
+            requestEdits(id)
         }
         answering = answering.filter { new.session($0)?.permissionStamp != nil || new.session($0)?.state == .needsAnswer }
         for session in fresh { LocalAlerts.post(session, hostName: new.hostName) }
@@ -733,6 +755,65 @@ final class RemoteStore {
             }
         }
         return true
+    }
+
+    // MARK: Edits
+
+    var supportsEdits: Bool { snapshot?.supports(RemoteSnapshot.Feature.edits) == true }
+
+    /// The Edits tab, or the conversation with its diffs, is showing the session: keep its edits current.
+    func openEdits(_ id: UUID) {
+        openEdits[id, default: 0] += 1
+        requestEdits(id)
+        // Like the conversation: new edits come without a state change.
+        if editsTimer == nil {
+            editsTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    for id in self.openEdits.keys { self.requestEdits(id) }
+                }
+            }
+        }
+    }
+
+    func closeEdits(_ id: UUID) {
+        guard let count = openEdits[id] else { return }
+        openEdits[id] = count > 1 ? count - 1 : nil
+        if openEdits.isEmpty {
+            editsTimer?.invalidate()
+            editsTimer = nil
+        }
+    }
+
+    /// The changes after the last one here (only from a Mac that has them).
+    private func requestEdits(_ id: UUID) {
+        guard supportsEdits else { return }
+        // One request at a time; one unanswered for long was lost.
+        if let asked = editsAsked[id], Date().timeIntervalSince(asked) < 15 { return }
+        if send(.editsRequest(sessionID: id, after: edits[id]?.lastID)) { editsAsked[id] = Date() }
+    }
+
+    private func received(_ page: RemoteEditsPage, for id: UUID) {
+        editsAsked[id] = nil
+        var state = edits[id] ?? RemoteEditsState()
+        let fitted = state.merge(page)
+        if edits[id] != state { edits[id] = state }
+        // More waiting on the Mac (or the page was for another anchor): ask on at once.
+        if openEdits[id] != nil, !fitted || state.hasMore { requestEdits(id) }
+    }
+
+    /// A changed file's net diff; `edits[id].netDiffs[path]` fills in when the Mac answers.
+    func loadNetDiff(_ id: UUID, path: String) {
+        guard supportsEdits else { return }
+        _ = send(.netDiffRequest(sessionID: id, path: path))
+    }
+
+    /// A message to Claude about a change: through the session's queue (in at once on Claude's
+    /// turn, else when its turn comes), as on the Mac.
+    @discardableResult
+    func sendAboutChange(_ id: UUID, text: String) -> Bool {
+        if snapshot?.supports(RemoteSnapshot.Feature.queue) == true { return queuePrompt(id, text: text) }
+        return sendPrompt(id, text: text)
     }
 
     // MARK: Terminals

@@ -360,7 +360,10 @@ struct SessionDetailView: View {
     @AppStorage(TerminalFont.key) private var terminalFont = TerminalFont.standard
     @State private var filesProject: RemoteProject?
 
-    enum Mode: String { case conversation, terminal }
+    /// Claude's edits shown in the conversation, at its tool calls (the toolbar's ± switches it).
+    @AppStorage(ConversationView.inlineEditsKey) private var inlineEdits = true
+
+    enum Mode: String { case conversation, edits, terminal }
 
     var body: some View {
         let session = store.snapshot?.session(sessionID)
@@ -386,6 +389,7 @@ struct SessionDetailView: View {
             if !isShell {
                 Picker("View", selection: $mode) {
                     Text("Conversation").tag(Mode.conversation)
+                    Text("Edits").tag(Mode.edits)
                     Text("Terminal").tag(Mode.terminal)
                 }
                 .pickerStyle(.segmented)
@@ -394,6 +398,8 @@ struct SessionDetailView: View {
             }
             if mode == .conversation, !isShell {
                 ConversationView(sessionID: sessionID)
+            } else if mode == .edits, !isShell {
+                EditsView(sessionID: sessionID)
             } else {
                 terminal
             }
@@ -421,6 +427,15 @@ struct SessionDetailView: View {
                         .disabled(store.terminalStates[sessionID] != .live)
                 }
             } else {
+                if mode == .conversation, store.supportsEdits {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { inlineEdits.toggle() } label: {
+                            Image(systemName: inlineEdits ? "plusminus.circle.fill" : "plusminus.circle")
+                        }
+                        .accessibilityLabel(Text("Edits in the Conversation"))
+                        .accessibilityValue(Text(inlineEdits ? "On" : "Off"))
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) { ConversationTextSizeMenu() }
             }
             // The session's project files: save one here, add one to this session, upload.

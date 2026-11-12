@@ -21,6 +21,9 @@ struct ConversationView: View {
     @AppStorage("composer.queue") private var queueMode = false
     @State private var editingPrompt: QueuedPrompt?
     @State private var editText = ""
+    /// Claude's edits as diffs at their tool calls (SessionDetailView's toolbar switches it).
+    @AppStorage(Self.inlineEditsKey) private var inlineEdits = true
+    static let inlineEditsKey = "conversation.inlineEdits"
 
     var body: some View {
         let conversation = store.conversations[sessionID]
@@ -63,12 +66,19 @@ struct ConversationView: View {
                         // The question the prompt on the Mac is showing: answerable here.
                         let pendingQuestion = session?.state == .needsAnswer
                             ? conversation?.entries.last(where: { $0.questions != nil }).flatMap { $0.result == nil ? $0.id : nil } : nil
-                        ForEach(ChatItem.group(conversation?.entries ?? [])) { item in
+                        let edits = showsEdits ? store.edits[sessionID] : nil
+                        ForEach(ChatItem.group(conversation?.entries ?? [], apart: edits == nil ? [] : ChatItem.editTools)) { item in
                             switch item {
                             case .entry(let entry) where entry.questions != nil:
                                 QuestionCard(entry: entry, sessionID: sessionID, pending: entry.id == pendingQuestion).id(entry.id)
                             case .entry(let entry):
-                                ChatEntryView(entry: entry).id(entry.id)
+                                if let edits, entry.kind == .tool, let change = edits.change(entry.id) {
+                                    ChangeCard(sessionID: sessionID, root: edits.root, path: change.path, hunks: change.diffHunks,
+                                               change: change, inline: true)
+                                        .id(entry.id)
+                                } else {
+                                    ChatEntryView(entry: entry).id(entry.id)
+                                }
                             case .tools(let entries):
                                 ToolGroupView(entries: entries).id(item.id)
                             }
@@ -131,8 +141,15 @@ struct ConversationView: View {
             store.permissionMode(sessionID)
         }
         .onDisappear { store.closeConversation(sessionID) }
+        // The diffs come only while they're shown.
+        .modifier(EditsSubscription(sessionID: sessionID, active: showsEdits))
         // The mode can change on the Mac too; it shows again after each turn.
         .onChange(of: session?.state) { _, _ in store.permissionMode(sessionID) }
+    }
+
+    /// Diffs at Claude's edits: switched on, from a Mac that has them, in a Claude session.
+    private var showsEdits: Bool {
+        inlineEdits && store.supportsEdits && store.snapshot?.session(sessionID)?.state != .shell
     }
 
     @ViewBuilder
@@ -776,7 +793,11 @@ enum ChatItem: Identifiable {
         }
     }
 
-    static func group(_ entries: [ChatEntry]) -> [ChatItem] {
+    /// The tools whose calls show as diffs (with edits in the conversation): never grouped.
+    static let editTools: Set<String> = ["Edit", "Write", "MultiEdit"]
+
+    /// `apart`: tools whose calls stay on their own rows.
+    static func group(_ entries: [ChatEntry], apart: Set<String> = []) -> [ChatItem] {
         var items: [ChatItem] = []
         var run: [ChatEntry] = []
         func flush() {
@@ -785,7 +806,7 @@ enum ChatItem: Identifiable {
         }
         for entry in entries {
             // Finished, plain tool calls group; a running one or a question stays on its own.
-            let groupable = entry.kind == .tool && entry.questions == nil && entry.result != nil
+            let groupable = entry.kind == .tool && entry.questions == nil && entry.result != nil && !apart.contains(entry.toolName ?? "")
             if groupable, let first = run.first, first.toolName == entry.toolName {
                 run.append(entry)
             } else {
