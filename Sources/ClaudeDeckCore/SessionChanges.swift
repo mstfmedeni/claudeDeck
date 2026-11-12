@@ -257,8 +257,10 @@ public struct SessionChanges: Sendable, Equatable {
     /// `@Sources/App.swift#L120-134`: the file relative to the session's folder (absolute when
     /// outside it) with the lines, in the form the app's other "ask Claude" actions use.
     public static func mention(path: String, root: String, lines: ClosedRange<Int>?) -> String {
-        let relative = FileListing.relativePath(of: URL(fileURLWithPath: path).resolvingSymlinksInPath(),
-                                                in: URL(fileURLWithPath: root).resolvingSymlinksInPath())
+        // As FileListing.relativePath, which the phone's build doesn't have.
+        let rootPath = URL(fileURLWithPath: root).resolvingSymlinksInPath().standardizedFileURL.path
+        let filePath = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+        let relative = filePath.hasPrefix(rootPath + "/") ? String(filePath.dropFirst(rootPath.count + 1)) : filePath
         guard let lines else { return "@" + relative }
         return "@" + relative + (lines.count == 1 ? "#L\(lines.lowerBound)" : "#L\(lines.lowerBound)-\(lines.upperBound)")
     }

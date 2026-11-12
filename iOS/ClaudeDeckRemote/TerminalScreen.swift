@@ -35,6 +35,10 @@ final class FixedGridTerminalView: TerminalView {
         super.pressesBegan(presses, with: event)
     }
 
+    /// An app that turns the mouse on (Claude Code's full-screen mode) gets no drags: a vertical pan is its wheel
+    /// (see `RemoteTerminalUIView.wheeled`), taps still click.
+    override func mouseModeChanged(source: Terminal) {}
+
     @discardableResult
     func enforceGrid() -> Bool {
         let terminal = getTerminal()
@@ -42,6 +46,18 @@ final class FixedGridTerminalView: TerminalView {
         terminal.resize(cols: gridCols, rows: gridRows)
         setNeedsDisplay()
         return true
+    }
+}
+
+/// Lets the wheel pan start only while the app has the mouse on, and only for a mostly vertical pan.
+private final class WheelGate: NSObject, UIGestureRecognizerDelegate {
+    weak var terminal: TerminalView?
+
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let terminal, let pan = gesture as? UIPanGestureRecognizer, terminal.getTerminal().mouseMode != .off
+        else { return false }
+        let velocity = pan.velocity(in: terminal)
+        return abs(velocity.y) > abs(velocity.x)
     }
 }
 
@@ -83,6 +99,9 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
     private var fittedWidth: CGFloat = -1
     private var pinchStart: CGFloat = 0
     private var scrolledToBottom = false
+    /// A wheel pan's movement not yet sent as a wheel step.
+    private var wheelRemainder: CGFloat = 0
+    private let wheelGate = WheelGate()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -101,6 +120,13 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         terminal.nativeForegroundColor = UIColor(white: 0.9, alpha: 1)
         scroll.addSubview(terminal)
         scroll.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:))))
+        // An app with the mouse on keeps no scrollback (Claude Code's full-screen mode scrolls itself): a finger,
+        // trackpad or mouse wheel pan up or down is sent to it as its wheel.
+        let wheel = UIPanGestureRecognizer(target: self, action: #selector(wheeled(_:)))
+        wheel.allowedScrollTypesMask = .all
+        wheelGate.terminal = terminal
+        wheel.delegate = wheelGate
+        terminal.addGestureRecognizer(wheel)
         setFont(10)
     }
 
@@ -208,6 +234,29 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
             } else {
                 chosenFontSize = size
                 fit()
+            }
+        default:
+            break
+        }
+    }
+
+    @objc private func wheeled(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            wheelRemainder = 0
+        case .changed:
+            let rowHeight = max(1, terminal.getOptimalFrameSize().height / CGFloat(max(terminal.gridRows, 1)))
+            wheelRemainder += gesture.translation(in: terminal).y
+            gesture.setTranslation(.zero, in: terminal)
+            let steps = Int(wheelRemainder / rowHeight)
+            guard steps != 0 else { return }
+            wheelRemainder -= CGFloat(steps) * rowHeight
+            let point = gesture.location(in: terminal)
+            let col = min(max(0, Int(point.x / max(1, terminal.getOptimalFrameSize().width / CGFloat(terminal.gridCols)))), terminal.gridCols - 1)
+            let row = min(max(0, Int(point.y / rowHeight)), terminal.gridRows - 1)
+            // Down (the finger pulling the text down) reads back: wheel up (64); up is wheel down (65).
+            for _ in 0..<abs(steps) {
+                terminal.getTerminal().sendEvent(buttonFlags: steps > 0 ? 64 : 65, x: col, y: row)
             }
         default:
             break

@@ -413,6 +413,8 @@ import Testing
         #expect(out.hasPrefix("\u{1b}[?1049h"))
         #expect(out.contains("a\r\n\r\n"))
         #expect(out.hasSuffix("\u{1b}[?1h\u{1b}[?2004h"))
+        screen.mouseTracking = 1002
+        #expect(text(screen.ansi()).hasSuffix("\u{1b}[?2004h\u{1b}[?1002h\u{1b}[?1006h"))
     }
 
     @Test func outputFrameRoundTrips() throws {

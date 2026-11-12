@@ -36,6 +36,13 @@ enum TerminalCapture {
         screen.alternateBuffer = terminal.isCurrentBufferAlternate
         screen.applicationCursor = terminal.applicationCursor
         screen.bracketedPaste = terminal.bracketedPasteMode
+        switch terminal.mouseMode {
+        case .off: screen.mouseTracking = 0
+        case .x10: screen.mouseTracking = 9
+        case .vt200: screen.mouseTracking = 1000
+        case .buttonEventTracking: screen.mouseTracking = 1002
+        case .anyEvent: screen.mouseTracking = 1003
+        }
         return screen
     }
 

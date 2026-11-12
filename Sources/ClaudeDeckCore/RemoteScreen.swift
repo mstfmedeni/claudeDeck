@@ -58,6 +58,9 @@ public struct TermScreen: Equatable, Sendable {
     public var alternateBuffer = false
     public var applicationCursor = false
     public var bracketedPaste = false
+    /// The mouse tracking mode the app turned on, as its DECSET number (1000, 1002, 1003, or 9), 0 when off.
+    /// Reports are taken to be SGR's, which full-screen apps such as Claude Code's ask for.
+    public var mouseTracking = 0
 
     public init(cols: Int, rows: Int, lines: [[TermCell]], cursorX: Int, cursorY: Int) {
         self.cols = cols
@@ -93,6 +96,7 @@ public struct TermScreen: Equatable, Sendable {
         out += "\u{1b}[\(y + 1);\(x + 1)H"
         if applicationCursor { out += "\u{1b}[?1h" }
         if bracketedPaste { out += "\u{1b}[?2004h" }
+        if mouseTracking != 0 { out += "\u{1b}[?\(mouseTracking)h\u{1b}[?1006h" }
         return Data(out.utf8)
     }
 
