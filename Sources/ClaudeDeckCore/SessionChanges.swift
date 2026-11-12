@@ -290,3 +290,34 @@ public struct SessionChanges: Sendable, Equatable {
         return low...high
     }
 }
+
+/// Keeps a transcript's changes current for a view that polls: each poll reads only what was
+/// appended (the reader stays here, so it's never copied), and reports changes only when there
+/// are new ones.
+public actor SessionChangesTracker {
+    private let url: URL
+    private let tailBytes: Int
+    private var reader = ConversationLog.Reader(collectsChanges: true)
+    private var reported: Int?
+
+    /// `tailBytes`: how much of a long transcript to read at first (patches carry whole files,
+    /// so transcripts with many edits grow fast).
+    public init(transcriptURL: URL, tailBytes: Int = 64 << 20) {
+        url = transcriptURL
+        self.tailBytes = tailBytes
+    }
+
+    /// The changes when they differ from the last ones reported, else nil.
+    public func poll() -> SessionChanges? {
+        // Shorter than what was read: rewritten, read it again.
+        if !reader.read(url, tailBytes: tailBytes) {
+            reader = ConversationLog.Reader(collectsChanges: true)
+            reported = nil
+            _ = reader.read(url, tailBytes: tailBytes)
+        }
+        // Changes only ever add up, so their count tells whether there's something new.
+        guard reported != reader.changes.all.count else { return nil }
+        reported = reader.changes.all.count
+        return reader.changes
+    }
+}

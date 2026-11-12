@@ -29,7 +29,7 @@ struct ContentView: View {
             WorkspaceView()
                 .inspector(isPresented: $showFiles) {
                     InspectorPanel(tab: $inspectorTab)
-                        .inspectorColumnWidth(min: 220, ideal: 290, max: 520)
+                        .inspectorColumnWidth(min: 220, ideal: 290, max: 720)
                 }
                 .overlay(alignment: .leading) {
                     if sidebarMode != .full { HoverSidebar(mode: $sidebarMode, open: $sidebarPeek, showTab: sidebarMode == .hidden) }
@@ -59,6 +59,13 @@ struct ContentView: View {
                 }
                 .help("Source Control Changes (⌘⇧G)")
                 .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button {
+                    if showFiles && inspectorTab == .edits { showFiles = false } else { inspectorTab = .edits; showFiles = true }
+                } label: {
+                    Label("Edits", systemImage: "pencil.line")
+                }
+                .help("Claude’s Edits in This Session (⌘⇧D)")
+                .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button {
                     if showFiles && inspectorTab == .agents { showFiles = false } else { inspectorTab = .agents; showFiles = true }
                 } label: {
@@ -237,6 +244,8 @@ struct PaneView: View {
 
 struct PaneHeader: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("showFiles", store: .windowState) private var showFiles = false
+    @AppStorage("inspectorTab", store: .windowState) private var inspectorTab = InspectorTab.files
     let session: DeckSession
     let focused: Bool
 
@@ -254,6 +263,19 @@ struct PaneHeader: View {
             }
             Spacer(minLength: 4)
             PermissionButtons(sessionID: session.id).fixedSize()
+            if session.kind == .claude {
+                // The inspector's Edits page follows the selected session: this one.
+                let shown = focused && showFiles && inspectorTab == .edits
+                Button {
+                    model.selectedSessionID = session.id
+                    if shown { showFiles = false } else { inspectorTab = .edits; showFiles = true }
+                } label: {
+                    Image(systemName: "pencil.line")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(shown ? Color.accentColor : Color.secondary)
+                .help("Claude’s Edits in This Session (⌘⇧D)")
+            }
             Button {
                 model.closePane(session.id)
             } label: {

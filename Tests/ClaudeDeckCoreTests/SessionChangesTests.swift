@@ -167,3 +167,28 @@ import Testing
         #expect(long.hasSuffix(" a\n b\n… (5 more lines)\n```"))
     }
 }
+
+@Suite struct SessionChangesTrackerTests {
+    @Test func reportsOnlyWhenSomethingWasAdded() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "tracker-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        func line(_ object: [String: Any]) -> String {
+            String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self) + "\n"
+        }
+        let call = line(["type": "assistant", "uuid": "a1", "message": ["content": [
+            ["type": "tool_use", "id": "w1", "name": "Write", "input": ["file_path": "/p/a.txt", "content": "x\n"]],
+        ]]])
+        let result = line(["type": "user", "uuid": "u1", "message": ["content": [["type": "tool_result", "tool_use_id": "w1", "content": "ok"]]],
+                           "toolUseResult": ["type": "create", "filePath": "/p/a.txt", "content": "x\n", "structuredPatch": [] as [Any]]])
+        try call.write(to: url, atomically: true, encoding: .utf8)
+        let tracker = SessionChangesTracker(transcriptURL: url)
+        #expect(await tracker.poll()?.all.isEmpty == true) // the first poll always reports
+        #expect(await tracker.poll() == nil)
+        try (call + result).write(to: url, atomically: true, encoding: .utf8)
+        #expect(await tracker.poll()?.all.map(\.id) == ["w1"])
+        #expect(await tracker.poll() == nil)
+        // Rewritten shorter: read again from the start.
+        try call.write(to: url, atomically: true, encoding: .utf8)
+        #expect(await tracker.poll()?.all.isEmpty == true)
+    }
+}

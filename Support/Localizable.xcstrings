@@ -15030,6 +15030,196 @@
           }
         }
       }
+    },
+    "All Files": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tüm Dosyalar"
+          }
+        }
+      }
+    },
+    "Changes Claude makes with Edit and Write show up here as it works.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude’un Edit ve Write ile yaptığı değişiklikler, o çalıştıkça burada görünür."
+          }
+        }
+      }
+    },
+    "Claude is busy: the message waits in the queue until its turn.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude meşgul: mesaj sırası gelene kadar kuyrukta bekler."
+          }
+        }
+      }
+    },
+    "Claude’s Edits in This Session (⌘⇧D)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Oturumda Claude’un Düzenlemeleri (⌘⇧D)"
+          }
+        }
+      }
+    },
+    "Clear Selection": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçimi Temizle"
+          }
+        }
+      }
+    },
+    "Edits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düzenlemeler"
+          }
+        }
+      }
+    },
+    "Net Diff": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Net Fark"
+          }
+        }
+      }
+    },
+    "No Edits Yet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz Düzenleme Yok"
+          }
+        }
+      }
+    },
+    "No net change": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Net değişiklik yok"
+          }
+        }
+      }
+    },
+    "Select a Claude session to see its edits.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düzenlemelerini görmek için bir Claude oturumu seç."
+          }
+        }
+      }
+    },
+    "Send": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gönder"
+          }
+        }
+      }
+    },
+    "Shell terminals have no Claude edits.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kabuk terminallerinde Claude düzenlemesi olmaz."
+          }
+        }
+      }
+    },
+    "Show All %lld Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Satırın Tümünü Göster"
+          }
+        }
+      }
+    },
+    "Stream": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Akış"
+          }
+        }
+      }
+    },
+    "The net diff isn’t available: the transcript doesn’t have this file’s full content.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Net fark gösterilemiyor: konuşma kaydında bu dosyanın tam içeriği yok."
+          }
+        }
+      }
+    },
+    "The session isn’t running: the message waits in its queue.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum çalışmıyor: mesaj kuyruğunda bekler."
+          }
+        }
+      }
+    },
+    "Write About the Picked Lines…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçili Satırlar Hakkında Yaz…"
+          }
+        }
+      }
+    },
+    "Write About This…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bunun Hakkında Yaz…"
+          }
+        }
+      }
+    },
+    "Your message about this change": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu değişiklik hakkındaki mesajın"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
