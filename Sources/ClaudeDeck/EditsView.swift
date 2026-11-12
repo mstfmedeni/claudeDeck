@@ -378,7 +378,8 @@ private struct ChangeCard: View {
             }
             .buttonStyle(.borderless)
             .help(picked == nil ? LocalizedStringKey("Write About This…") : LocalizedStringKey("Write About the Picked Lines…"))
-            .popover(isPresented: $composing, arrowEdge: .bottom) {
+            // Opens to the left: the button sits at the inspector's trailing edge, often the screen's too.
+            .popover(isPresented: $composing, arrowEdge: .leading) {
                 EditComposer(reference: SessionChanges.mention(path: path, root: context.root,
                                                                lines: SessionChanges.lineRange(of: messageLines) ?? lineRange),
                              sessionID: context.sessionID) { text in

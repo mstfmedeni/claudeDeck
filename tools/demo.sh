@@ -460,6 +460,16 @@ mkdir -p "$SUB"
   user 1429 '[{"type":"tool_result","tool_use_id":"t2","content":"launched"}]' ',"toolUseResult":{"status":"async_launched","agentId":"ademo2"}'
   user 900 '"<task-notification><task-id>ademo1</task-id><tool-use-id>t1</tool-use-id><status>completed</status><usage><subagent_tokens>48210</subagent_tokens><tool_uses>23</tool_uses><duration_ms>539000</duration_ms></usage></task-notification>"' ''
   asst 880 "$(tool m2 Edit '{"file_path":"'"$CART"'"}')"
+  # Edits inspector: Claude's file changes, with the patches Claude Code records for them.
+  SUMMARY="$P/acme-storefront/src/cart/CartSummary.tsx"
+  asst 700 "$(tool e1 Edit '{"file_path":"'"$SUMMARY"'","old_string":"items","new_string":"items, discount = 0"}')"
+  user 699 '[{"type":"tool_result","tool_use_id":"e1","content":"ok"}]' ',"toolUseResult":{"type":"update","filePath":"'"$SUMMARY"'","originalFile":"export function CartSummary({ items }) {\n  const total = items.reduce((s, i) => s + i.price * i.qty, 0)\n  return total\n}\n","structuredPatch":[{"oldStart":1,"oldLines":4,"newStart":1,"newLines":4,"lines":["-export function CartSummary({ items }) {","-  const total = items.reduce((s, i) => s + i.price * i.qty, 0)","-  return total","+export function CartSummary({ items, discount = 0 }) {","+  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0)","+  return subtotal - discount"," }"]}],"userModified":false}'
+  COUPONS="$P/acme-storefront/src/cart/coupons.ts"
+  asst 640 "$(tool e2 Write '{"file_path":"'"$COUPONS"'","content":"…"}')"
+  user 639 '[{"type":"tool_result","tool_use_id":"e2","content":"ok"}]' ',"toolUseResult":{"type":"create","filePath":"'"$COUPONS"'","content":"const codes = { WELCOME10: 0.1, SPRING15: 0.15 }\n\nexport function applyCoupon(code) {\n  return codes[code.trim().toUpperCase()] ?? 0\n}\n","structuredPatch":[],"originalFile":null}'
+  CHECKOUT="$P/acme-storefront/src/checkout/Checkout.tsx"
+  asst 400 "$(tool e3 Edit '{"file_path":"'"$CHECKOUT"'","old_string":"<CartSummary items={items} />","new_string":"<CartSummary items={items} discount={discount} />"}')"
+  user 399 '[{"type":"tool_result","tool_use_id":"e3","content":"ok"}]' ',"toolUseResult":{"type":"update","filePath":"'"$CHECKOUT"'","structuredPatch":[{"oldStart":9,"oldLines":4,"newStart":9,"newLines":5,"lines":["   const { items, clear } = useCart()","   const [status, setStatus] = useState<Status>(\"idle\")","   const [error, setError] = useState<string | null>(null)","+  const [discount, setDiscount] = useState(0)"," "]},{"oldStart":32,"oldLines":3,"newStart":33,"newLines":4,"lines":["       <h1>Checkout</h1>","-      <CartSummary items={items} />","+      <CartSummary items={items} discount={discount} />","+      <CouponField onApply={setDiscount} />","       {error && <p role=\"alert\">{error}</p>}"]}],"userModified":false}'
   asst 60 "$(tool m3 Bash '{"command":"npm test -- cart"}')"
 } > "$ROOT/scenes/$S1.jsonl"
 {
