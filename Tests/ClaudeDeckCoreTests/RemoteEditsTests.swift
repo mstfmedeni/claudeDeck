@@ -114,6 +114,7 @@ import Testing
         #expect(merged3)
         #expect(state.changes.map(\.id) == ["w1", "w2", "w3"] && !state.hasMore)
         #expect(state.change("w2")?.path == "/p/b.txt")
+        #expect(state.hunks("w2").first?.lines.count == 5 && state.hunks("none").isEmpty)
         #expect(state.files.map(\.path) == ["/p/a.txt", "/p/b.txt"])
         #expect(state.files[0].changes.map(\.id) == ["w1", "w3"])
         // A reset replaces everything.

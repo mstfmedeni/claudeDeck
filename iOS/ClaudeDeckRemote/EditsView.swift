@@ -16,8 +16,15 @@ struct EditsView: View {
         let state = store.edits[sessionID]
         Group {
             if !store.supportsEdits {
-                ContentUnavailableView("Edits", systemImage: "pencil.line",
-                                       description: Text(store.snapshot == nil ? "Waiting for the other Mac…" : "Update ClaudeDeck on the Mac to see Claude’s edits here."))
+                ContentUnavailableView {
+                    Label("Edits", systemImage: "pencil.line")
+                } description: {
+                    if store.snapshot == nil {
+                        Text("Waiting for the other Mac…")
+                    } else {
+                        Text("Update ClaudeDeck on the Mac to see Claude’s edits here.")
+                    }
+                }
             } else if let state, !state.changes.isEmpty {
                 VStack(spacing: 0) {
                     header(state)
@@ -91,7 +98,7 @@ private struct EditsStream: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(state.changes) { change in
-                        ChangeCard(sessionID: sessionID, root: state.root, path: change.path, hunks: change.diffHunks, change: change)
+                        ChangeCard(sessionID: sessionID, root: state.root, path: change.path, hunks: state.hunks(change.id), change: change)
                     }
                     Color.clear.frame(height: 1).id(Self.bottom)
                 }
@@ -196,7 +203,7 @@ private struct EditsFileDetail: View {
                     switch mode {
                     case .changes:
                         ForEach(changes) { change in
-                            ChangeCard(sessionID: sessionID, root: state.root, path: change.path, hunks: change.diffHunks, change: change)
+                            ChangeCard(sessionID: sessionID, root: state.root, path: change.path, hunks: state.hunks(change.id), change: change)
                         }
                     case .net:
                         netDiff

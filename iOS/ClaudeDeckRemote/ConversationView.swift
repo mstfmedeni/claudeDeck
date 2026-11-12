@@ -73,7 +73,7 @@ struct ConversationView: View {
                                 QuestionCard(entry: entry, sessionID: sessionID, pending: entry.id == pendingQuestion).id(entry.id)
                             case .entry(let entry):
                                 if let edits, entry.kind == .tool, let change = edits.change(entry.id) {
-                                    ChangeCard(sessionID: sessionID, root: edits.root, path: change.path, hunks: change.diffHunks,
+                                    ChangeCard(sessionID: sessionID, root: edits.root, path: change.path, hunks: edits.hunks(change.id),
                                                change: change, inline: true)
                                         .id(entry.id)
                                 } else {

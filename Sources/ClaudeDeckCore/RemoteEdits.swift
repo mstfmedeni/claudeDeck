@@ -183,6 +183,8 @@ public enum RemoteEdits {
 public struct RemoteEditsState: Sendable, Equatable {
     public private(set) var changes: [RemoteFileChange] = []
     private var index: [String: Int] = [:]
+    /// The changes' hunks with numbered lines, by change (worked out once, as pages come).
+    private var numbered: [String: [DiffHunk]] = [:]
     public private(set) var root: String?
     /// Something came from the host (maybe nothing changed yet).
     public private(set) var loaded = false
@@ -195,6 +197,9 @@ public struct RemoteEditsState: Sendable, Equatable {
 
     public func change(_ id: String) -> RemoteFileChange? { index[id].map { changes[$0] } }
 
+    /// A change's hunks with numbered lines.
+    public func hunks(_ id: String) -> [DiffHunk] { numbered[id] ?? [] }
+
     /// The anchor of the next request: the last change here.
     public var lastID: String? { changes.last?.id }
 
@@ -205,11 +210,13 @@ public struct RemoteEditsState: Sendable, Equatable {
         if page.reset {
             changes = []
             index = [:]
+            numbered = [:]
             netDiffs = [:]
         } else if page.after != lastID {
             return false
         }
         for change in page.changes {
+            numbered[change.id] = change.diffHunks
             if let at = index[change.id] {
                 changes[at] = change
             } else {
