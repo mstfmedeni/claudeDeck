@@ -220,6 +220,12 @@ Billing, usage limits and sign-in stay entirely with Claude Code. ClaudeDeck doe
 
 The app is signed with a Developer ID and notarized by Apple, so Gatekeeper won't warn you.
 
+### iPhone and iPad
+
+ClaudeDeck for iPhone and iPad is in public beta on TestFlight: **[join the beta](https://testflight.apple.com/join/SExEqeC8)**. It pairs with
+ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same version on both. See
+[Mac Screen](#mac-screen-iphone-and-ipad-app) and the [privacy page](https://mstfmedeni.github.io/claudeDeck/privacy.html).
+
 ### Requirements
 
 - macOS 15 (Sequoia) or later
