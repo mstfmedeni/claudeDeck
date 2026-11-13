@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaudeDeck: privacy</title>
+<meta name="description" content="What ClaudeDeck and ClaudeDeck for iPhone and iPad do with your data.">
+<link rel="icon" href="assets/favicon.png">
+<link rel="alternate" hreflang="tr" href="tr/privacy.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="./"><img src="assets/icon.png" alt="" width="32" height="32">ClaudeDeck</a>
+  <nav aria-label="Site">
+    <a data-gh="" href="https://github.com/">GitHub</a>
+    <a href="tr/privacy.html" hreflang="tr" lang="tr">Türkçe</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <h1>Privacy</h1>
+  <p class="lede">ClaudeDeck has no accounts, no analytics and no tracking. The developer doesn't receive any of your data.</p>
+
+  <h2>ClaudeDeck for iPhone and iPad</h2>
+  <ul>
+    <li>The app talks only to your own Mac running ClaudeDeck, over your local network or your Tailscale network. The connection is end-to-end encrypted with a key made when you pair; nothing passes through a server of ours.</li>
+    <li>Mac Screen connects straight to your Mac's screen sharing.</li>
+    <li>For notifications, the app gives its push token to your Mac, which sends the notifications through Apple's push service with an APNs key you add yourself.</li>
+    <li>Files, photos and text you send from the phone go only to your Mac.</li>
+    <li>The app collects no data and contains no third-party analytics or advertising code. If you install it through TestFlight, Apple may share crash reports and feedback you choose to send with the developer, under Apple's TestFlight terms.</li>
+  </ul>
+
+  <h2>ClaudeDeck for Mac</h2>
+  <ul>
+    <li>Your projects, sessions and settings stay on your Mac.</li>
+    <li>The app checks GitHub for updates (Sparkle). It reads GitHub only through the GitHub CLI you sign in to, when you use those features.</li>
+    <li>Agents you add yourself receive what you choose to send them, at the addresses you enter.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions: <a href="mailto:mustafa@medeni.dev">mustafa@medeni.dev</a></p>
+  <p class="fine">Last updated: November 13, 2026</p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>MIT License © 2026 <a href="https://codemagnet.co">CODE MAGNET YAZILIM LTD. ŞTİ.</a> · <a data-gh="" href="https://github.com/">Source code</a></p>
+    <p>ClaudeDeck is an independent open-source project. It is not affiliated with, endorsed by or sponsored by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic PBC.</p>
+  </div>
+</footer>
+<script src="assets/deck.js"></script>
+</body>
+</html>

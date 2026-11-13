@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaudeDeck: gizlilik</title>
+<meta name="description" content="ClaudeDeck ve iPhone ile iPad için ClaudeDeck verilerinle ne yapar.">
+<link rel="icon" href="../assets/favicon.png">
+<link rel="alternate" hreflang="en" href="../privacy.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="./"><img src="../assets/icon.png" alt="" width="32" height="32">ClaudeDeck</a>
+  <nav aria-label="Site">
+    <a data-gh="" href="https://github.com/">GitHub</a>
+    <a href="../privacy.html" hreflang="en" lang="en">English</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <h1>Gizlilik</h1>
+  <p class="lede">ClaudeDeck'te hesap, analiz ya da takip yok. Geliştiriciye hiçbir verin gelmez.</p>
+
+  <h2>iPhone ve iPad için ClaudeDeck</h2>
+  <ul>
+    <li>Uygulama yalnızca kendi Mac'inde çalışan ClaudeDeck ile, yerel ağın ya da Tailscale ağın üzerinden konuşur. Bağlantı, eşleştirirken oluşan bir anahtarla uçtan uca şifrelenir; bizim bir sunucumuzdan geçmez.</li>
+    <li>Mac Ekranı doğrudan Mac'inin ekran paylaşımına bağlanır.</li>
+    <li>Bildirimler için uygulama bildirim anahtarını Mac'ine verir; Mac bildirimleri, senin eklediğin APNs anahtarıyla Apple'ın bildirim servisi üzerinden gönderir.</li>
+    <li>Telefondan gönderdiğin dosyalar, fotoğraflar ve metinler yalnızca Mac'ine gider.</li>
+    <li>Uygulama veri toplamaz; içinde üçüncü taraf analiz ya da reklam kodu yoktur. TestFlight'tan kurarsan Apple, çökme raporlarını ve göndermeyi seçtiğin geri bildirimleri TestFlight koşullarına göre geliştiriciyle paylaşabilir.</li>
+  </ul>
+
+  <h2>Mac için ClaudeDeck</h2>
+  <ul>
+    <li>Projelerin, oturumların ve ayarların Mac'inde kalır.</li>
+    <li>Uygulama güncellemeleri GitHub'dan denetler (Sparkle). GitHub özelliklerini kullandığında GitHub'a yalnızca senin giriş yaptığın GitHub CLI ile erişir.</li>
+    <li>Kendi eklediğin ajanlar, göndermeyi seçtiğin şeyleri senin girdiğin adreslerde alır.</li>
+  </ul>
+
+  <h2>İletişim</h2>
+  <p>Sorular için: <a href="mailto:mustafa@medeni.dev">mustafa@medeni.dev</a></p>
+  <p class="fine">Son güncelleme: 13 Kasım 2026</p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>MIT Lisansı © 2026 <a href="https://codemagnet.co">CODE MAGNET YAZILIM LTD. ŞTİ.</a> · <a data-gh="" href="https://github.com/">Kaynak kod</a></p>
+    <p>ClaudeDeck bağımsız, açık kaynaklı bir projedir. Anthropic ile bağlantılı değildir, Anthropic tarafından onaylanmamış ya da desteklenmemiştir. "Claude" ve "Claude Code", Anthropic PBC'nin ticari markalarıdır.</p>
+  </div>
+</footer>
+<script src="../assets/deck.js"></script>
+</body>
+</html>
