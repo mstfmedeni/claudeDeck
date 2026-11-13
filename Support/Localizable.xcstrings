@@ -15250,6 +15250,26 @@
           }
         }
       }
+    },
+    "%lld Agent Notes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ajan notu"
+          }
+        }
+      }
+    },
+    "Dismiss All": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tümünü Kapat"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

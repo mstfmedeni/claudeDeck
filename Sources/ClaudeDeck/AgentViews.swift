@@ -394,20 +394,50 @@ struct AskAgentMenu: View {
 
 /// Under a session's terminal: the agents' notes, with Send to Claude / Queue / Dismiss.
 /// Agents' notes under a session's terminal: one line each (click to read it all), sending it on
-/// in the menu, dismissing with the ×. As tall as the notes, scrolling past 220 pt.
+/// in the menu, dismissing with the ×. As tall as the notes, scrolling past 220 pt. Two or more fold into
+/// one line (how many, the latest's first line) that opens them, so they don't take the terminal's room.
 struct AgentNotesStrip: View {
     @Environment(AppModel.self) private var model
     let sessionID: UUID
     @State private var expanded: Set<UUID> = []
     @State private var contentHeight: CGFloat = 0
+    @State private var open = false
 
     var body: some View {
-        ScrollView {
-            notesList
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        let notes = model.agentNotes[sessionID] ?? []
+        VStack(spacing: 0) {
+            if notes.count > 1 { header(notes) }
+            if notes.count < 2 || open {
+                ScrollView {
+                    notesList
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                }
+                .frame(height: min(max(contentHeight, 1), 220))
+            }
         }
-        .frame(height: min(max(contentHeight, 1), 220))
         .background(.bar)
+    }
+
+    private func header(_ notes: [AgentNote]) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption).foregroundStyle(.secondary)
+            Image(systemName: "sparkles").foregroundStyle(.purple)
+            Text("\(notes.count) Agent Notes").font(.caption.weight(.semibold)).lineLimit(1).fixedSize()
+            if !open, let latest = notes.last {
+                Text(summary(latest)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button("Dismiss All") {
+                for note in notes { model.agentNoteAction(note.id, in: sessionID, action: .dismiss) }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.snappy) { open.toggle() } }
     }
 
     private var notesList: some View {

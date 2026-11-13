@@ -960,17 +960,51 @@ struct ConversationTextSizeMenu: View {
 
 /// An agent's note in the conversation: its answer, then Send to Claude / Queue / Dismiss.
 /// Agents' notes, under the conversation's header (not in the conversation: they're not Claude's).
-/// One line each; tap to read it all. Sending it on is in the menu, dismissing is the ×.
+/// One line each; tap to read it all. Sending it on is in the menu, dismissing is the ×. Two or more fold
+/// into one line (how many, the latest's first line) that opens them, so they don't push the conversation down.
 struct AgentNotesBar: View {
+    @Environment(RemoteStore.self) private var store
     let notes: [AgentNote]
     let sessionID: UUID
+    @State private var open = false
 
     var body: some View {
-        if notes.count > 2 {
-            ScrollView { rows }.frame(maxHeight: 220)
-        } else {
+        if notes.count < 2 {
             rows
+        } else {
+            VStack(spacing: 4) {
+                header
+                if open {
+                    ScrollView { rows }.frame(maxHeight: 220)
+                }
+            }
         }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles").foregroundStyle(.purple).font(.caption)
+            Text("\(notes.count) Agent Notes").listFont(.caption, weight: .semibold)
+            if !open, let latest = notes.last {
+                Text(AgentNoteRow.summary(of: latest)).listFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: open ? "chevron.up" : "chevron.down").font(.caption).foregroundStyle(.secondary)
+            Button {
+                for note in notes { _ = store.agentNoteAction(sessionID, note: note.id, .dismiss) }
+            } label: {
+                Image(systemName: "xmark.circle.fill").font(.body)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tertiary)
+            .disabled(store.connection != .connected)
+            .accessibilityLabel(Text("Dismiss All"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.snappy) { open.toggle() } }
     }
 
     private var rows: some View {
@@ -1045,7 +1079,9 @@ struct AgentNoteRow: View {
         }
     }
 
-    private var summary: String {
+    private var summary: String { Self.summary(of: note) }
+
+    static func summary(of note: AgentNote) -> String {
         if let reply = note.reply { return reply.split(whereSeparator: \.isNewline).first.map(String.init) ?? reply }
         if let error = note.error { return error }
         return String(localized: "Thinking…")
