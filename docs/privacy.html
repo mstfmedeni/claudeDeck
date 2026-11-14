@@ -29,6 +29,7 @@
   <ul>
     <li>The app talks only to your own Mac running ClaudeDeck, over your local network or your Tailscale network. The connection is end-to-end encrypted with a key made when you pair; nothing passes through a server of ours.</li>
     <li>Mac Screen connects straight to your Mac's screen sharing.</li>
+    <li>In-App Tailscale (off unless you turn it on) signs the app in to your own Tailscale account as a device of your tailnet, so it talks to Tailscale's coordination servers like any Tailscale device. It doesn't upload Tailscale's diagnostic logs.</li>
     <li>For notifications, the app gives its push token to your Mac, which sends the notifications through Apple's push service with an APNs key you add yourself.</li>
     <li>Files, photos and text you send from the phone go only to your Mac.</li>
     <li>The app collects no data and contains no third-party analytics or advertising code. If you install it through TestFlight, Apple may share crash reports and feedback you choose to send with the developer, under Apple's TestFlight terms.</li>
@@ -43,7 +44,7 @@
 
   <h2>Contact</h2>
   <p>Questions: <a href="mailto:mustafa@medeni.dev">mustafa@medeni.dev</a></p>
-  <p class="fine">Last updated: November 13, 2026</p>
+  <p class="fine">Last updated: November 15, 2026</p>
 </main>
 
 <footer>
