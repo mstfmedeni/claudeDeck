@@ -2,3 +2,6 @@
 	path = Vendor/open-screen-sharing
 	url = https://github.com/mstfmedeni/open-screen-sharing
 	branch = claudedeck
+[submodule "Vendor/libtailscale"]
+	path = Vendor/libtailscale
+	url = https://github.com/tailscale/libtailscale

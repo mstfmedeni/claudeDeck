@@ -16,3 +16,7 @@ NOTES.md
 *.certSigningRequest
 *.mobileprovision
 *.provisionprofile
+
+# TailscaleKit (built by Vendor/TailscaleKit/build.sh)
+Vendor/TailscaleKit/TailscaleKit.xcframework/
+Vendor/TailscaleKit/.built-from

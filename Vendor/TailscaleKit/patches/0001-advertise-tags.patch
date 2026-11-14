@@ -1,0 +1,120 @@
+diff --git a/swift/TailscaleKit/TailscaleKit.h b/swift/TailscaleKit/TailscaleKit.h
+index f2c1220..9b9e0c7 100644
+--- a/swift/TailscaleKit/TailscaleKit.h
++++ b/swift/TailscaleKit/TailscaleKit.h
+@@ -75,6 +75,12 @@ extern int tailscale_set_authkey(tailscale sd, const char* authkey);
+ extern int tailscale_set_control_url(tailscale sd, const char* control_url);
+ extern int tailscale_set_ephemeral(tailscale sd, int ephemeral);
+ 
++// tailscale_set_advertise_tags sets the ACL tags the node requests, as a
++// comma-separated list (e.g. "tag:a,tag:b"). See tsnet.Server.AdvertiseTags.
++//
++// Returns zero on success or -1 on error, call tailscale_errmsg for details.
++extern int tailscale_set_advertise_tags(tailscale sd, const char* tags);
++
+ // tailscale_set_logfd instructs the tailscale instance to write logs to fd.
+ //
+ // An fd value of -1 means discard all logging.
+diff --git a/swift/TailscaleKit/TailscaleNode.swift b/swift/TailscaleKit/TailscaleNode.swift
+index c1cc9a0..aefef72 100644
+--- a/swift/TailscaleKit/TailscaleNode.swift
++++ b/swift/TailscaleKit/TailscaleNode.swift
+@@ -13,18 +13,21 @@ public struct Configuration: Sendable {
+     public let authKey: String?    ///< An auth key.  Leave empty to use web auth
+     public let controlURL: String  ///< URL for Tailscale control
+     public let ephemeral: Bool
++    public let advertiseTags: [String]  ///< ACL tags the node requests (tsnet.Server.AdvertiseTags)
+ 
+     public init(hostName: String,
+                 path: String,
+                 authKey: String?,
+                 controlURL: String,
+-                ephemeral: Bool = false)
++                ephemeral: Bool = false,
++                advertiseTags: [String] = [])
+     {
+         self.hostName = hostName
+         self.path = path
+         self.authKey = authKey
+         self.controlURL = controlURL
+         self.ephemeral = ephemeral
++        self.advertiseTags = advertiseTags
+     }
+ 
+ }
+@@ -82,6 +85,9 @@ public actor TailscaleNode {
+         tailscale_set_dir(tailscale, config.path)
+         tailscale_set_control_url(tailscale, config.controlURL)
+         tailscale_set_ephemeral(tailscale, config.ephemeral ? 1 : 0)
++        if !config.advertiseTags.isEmpty {
++            tailscale_set_advertise_tags(tailscale, config.advertiseTags.joined(separator: ","))
++        }
+ 
+         let res = tailscale_start(tailscale)
+ 
+diff --git a/tailscale.c b/tailscale.c
+index 420d67e..2d81eb1 100644
+--- a/tailscale.c
++++ b/tailscale.c
+@@ -18,6 +18,7 @@ extern int TsnetSetHostname(int sd, char* str);
+ extern int TsnetSetAuthKey(int sd, char* str);
+ extern int TsnetSetControlURL(int sd, char* str);
+ extern int TsnetSetEphemeral(int sd, int ephemeral);
++extern int TsnetSetAdvertiseTags(int sd, char* str);
+ extern int TsnetSetLogFD(int sd, int fd);
+ extern int TsnetGetIps(int sd, char *buf, size_t buflen);
+ extern int TsnetGetRemoteAddr(int listener, int conn, char *buf, size_t buflen);
+@@ -78,6 +79,9 @@ int tailscale_set_control_url(tailscale sd, const char* control_url) {
+ int tailscale_set_ephemeral(tailscale sd, int ephemeral) {
+ 	return TsnetSetEphemeral(sd, ephemeral);
+ }
++int tailscale_set_advertise_tags(tailscale sd, const char* tags) {
++	return TsnetSetAdvertiseTags(sd, (char*)tags);
++}
+ int tailscale_set_logfd(tailscale sd, int fd) {
+ 	return TsnetSetLogFD(sd, fd);
+ }
+diff --git a/tailscale.go b/tailscale.go
+index 0f693bc..c614e12 100644
+--- a/tailscale.go
++++ b/tailscale.go
+@@ -580,6 +580,22 @@ func TsnetSetEphemeral(sd C.int, e int) C.int {
+ 	return 0
+ }
+ 
++//export TsnetSetAdvertiseTags
++func TsnetSetAdvertiseTags(sd C.int, str *C.char) C.int {
++	s := getServer(sd)
++	if s == nil {
++		return C.EBADF
++	}
++	var tags []string
++	for _, tag := range strings.Split(C.GoString(str), ",") {
++		if tag = strings.TrimSpace(tag); tag != "" {
++			tags = append(tags, tag)
++		}
++	}
++	s.s.AdvertiseTags = tags
++	return 0
++}
++
+ //export TsnetSetLogFD
+ func TsnetSetLogFD(sd, fd C.int) C.int {
+ 	s := getServer(sd)
+diff --git a/tailscale.h b/tailscale.h
+index 9bc8e7c..35e3cfe 100644
+--- a/tailscale.h
++++ b/tailscale.h
+@@ -68,6 +68,12 @@ extern int tailscale_set_authkey(tailscale sd, const char* authkey);
+ extern int tailscale_set_control_url(tailscale sd, const char* control_url);
+ extern int tailscale_set_ephemeral(tailscale sd, int ephemeral);
+ 
++// tailscale_set_advertise_tags sets the ACL tags the node requests, as a
++// comma-separated list (e.g. "tag:a,tag:b"). See tsnet.Server.AdvertiseTags.
++//
++// Returns zero on success or -1 on error, call tailscale_errmsg for details.
++extern int tailscale_set_advertise_tags(tailscale sd, const char* tags);
++
+ // tailscale_set_logfd instructs the tailscale instance to write logs to fd.
+ //
+ // An fd value of -1 means discard all logging.
