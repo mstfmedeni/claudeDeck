@@ -6,7 +6,7 @@ import Network
 
 /// One framed TCP connection.
 public final class RemoteChannel: @unchecked Sendable {
-    public let connection: NWConnection
+    private let stream: RemoteByteStream
     private let queue: DispatchQueue
     private var decoder = RemoteFrameDecoder()
     private var closed = false
@@ -30,24 +30,25 @@ public final class RemoteChannel: @unchecked Sendable {
     }
 
     public init(connection: NWConnection, queue: DispatchQueue) {
-        self.connection = connection
+        self.stream = NWConnectionStream(connection)
+        self.queue = queue
+    }
+
+    /// Through a RemoteDialer (the in-app Tailscale node) instead of the system's network.
+    public init(dialer: RemoteDialer, host: String, port: UInt16, timeout: TimeInterval, queue: DispatchQueue) {
+        self.stream = DialedStream(dialer: dialer, host: host, port: port, timeout: timeout)
         self.queue = queue
     }
 
     public func start() {
-        connection.stateUpdateHandler = { [weak self] state in
+        stream.start(queue: queue) { [weak self] event in
             guard let self else { return }
-            switch state {
+            switch event {
             case .ready: self.onReady?()
-            case .failed(let error): self.finish(error.localizedDescription)
-            // A client connection waits (retries) when the host is unreachable; give up instead:
-            // the caller tries the next address or reconnects later.
-            case .waiting(let error): self.finish(error.localizedDescription)
+            case .failed(let reason): self.finish(reason)
             case .cancelled: self.finish(nil)
-            default: break
             }
         }
-        connection.start(queue: queue)
         receive()
     }
 
@@ -65,11 +66,11 @@ public final class RemoteChannel: @unchecked Sendable {
         }
         let data = frame.encoded()
         pendingBytes += data.count
-        connection.send(content: data, completion: .contentProcessed { [weak self] error in
+        stream.send(data) { [weak self] error in
             guard let self else { return }
             self.pendingBytes -= data.count
             if let error { self.finish(error.localizedDescription) }
-        })
+        }
     }
 
     /// Bytes handed to the connection and not yet sent (backpressure for terminal output).
@@ -80,16 +81,16 @@ public final class RemoteChannel: @unchecked Sendable {
         guard !closed else { return }
         if let reason, var frame = try? RemoteMessage.refused(reason: reason).frame() {
             if cipher != nil, let sealed = try? cipher!.seal(frame) { frame = sealed }
-            connection.send(content: frame.encoded(), completion: .contentProcessed { [weak self] _ in
+            stream.send(frame.encoded()) { [weak self] _ in
                 self?.finish(nil)
-            })
+            }
         } else {
             finish(nil)
         }
     }
 
     private func receive() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+        stream.receive { [weak self] data, isComplete, error in
             guard let self, !self.closed else { return }
             if let data, !data.isEmpty {
                 self.lastReceived = Date()
@@ -129,8 +130,7 @@ public final class RemoteChannel: @unchecked Sendable {
     private func finish(_ reason: String?) {
         guard !closed else { return }
         closed = true
-        connection.stateUpdateHandler = nil
-        connection.cancel()
+        stream.cancel()
         let handler = onClose
         onClose = nil
         onReady = nil
@@ -141,7 +141,7 @@ public final class RemoteChannel: @unchecked Sendable {
 
     /// The peer's IP address, for incoming connections.
     public var remoteIP: String? {
-        guard case .hostPort(let host, _) = connection.endpoint else { return nil }
+        guard case .hostPort(let host, _) = stream.remoteEndpoint else { return nil }
         return Self.ipString(host)
     }
 
@@ -638,7 +638,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
     private let queue: DispatchQueue
     private var channel: RemoteChannel?
     private var attempts: [Attempt] = []
-    private var remaining: [String] = []
+    /// Addresses still to try, each with its ways in order (see `InAppTailscale.routes`).
+    private var remaining: [(address: String, routes: [RemoteRoute])] = []
     private var winner: Attempt?
     private var launchItem: DispatchWorkItem?
     private var ping: DispatchSourceTimer?
@@ -648,6 +649,16 @@ public final class RemoteHostConnection: @unchecked Sendable {
     private var refusal: String?
     /// The address that authenticated.
     public private(set) var connectedAddress: String?
+    /// How it was reached.
+    public private(set) var connectedRoute: RemoteRoute?
+
+    /// The iPhone/iPad app's in-app Tailscale node, when it's on: tailnet addresses the system
+    /// can't reach go through it. nil (the setting off, and on the Mac): the system only.
+    public var inAppDialer: RemoteDialer?
+    /// Per address, the way that worked last on this network (tried first).
+    public var rememberedRoutes: [String: RemoteRoute] = [:]
+    /// The in-app node may still be starting: it gets longer than a TCP connect.
+    public var inAppTimeout: TimeInterval = 15
 
     public private(set) var state: State = .connecting { didSet { if state != oldValue { onStateChange?(state) } } }
     public var onStateChange: ((State) -> Void)?
@@ -687,7 +698,10 @@ public final class RemoteHostConnection: @unchecked Sendable {
         refusal = nil
         attempts = []
         winner = nil
-        remaining = keepsOrder ? pairing.addresses : Self.raceOrder(pairing.addresses)
+        let ordered = keepsOrder ? pairing.addresses : Self.raceOrder(pairing.addresses)
+        remaining = ordered.map { address in
+            (address, InAppTailscale.routes(for: address, inAppEnabled: inAppDialer != nil, remembered: rememberedRoutes[address]))
+        }
         guard !remaining.isEmpty, NWEndpoint.Port(rawValue: pairing.port) != nil else {
             end(.disconnected(String(localized: "Couldn't reach the Mac")))
             return
@@ -737,12 +751,22 @@ public final class RemoteHostConnection: @unchecked Sendable {
     /// the others wait as backups until it's in, then close.
     private final class Attempt {
         let address: String
+        let route: RemoteRoute
+        /// Ways to try this address if this one doesn't get through.
+        let fallback: [RemoteRoute]
         let channel: RemoteChannel
         var ready = false
         var nonce = Data()
         var hostNonce: Data?
         var authenticated = false
-        init(address: String, channel: RemoteChannel) { self.address = address; self.channel = channel }
+        /// A ClaudeDeck answered and said no: another way to the same Mac won't help.
+        var refused = false
+        init(address: String, route: RemoteRoute, fallback: [RemoteRoute], channel: RemoteChannel) {
+            self.address = address
+            self.route = route
+            self.fallback = fallback
+            self.channel = channel
+        }
     }
 
     /// The Mac's published addresses: its own order (Settings › Remote › Addresses) first, then
@@ -775,22 +799,32 @@ public final class RemoteHostConnection: @unchecked Sendable {
         launchItem?.cancel()
         launchItem = nil
         guard !finished, winner == nil, !remaining.isEmpty else { return }
-        startAttempt(remaining.removeFirst())
+        let next = remaining.removeFirst()
+        startAttempt(next.address, routes: next.routes)
         guard !remaining.isEmpty else { return }
         let item = DispatchWorkItem { [weak self] in self?.launchNext() }
         launchItem = item
         queue.asyncAfter(deadline: .now() + raceStagger, execute: item)
     }
 
-    private func startAttempt(_ address: String) {
-        guard let port = NWEndpoint.Port(rawValue: pairing.port) else { return }
-        let tcp = NWProtocolTCP.Options()
-        tcp.connectionTimeout = 8
-        tcp.enableKeepalive = true
-        tcp.keepaliveIdle = 30
-        let endpoint: NWEndpoint = RemoteBonjour.serviceName(of: address).map(RemoteBonjour.endpoint(serviceName:))
-            ?? .hostPort(host: NWEndpoint.Host(address), port: port)
-        let attempt = Attempt(address: address, channel: RemoteChannel(connection: NWConnection(to: endpoint, using: NWParameters(tls: nil, tcp: tcp)), queue: queue))
+    private func startAttempt(_ address: String, routes: [RemoteRoute]) {
+        guard let port = NWEndpoint.Port(rawValue: pairing.port), let route = routes.first else { return }
+        let fallback = Array(routes.dropFirst())
+        let channel: RemoteChannel
+        if route == .inApp, let inAppDialer {
+            channel = RemoteChannel(dialer: inAppDialer, host: address, port: pairing.port, timeout: inAppTimeout, queue: queue)
+        } else {
+            let tcp = NWProtocolTCP.Options()
+            // With the in-app node behind it, the system gets a short try (another VPN can take
+            // 100.64.0.0/10 and swallow the connection).
+            tcp.connectionTimeout = fallback.isEmpty ? 8 : Int(InAppTailscale.systemTryTimeout)
+            tcp.enableKeepalive = true
+            tcp.keepaliveIdle = 30
+            let endpoint: NWEndpoint = RemoteBonjour.serviceName(of: address).map(RemoteBonjour.endpoint(serviceName:))
+                ?? .hostPort(host: NWEndpoint.Host(address), port: port)
+            channel = RemoteChannel(connection: NWConnection(to: endpoint, using: NWParameters(tls: nil, tcp: tcp)), queue: queue)
+        }
+        let attempt = Attempt(address: address, route: route, fallback: fallback, channel: channel)
         attempts.append(attempt)
         attempt.channel.onReady = { [weak self, weak attempt] in
             guard let self, let attempt, !self.finished else { return }
@@ -810,6 +844,10 @@ public final class RemoteHostConnection: @unchecked Sendable {
             guard let self, let attempt, !self.finished, self.attempts.contains(where: { $0 === attempt }) else { return }
             self.attempts.removeAll { $0 === attempt }
             if let reason { self.lastError = reason }
+            // This way didn't get through: the next way to the same address goes next.
+            if !attempt.authenticated, !attempt.refused, !attempt.fallback.isEmpty {
+                self.remaining.insert((attempt.address, attempt.fallback), at: 0)
+            }
             if attempt === self.winner {
                 if attempt.authenticated {
                     self.end(.disconnected(reason ?? String(localized: "Connection closed")))
@@ -874,12 +912,14 @@ public final class RemoteHostConnection: @unchecked Sendable {
             else {
                 // Not the Mac it claims to be: try the next address.
                 self.refusal = String(localized: "The other Mac has a different password or pairing key.")
+                attempt.refused = true
                 channel.close()
                 return
             }
             self.won(attempt)
             channel.startEncrypting(RemoteCipher(pairingKey: self.pairing.key, remoteNonce: attempt.nonce, hostNonce: hostNonce, role: .remote))
             self.connectedAddress = attempt.address
+            self.connectedRoute = attempt.route
             self.state = .connected(hostName: nil)
             self.startPing()
         case .snapshot(let snapshot) where authenticated:
@@ -918,6 +958,7 @@ public final class RemoteHostConnection: @unchecked Sendable {
                 self.end(.refused(reason))
             } else {
                 self.refusal = reason
+                attempt.refused = true
                 channel.close()
             }
         default:
