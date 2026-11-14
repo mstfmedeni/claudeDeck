@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import UIKit
 import UserNotifications
@@ -136,6 +137,17 @@ final class RemoteStore {
     static let deviceName = UIDevice.current.name
 
     var connectedVia: String? { hostConnection?.connectedAddress }
+    /// Through the in-app Tailscale node rather than the system's network.
+    var connectedInApp: Bool { hostConnection?.connectedRoute == .inApp }
+
+    /// Settings › In-App Tailscale. Off: never started, connections as before.
+    let tailnet = InAppTailnet()
+    /// Per tailnet address, the way that worked on the current network (system or in-app).
+    /// Forgotten when the network changes.
+    @ObservationIgnored private var rememberedRoutes: [String: RemoteRoute] = [:]
+    /// Runs only while the in-app node is on (nothing changes for anyone else).
+    @ObservationIgnored private var pathMonitor: NWPathMonitor?
+    @ObservationIgnored private var networkSignature: String?
 
     /// ClaudeDeck Macs advertising on this network (Bonjour).
     private(set) var lanHosts: [DiscoveredHost] = []
@@ -158,6 +170,41 @@ final class RemoteStore {
         discovery.onDeniedChange = { [weak self] denied in
             MainActor.assumeIsolated { self?.localNetworkDenied = denied }
         }
+        tailnet.onChange = { [weak self] in self?.tailnetChanged() }
+        watchNetwork()
+    }
+
+    private func watchNetwork() {
+        guard tailnet.enabled, pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            // Which interfaces are up, and how: a new Wi-Fi, cellular, a VPN coming or going.
+            let signature = "\(path.status)|" + path.availableInterfaces.map { "\($0.name):\($0.type)" }.joined(separator: ",")
+            DispatchQueue.main.async { self?.networkChanged(signature) }
+        }
+        monitor.start(queue: .global(qos: .utility))
+        pathMonitor = monitor
+    }
+
+    private func networkChanged(_ signature: String) {
+        guard signature != networkSignature else { return }
+        networkSignature = signature
+        rememberedRoutes = [:]
+    }
+
+    /// The in-app node came up or the setting changed: try again if we aren't connected.
+    private func tailnetChanged() {
+        rememberedRoutes = [:]
+        if tailnet.enabled {
+            watchNetwork()
+        } else {
+            pathMonitor?.cancel()
+            pathMonitor = nil
+            networkSignature = nil
+        }
+        guard isActive, pairing != nil, !isRefused, connection != .connected else { return }
+        retryDelay = 2
+        reconnect()
     }
 
     /// The pairing screen lists Macs on this network before anything is paired.
@@ -267,6 +314,7 @@ final class RemoteStore {
     /// Scene phase: connect in front, let go in the background.
     func setActive(_ active: Bool) {
         inForeground = active
+        tailnet.setForeground(active)
         if active { discovery.start() } else { discovery.stop() }
         // After a refusal (wrong password) only a new pairing retries: each attempt counts
         // against the Mac's limit.
@@ -291,6 +339,12 @@ final class RemoteStore {
         attemptAddresses = Set(effective.addresses)
         let next = RemoteHostConnection(pairing: effective, deviceName: Self.deviceName)
         next.keepsOrder = !addressOrder.isEmpty || macOrdered
+        if tailnet.enabled {
+            next.inAppDialer = tailnet.dialer
+            next.rememberedRoutes = rememberedRoutes
+            // Start the node now if a tailnet address may need it (signed in before only).
+            if effective.addresses.contains(where: InAppTailscale.isTailnetAddress) { tailnet.prewarm() }
+        }
         next.onStateChange = { [weak self, weak next] state in
             MainActor.assumeIsolated {
                 guard let self, let next, self.hostConnection === next else { return }
@@ -403,6 +457,10 @@ final class RemoteStore {
         case .connected:
             connection = .connected
             retryDelay = 2
+            if let address = hostConnection?.connectedAddress, let route = hostConnection?.connectedRoute,
+               tailnet.enabled, InAppTailscale.isTailnetAddress(address) {
+                rememberedRoutes[address] = route
+            }
             for id in sinks.keys {
                 terminalStates[id] = .waiting
                 hostConnection?.openTerminal(id)

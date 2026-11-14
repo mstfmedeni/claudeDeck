@@ -1409,7 +1409,7 @@ struct SettingsView: View {
                         LabeledContent("Via") {
                             VStack(alignment: .trailing, spacing: 1) {
                                 Text(RemoteBonjour.serviceName(of: via) ?? via).font(.callout.monospaced())
-                                Text(AddressKind(via).title).font(.caption)
+                                Text(store.connectedInApp ? String(localized: "In-App Tailscale") : AddressKind(via).title).font(.caption)
                             }
                         }
                     }
@@ -1423,6 +1423,11 @@ struct SettingsView: View {
                         store.forget()
                         dismiss()
                     }
+                }
+            }
+            Section {
+                NavigationLink { InAppTailscaleView() } label: {
+                    LabeledContent("In-App Tailscale", value: store.tailnet.enabled ? String(localized: "On") : String(localized: "Off"))
                 }
             }
             Section {

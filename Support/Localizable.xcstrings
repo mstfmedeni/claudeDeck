@@ -15270,6 +15270,186 @@
           }
         }
       }
+    },
+    "In-App Tailscale": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama İçi Tailscale"
+          }
+        }
+      }
+    },
+    "Reaches your Mac's Tailscale address from this app, without the Tailscale app's VPN, alongside any VPN. When the system can reach the Mac (the Tailscale app is on), that comes first.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'inin Tailscale adresine Tailscale uygulamasının VPN'i olmadan, doğrudan bu uygulamadan ulaşır; başka bir VPN açıkken de çalışır. Sistem Mac'e ulaşabiliyorsa (Tailscale uygulaması açıksa) önce o denenir."
+          }
+        }
+      }
+    },
+    "Tailscale Address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale Adresi"
+          }
+        }
+      }
+    },
+    "Device Name": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cihaz Adı"
+          }
+        }
+      }
+    },
+    "Tag": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etiket"
+          }
+        }
+      }
+    },
+    "Your tailnet doesn't let you sign in a device with the tag tag:claudedeck. In the Tailscale admin console › Access controls, add it to \"tagOwners\" (see \"In-app Tailscale\" in ClaudeDeck's README), then sign in again.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailnet'in tag:claudedeck etiketli bir cihazla giriş yapmana izin vermiyor. Tailscale yönetim konsolu › Access controls'ta etiketi \"tagOwners\"a ekle (ClaudeDeck README'sindeki \"In-app Tailscale\" bölümüne bak), sonra yeniden giriş yap."
+          }
+        }
+      }
+    },
+    "Starts when a connection needs it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir bağlantı gerektirdiğinde başlar."
+          }
+        }
+      }
+    },
+    "Sign In to Tailscale": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale'e Giriş Yap"
+          }
+        }
+      }
+    },
+    "Sign Out of Tailscale": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale'den Çıkış Yap"
+          }
+        }
+      }
+    },
+    "Signing in opens Tailscale's login page. Signing out removes this device from your tailnet and deletes its Tailscale data from the app.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş yapmak Tailscale'in giriş sayfasını açar. Çıkış yapmak bu cihazı tailnet'inden çıkarır ve Tailscale verisini uygulamadan siler."
+          }
+        }
+      }
+    },
+    "Covers sessions, conversations, terminals, edits and files. Mac Screen doesn't use it yet: it needs the Tailscale app or the same network.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumları, konuşmaları, terminalleri, düzenlemeleri ve dosyaları kapsar. Mac Ekranı henüz kullanmıyor: onun için Tailscale uygulaması ya da aynı ağ gerekir."
+          }
+        }
+      }
+    },
+    "Signed out": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çıkış yapıldı"
+          }
+        }
+      }
+    },
+    "Signed in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş yapıldı"
+          }
+        }
+      }
+    },
+    "Waiting for sign-in…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş bekleniyor…"
+          }
+        }
+      }
+    },
+    "Couldn't sign in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş yapılamadı"
+          }
+        }
+      }
+    },
+    "Waiting for the tailnet's admin to approve this device.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cihazın tailnet yöneticisi tarafından onaylanması bekleniyor."
+          }
+        }
+      }
+    },
+    "In-app Tailscale isn't connected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama içi Tailscale bağlı değil"
+          }
+        }
+      }
+    },
+    "Couldn't reach the Mac through in-app Tailscale": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'e uygulama içi Tailscale üzerinden ulaşılamadı"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
