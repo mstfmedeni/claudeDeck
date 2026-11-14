@@ -224,7 +224,8 @@ The app is signed with a Developer ID and notarized by Apple, so Gatekeeper won'
 
 ClaudeDeck for iPhone and iPad is in public beta on TestFlight: **[join the beta](https://testflight.apple.com/join/SExEqeC8)**. It pairs with
 ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same version on both. See
-[Mac Screen](#mac-screen-iphone-and-ipad-app) and the [privacy page](https://mstfmedeni.github.io/claudeDeck/privacy.html).
+[Mac Screen](#mac-screen-iphone-and-ipad-app), [In-app Tailscale](#in-app-tailscale-iphone-and-ipad-app)
+(reach the Mac without the Tailscale app's VPN) and the [privacy page](https://mstfmedeni.github.io/claudeDeck/privacy.html).
 
 ### Requirements
 
@@ -564,6 +565,56 @@ Going back to a session leaves the screen connected, so returning to it doesn't 
 the build uses the fork [mstfmedeni/open-screen-sharing](https://github.com/mstfmedeni/open-screen-sharing),
 branch `claudedeck`, as a git submodule). ClaudeDeck isn't affiliated with or endorsed by that project.
 
+### In-app Tailscale (iPhone and iPad app)
+
+Settings › **In-App Tailscale** (off by default) gives the app its own Tailscale node, built in with
+Tailscale's [libtailscale](https://github.com/tailscale/libtailscale) (TailscaleKit), so the phone
+reaches the Mac's Tailscale address without the Tailscale app's VPN being on. It runs in userspace,
+so it works next to any other VPN profile.
+
+- **Covers** the remote connection: sessions, conversations, terminals, edits, files and pairing.
+  **Mac Screen doesn't use it yet** (it still needs the Tailscale app or the same network).
+- **Sign in** once with **Sign In to Tailscale**: Tailscale's login page opens in the app; no auth
+  keys. The status shows the node's tailnet IP. **Sign Out of Tailscale** logs the node out and
+  deletes its state (Application Support, not backed up). If the phone is offline then, remove
+  the device in the admin console.
+- **Device name:** `claudedeck-<device name>`, made DNS-safe (lowercase a–z, 0–9 and `-`, at most
+  63 characters). iOS only tells apps the device's own name with an entitlement this app doesn't
+  have, so it's usually `claudedeck-iphone` or `claudedeck-ipad`; Tailscale numbers duplicates.
+- **Which way it connects:** this network's addresses (Bonjour, LAN) always go through the system,
+  as before. For the Mac's tailnet address (100.64.0.0/10, `fd7a:115c:a1e0::/48`, `*.ts.net`) the
+  system gets a short try first (about 2 seconds; the Tailscale app may be on), then the in-app node.
+  It doesn't judge from routes or interfaces, because another VPN can claim 100.64.0.0/10. The way
+  that worked is remembered for the current network and forgotten when the network changes. With
+  the setting off nothing changes and TailscaleKit is never started.
+- The node only ever connects to the Mac's ClaudeDeck port (47821); the Mac side is unchanged.
+
+**The tag.** Every in-app node registers with the ACL tag `tag:claudedeck`, so the tailnet's policy
+decides what it can reach. Tagged devices belong to the tag, not to a user, and have **key expiry
+off by default**, so there's no re-login every ~180 days. A tag can only be applied by its owners:
+add this to your tailnet policy (Tailscale admin console › **Access controls**) before signing in,
+or the sign-in fails with a message pointing here. The rest limits the phone to the Mac's
+ClaudeDeck port (replace `100.101.102.103` with your Mac's Tailscale IP):
+
+```jsonc
+"tagOwners": {
+  "tag:claudedeck": ["autogroup:admin"],
+},
+"hosts": {
+  "claudedeck-mac": "100.101.102.103",
+},
+"nodeAttrs": [
+  // Optional: in-app nodes get addresses from a small, recognisable range.
+  {"target": ["tag:claudedeck"], "ipPool": ["100.81.1.200/29"]},
+],
+"grants": [
+  {"src": ["tag:claudedeck"], "dst": ["claudedeck-mac"], "ip": ["tcp:47821"]},
+],
+```
+
+This grant covers only the remote connection. Mac Screen (macOS Screen Sharing) is separate and
+isn't covered by it.
+
 ## Agents (optional)
 
 Ask other models about a session: a bot on this Mac behind a webhook (for example a Grok Bot
@@ -628,6 +679,10 @@ xcodegen generate    # generate ClaudeDeck.xcodeproj from project.yml, then open
   To add a language, add translations there.
 - The app icon is drawn in code: `swift tools/make-icon.swift Support` writes `Support/AppIcon.icns`
   and `Support/Assets.xcassets/AppIcon.appiconset`.
+- The iPhone and iPad app links `TailscaleKit.xcframework` (In-app Tailscale), built from the
+  `Vendor/libtailscale` submodule plus the patch in `Vendor/TailscaleKit/patches` (advertised ACL
+  tags) by `Vendor/TailscaleKit/build.sh`. It needs [Go](https://go.dev/dl); `ios-release.sh`
+  runs it, and it rebuilds only when the submodule or the patches change. The Mac app doesn't link it.
 
 ### Building with your own Apple account
 

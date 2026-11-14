@@ -122,6 +122,8 @@ targets:
       - Sources/ClaudeDeckCore/RemoteTransport.swift
       - Sources/ClaudeDeckCore/RemoteScreen.swift
       - Sources/ClaudeDeckCore/TailscaleAddress.swift
+      - Sources/ClaudeDeckCore/InAppTailscale.swift
+      - Sources/ClaudeDeckCore/RemoteStream.swift
       - Sources/ClaudeDeckCore/APNs.swift
       - Sources/ClaudeDeckCore/RemoteCrypto.swift
       - Sources/ClaudeDeckCore/RemoteDiscovery.swift
@@ -137,6 +139,10 @@ targets:
     dependencies:
       - package: SwiftTerm
       - target: ScreenSharingKit
+        embed: true
+      # In-app Tailscale (Settings › In-App Tailscale): Tailscale's libtailscale (BSD-3-Clause,
+      # submodule Vendor/libtailscale) built by Vendor/TailscaleKit/build.sh (Go; ios-release.sh runs it).
+      - framework: Vendor/TailscaleKit/TailscaleKit.xcframework
         embed: true
     entitlements:
       path: iOS/ClaudeDeckRemote.entitlements
