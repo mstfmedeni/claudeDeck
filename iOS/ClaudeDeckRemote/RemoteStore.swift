@@ -41,13 +41,21 @@ final class RemoteStore {
     /// Conversations on screen: kept current and marked seen.
     /// Counted: the same session can be open in two windows.
     @ObservationIgnored private var openConversations: [UUID: Int] = [:]
-    @ObservationIgnored private var conversationTimer: Timer?
+    /// Polls the open conversations (a Task, not a run-loop timer: it keeps going while a finger
+    /// is on the screen).
+    @ObservationIgnored private var conversationPoll: Task<Void, Never>?
+    /// Conversation requests waiting for the Mac's page, by session: one at a time, the ones asked
+    /// for meanwhile (`historyAgain`) go once it's in. One unanswered for long was lost.
+    @ObservationIgnored private var historyAsked: [UUID: Date] = [:]
+    @ObservationIgnored private var historyAgain: Set<UUID> = []
+    /// Open conversations the Mac was told about (`conversationOpen`), on this connection.
+    @ObservationIgnored private var announcedConversations: Set<UUID> = []
 
     // Claude's edits (EditsView, and the diffs in ConversationView); hosts with `Feature.edits`.
     private(set) var edits: [UUID: RemoteEditsState] = [:]
     /// Sessions whose edits are on screen (counted like `openConversations`): only these are asked for.
     @ObservationIgnored private var openEdits: [UUID: Int] = [:]
-    @ObservationIgnored private var editsTimer: Timer?
+    @ObservationIgnored private var editsPoll: Task<Void, Never>?
     /// Requests waiting for the Mac's page, by session (one at a time).
     @ObservationIgnored private var editsAsked: [UUID: Date] = [:]
 
@@ -412,6 +420,12 @@ final class RemoteStore {
         next.onHistory = { [weak self] id, page in
             MainActor.assumeIsolated { self?.received(page, for: id) }
         }
+        next.onConversationChanged = { [weak self] id in
+            MainActor.assumeIsolated {
+                guard let self, self.openConversations[id] != nil else { return }
+                self.requestNewer(id)
+            }
+        }
         next.onEdits = { [weak self] id, page in
             MainActor.assumeIsolated { self?.received(page, for: id) }
         }
@@ -466,6 +480,9 @@ final class RemoteStore {
                 hostConnection?.openTerminal(id)
                 if let grid = fitGrids[id] { hostConnection?.send(.terminalFit(sessionID: id, cols: grid.0, rows: grid.1)) }
             }
+            historyAsked = [:]
+            historyAgain = []
+            announcedConversations = []
             for id in openConversations.keys { requestLatest(id) }
             editsAsked = [:]
             for id in openEdits.keys { requestEdits(id) }
@@ -473,6 +490,7 @@ final class RemoteStore {
         case .disconnected(let reason):
             hostConnection = nil
             answering = []
+            announcedConversations = []
             transfers.connectionLost()
             guard isActive else { connection = .paused; return }
             connection = .retrying(reason, at: Date().addingTimeInterval(retryDelay))
@@ -499,6 +517,7 @@ final class RemoteStore {
         let fresh = RemoteSnapshot.newAttention(from: snapshot, to: new)
         snapshot = new
         learn(from: new)
+        announceConversations()
         for id in openConversations.keys {
             guard let session = new.session(id) else { continue }
             // Watching it finish here counts as seeing it.
@@ -708,11 +727,15 @@ final class RemoteStore {
         openConversations[id, default: 0] += 1
         _ = send(.markSeen(sessionID: id))
         requestLatest(id)
-        // Tool results and long answers grow without a state change: check every few seconds.
-        if conversationTimer == nil {
-            conversationTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
+        announceConversations()
+        // Tool results and long answers grow without a state change: check every few seconds
+        // (less often when the Mac says when the transcript changes).
+        if conversationPoll == nil {
+            conversationPoll = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    let pushed = self?.snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true
+                    try? await Task.sleep(for: .seconds(pushed ? 12 : 4))
+                    guard let self, !Task.isCancelled else { return }
                     for id in self.openConversations.keys { self.requestNewer(id) }
                 }
             }
@@ -723,20 +746,39 @@ final class RemoteStore {
         guard let count = openConversations[id] else { return }
         openConversations[id] = count > 1 ? count - 1 : nil
         if openConversations.isEmpty {
-            conversationTimer?.invalidate()
-            conversationTimer = nil
+            conversationPoll?.cancel()
+            conversationPoll = nil
+        }
+        announceConversations()
+    }
+
+    /// Tells a Mac with `Feature.conversationPush` which conversations are open here.
+    private func announceConversations() {
+        guard hostConnection != nil, snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true else { return }
+        for id in openConversations.keys where !announcedConversations.contains(id) {
+            if send(.conversationOpen(sessionID: id)) { announcedConversations.insert(id) }
+        }
+        for id in announcedConversations where openConversations[id] == nil {
+            _ = send(.conversationClose(sessionID: id))
+            announcedConversations.remove(id)
         }
     }
 
     private func requestLatest(_ id: UUID) {
-        _ = send(.historyRequest(sessionID: id, before: nil, after: nil, limit: 80))
+        if send(.historyRequest(sessionID: id, before: nil, after: nil, limit: 80)) { historyAsked[id] = Date() }
     }
 
-    /// New entries since the last complete one (a tool call without its result yet comes again).
+    /// What's new since the last request (see `ChatSync.anchor`). One request at a time: asked
+    /// again meanwhile, it goes when the page is in.
     private func requestNewer(_ id: UUID) {
-        guard let entries = conversations[id]?.entries, conversations[id]?.loaded == true else { requestLatest(id); return }
-        guard let anchor = entries.last(where: { $0.kind != .tool || $0.result != nil }) else { requestLatest(id); return }
-        _ = send(.historyRequest(sessionID: id, before: nil, after: anchor.id, limit: 120))
+        if let asked = historyAsked[id], Date().timeIntervalSince(asked) < 8 {
+            historyAgain.insert(id)
+            return
+        }
+        guard let conversation = conversations[id], conversation.loaded,
+              let anchor = ChatSync.anchor(conversation.entries, hostSendsUpdates: snapshot?.supports(RemoteSnapshot.Feature.historyUpdates) == true)
+        else { requestLatest(id); return }
+        if send(.historyRequest(sessionID: id, before: nil, after: anchor, limit: 120)) { historyAsked[id] = Date() }
     }
 
     func loadOlder(_ id: UUID) {
@@ -747,29 +789,28 @@ final class RemoteStore {
         _ = send(.historyRequest(sessionID: id, before: first.id, after: nil, limit: 80))
     }
 
+    /// Every conversation page as it arrives (DebugHooks' latency log).
+    @ObservationIgnored var onHistoryPage: ((UUID, ChatPage) -> Void)?
+
     private func received(_ page: ChatPage, for id: UUID) {
+        onHistoryPage?(id, page)
         var conversation = conversations[id] ?? Conversation()
-        if page.reset {
-            conversation.entries = page.entries
-            conversation.hasMoreBefore = page.hasMoreBefore
-        } else if page.before != nil {
-            let known = Set(conversation.entries.map(\.id))
-            conversation.entries = page.entries.filter { !known.contains($0.id) } + conversation.entries
-            conversation.hasMoreBefore = page.hasMoreBefore
-            conversation.loadingOlder = false
-        } else {
-            for entry in page.entries {
-                if let index = conversation.entries.firstIndex(where: { $0.id == entry.id }) {
-                    conversation.entries[index] = entry
-                } else {
-                    conversation.entries.append(entry)
-                }
-            }
-        }
+        let fitted = ChatSync.merge(page, into: &conversation.entries, hasMoreBefore: &conversation.hasMoreBefore)
+        if page.before != nil { conversation.loadingOlder = false }
         conversation.loaded = true
         if let tokens = page.contextTokens { conversation.contextTokens = tokens }
         if let notes = page.agentNotes { conversation.agentNotes = notes }
         if conversations[id] != conversation { conversations[id] = conversation }
+        guard page.before == nil else { return }
+        historyAsked[id] = nil
+        guard openConversations[id] != nil else { historyAgain.remove(id); return }
+        // After an entry this phone no longer has: start over from the latest page.
+        if !fitted {
+            historyAgain.remove(id)
+            requestLatest(id)
+        } else if historyAgain.remove(id) != nil {
+            requestNewer(id)
+        }
     }
 
     /// Typed into the session on the Mac (not while it shows a prompt).
@@ -824,10 +865,11 @@ final class RemoteStore {
         openEdits[id, default: 0] += 1
         requestEdits(id)
         // Like the conversation: new edits come without a state change.
-        if editsTimer == nil {
-            editsTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
+        if editsPoll == nil {
+            editsPoll = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(4))
+                    guard let self, !Task.isCancelled else { return }
                     for id in self.openEdits.keys { self.requestEdits(id) }
                 }
             }
@@ -838,8 +880,8 @@ final class RemoteStore {
         guard let count = openEdits[id] else { return }
         openEdits[id] = count > 1 ? count - 1 : nil
         if openEdits.isEmpty {
-            editsTimer?.invalidate()
-            editsTimer = nil
+            editsPoll?.cancel()
+            editsPoll = nil
         }
     }
 

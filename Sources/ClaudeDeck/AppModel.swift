@@ -108,6 +108,8 @@ final class AppModel {
     /// Set by the UI layer (notifications, dock, bounce).
     @ObservationIgnored var onAttention: ((AttentionEvent) -> Void)?
     @ObservationIgnored var onCountsChanged: (() -> Void)?
+    /// A session's transcript grew (RemoteController tells phones with its conversation open).
+    @ObservationIgnored var onTranscriptChanged: ((UUID) -> Void)?
     /// After the deck was saved (projects renamed, pinned…): remote mode republishes.
     @ObservationIgnored var onSaved: (() -> Void)?
     /// Opens the main window scene (set by a SwiftUI view that has `openWindow`).
@@ -372,6 +374,7 @@ final class AppModel {
         tailers[id]?.stop()
         tailers[id] = nil
         let tailer = FileTailer(url: URL(fileURLWithPath: path)) { [weak self] chunk in
+            MainActor.assumeIsolated { self?.onTranscriptChanged?(id) }
             // Only look for limit events when the chunk may hold one or a hit is waiting to be cleared.
             let mayMatter = chunk.contains(#""rate_limit""#) || chunk.contains(#""isApiErrorMessage":true"#)
                 || MainActor.assumeIsolated { self?.usageLimitHits[id] != nil }

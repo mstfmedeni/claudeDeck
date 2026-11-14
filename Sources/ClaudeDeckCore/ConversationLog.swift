@@ -127,6 +127,10 @@ public struct ChatPage: Codable, Sendable, Equatable {
     /// Agents' notes on this session, newest last (hosts with `Feature.agents`); the whole list
     /// each time, it replaces what the remote has.
     public var agentNotes: [AgentNote]?
+    /// With `after`: entries at or before the anchor that changed since it was added (a tool's
+    /// result came in later), to replace the remote's copies. Hosts with `Feature.historyUpdates`;
+    /// older remotes ignore it.
+    public var updated: [ChatEntry]?
 
     public init(entries: [ChatEntry], hasMoreBefore: Bool, reset: Bool, before: String? = nil, after: String? = nil) {
         self.entries = entries
@@ -134,6 +138,64 @@ public struct ChatPage: Codable, Sendable, Equatable {
         self.reset = reset
         self.before = before
         self.after = after
+    }
+}
+
+/// The remote's side of conversation pages (the phone's ConversationView): which entry to ask
+/// for newer ones after, and how a page goes into what it has.
+public enum ChatSync {
+    /// The anchor for the next `historyRequest(after:)`; nil: ask for the latest page.
+    /// - A host that sends `ChatPage.updated` (`Feature.historyUpdates`) also sends what changed up
+    ///   to the anchor: the last entry.
+    /// - An older host sends only what comes after the anchor, so a tool call still waiting for its
+    ///   result has to come after it: the anchor goes just before the first such call, looking at
+    ///   the last `window` entries (one older than that, cut off without a result, would hold the
+    ///   anchor back for good). Calls answered out of order (parallel calls, background tasks)
+    ///   still get their results.
+    public static func anchor(_ entries: [ChatEntry], hostSendsUpdates: Bool, window: Int = 60) -> String? {
+        guard let last = entries.last else { return nil }
+        if hostSendsUpdates { return last.id }
+        let start = max(0, entries.count - window)
+        guard let pending = entries[start...].firstIndex(where: { $0.kind == .tool && $0.result == nil }) else { return last.id }
+        return pending > 0 ? entries[pending - 1].id : nil
+    }
+
+    /// The first of `count` entries to draw: about the last `window`, moved in steps of `step` so
+    /// what's on screen doesn't shift with every new entry.
+    public static func windowStart(count: Int, window: Int, step: Int) -> Int {
+        guard count > window, step > 0 else { return 0 }
+        return (count - window) / step * step
+    }
+
+    /// Puts a page into `entries`. False when it doesn't fit (a page after an entry that isn't
+    /// there any more): ask for the latest page instead.
+    @discardableResult
+    public static func merge(_ page: ChatPage, into entries: inout [ChatEntry], hasMoreBefore: inout Bool) -> Bool {
+        if page.reset {
+            entries = page.entries
+            hasMoreBefore = page.hasMoreBefore
+            return true
+        }
+        if page.before != nil {
+            let known = Set(entries.map(\.id))
+            entries = page.entries.filter { !known.contains($0.id) } + entries
+            hasMoreBefore = page.hasMoreBefore
+            return true
+        }
+        var index = Dictionary(entries.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        if let after = page.after, index[after] == nil { return false }
+        for entry in page.updated ?? [] {
+            if let at = index[entry.id] { entries[at] = entry }
+        }
+        for entry in page.entries {
+            if let at = index[entry.id] {
+                entries[at] = entry
+            } else {
+                index[entry.id] = entries.count
+                entries.append(entry)
+            }
+        }
+        return true
     }
 }
 
@@ -177,6 +239,12 @@ public enum ConversationLog {
         private let collectsChanges: Bool
         /// Edit / Write / MultiEdit calls waiting for their result: tool name by call id.
         private var changeCalls: [String: String] = [:]
+        /// When each entry last changed (added, or its result filled in), counting up from 1 per
+        /// reader: `page(after:)` sends the entries before the anchor that changed after it came.
+        public private(set) var revisions: [Int] = []
+        /// When each entry was added (its first revision).
+        public private(set) var added: [Int] = []
+        private var revision = 0
 
         /// `collectsChanges`: also gather `changes` (the Changes panel; others leave them out).
         public init(collectsChanges: Bool = false) {
@@ -215,6 +283,18 @@ public enum ConversationLog {
             return true
         }
 
+        private mutating func add(_ entry: ChatEntry) {
+            revision += 1
+            entries.append(entry)
+            revisions.append(revision)
+            added.append(revision)
+        }
+
+        /// The page for a request, with `updated` filled in (see `ConversationLog.page`).
+        public func page(before: String?, after: String?, limit: Int) -> ChatPage {
+            ConversationLog.page(entries, revisions: (added, revisions), before: before, after: after, limit: limit)
+        }
+
         /// Adds the entries of these JSONL lines (tool results fill in calls read earlier).
         public mutating func append(_ text: String) {
             let iso = ISO8601DateFormatter()
@@ -229,13 +309,13 @@ public enum ConversationLog {
                 let message = object["message"] as? [String: Any] ?? [:]
 
                 if object["isCompactSummary"] as? Bool == true {
-                    entries.append(ChatEntry(id: uuid, kind: .system, text: String(localized: "Conversation compacted"), date: date))
+                    add(ChatEntry(id: uuid, kind: .system, text: String(localized: "Conversation compacted"), date: date))
                     continue
                 }
                 if type == "attachment" {
                     if let text = ConversationLog.queuedPrompt(object["attachment"] as? [String: Any]), let entry = ConversationLog.userEntry(text, id: uuid, date: date) {
                         queued.insert(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                        entries.append(entry)
+                        add(entry)
                     }
                     continue
                 }
@@ -243,18 +323,20 @@ public enum ConversationLog {
                     if object["isMeta"] as? Bool == true { continue }
                     if let content = message["content"] as? String {
                         if queued.remove(content.trimmingCharacters(in: .whitespacesAndNewlines)) != nil { continue }
-                        if let entry = ConversationLog.userEntry(content, id: uuid, date: date) { entries.append(entry) }
+                        if let entry = ConversationLog.userEntry(content, id: uuid, date: date) { add(entry) }
                     } else if let blocks = message["content"] as? [[String: Any]] {
                         for (index, block) in blocks.enumerated() {
                             switch block["type"] as? String {
                             case "text":
-                                if let text = block["text"] as? String, let entry = ConversationLog.userEntry(text, id: "\(uuid)#\(index)", date: date) { entries.append(entry) }
+                                if let text = block["text"] as? String, let entry = ConversationLog.userEntry(text, id: "\(uuid)#\(index)", date: date) { add(entry) }
                             case "tool_result":
                                 if collectsChanges, let toolID = block["tool_use_id"] as? String, let tool = changeCalls.removeValue(forKey: toolID),
                                    block["is_error"] as? Bool != true {
                                     changes.record(toolUseID: toolID, tool: tool, result: object["toolUseResult"], date: date)
                                 }
                                 guard let toolID = block["tool_use_id"] as? String, let at = toolIndex[toolID] else { continue }
+                                revision += 1
+                                revisions[at] = revision
                                 entries[at].result = ConversationLog.resultText(block["content"])
                                 entries[at].isError = block["is_error"] as? Bool ?? false
                                 if entries[at].questions != nil {
@@ -273,14 +355,14 @@ public enum ConversationLog {
                         case "text", "thinking":
                             let text = (block["text"] as? String ?? block["thinking"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !text.isEmpty else { continue }
-                            entries.append(ChatEntry(id: "\(uuid)#\(index)", kind: .assistant, text: String(text.prefix(ConversationLog.maxText)), date: date))
+                            add(ChatEntry(id: "\(uuid)#\(index)", kind: .assistant, text: String(text.prefix(ConversationLog.maxText)), date: date))
                         case "tool_use":
                             let name = block["name"] as? String ?? "Tool"
                             let id = block["id"] as? String ?? "\(uuid)#\(index)"
                             toolIndex[id] = entries.count
                             if collectsChanges, ["Edit", "Write", "MultiEdit"].contains(name) { changeCalls[id] = name }
                             let input = block["input"] as? [String: Any] ?? [:]
-                            entries.append(ChatEntry(id: id, kind: .tool, text: ConversationLog.summary(tool: name, input: input), toolName: name, date: date,
+                            add(ChatEntry(id: id, kind: .tool, text: ConversationLog.summary(tool: name, input: input), toolName: name, date: date,
                                                      questions: name == "AskUserQuestion" ? ChatQuestion.parse(input) : nil))
                         default:
                             break // server tools
@@ -383,14 +465,27 @@ public enum ConversationLog {
         return String(line.prefix(200))
     }
 
-    /// The page for a request (see `ChatPage`).
-    public static func page(_ entries: [ChatEntry], before: String?, after: String?, limit: Int) -> ChatPage {
+    /// The page for a request (see `ChatPage`). `revisions` (the reader's `added` and `revisions`,
+    /// one per entry): a page after an anchor also carries, in `updated`, the entries up to the
+    /// anchor (itself included) that changed after the anchor was added. Whatever the remote had, it got after the anchor was added, so those
+    /// are the only ones it can have old: a tool call that got its result later (parallel calls,
+    /// background tasks) while newer entries were already complete.
+    public static func page(_ entries: [ChatEntry], revisions: (added: [Int], changed: [Int])? = nil, before: String?, after: String?, limit: Int) -> ChatPage {
         let limit = max(1, min(limit, 200))
         if let after {
             if let index = entries.firstIndex(where: { $0.id == after }) {
                 let newer = Array(entries[(index + 1)...])
+                var updated: [ChatEntry] = []
+                if let revisions, revisions.added.count == entries.count, revisions.changed.count == entries.count {
+                    let since = revisions.added[index]
+                    updated = entries.indices[...index].filter { revisions.changed[$0] > since }.map { entries[$0] }
+                }
                 // Far behind: start over with the latest page rather than a huge append.
-                if newer.count <= limit { return ChatPage(entries: newer, hasMoreBefore: true, reset: false, after: after) }
+                if newer.count + updated.count <= limit {
+                    var page = ChatPage(entries: newer, hasMoreBefore: true, reset: false, after: after)
+                    if revisions != nil { page.updated = updated }
+                    return page
+                }
             }
             let tail = Array(entries.suffix(limit))
             return ChatPage(entries: tail, hasMoreBefore: entries.count > tail.count, reset: true)

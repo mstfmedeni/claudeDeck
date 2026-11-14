@@ -106,6 +106,14 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case historyRequest(sessionID: UUID, before: String?, after: String?, limit: Int)
     /// Host → remote: the answer.
     case history(sessionID: UUID, page: ChatPage)
+    /// Remote → host: the session's conversation is on screen / no longer (counted per session
+    /// on the remote; sent once each way). While it's open the host says when its transcript
+    /// changes. Hosts with `Feature.conversationPush`.
+    case conversationOpen(sessionID: UUID)
+    case conversationClose(sessionID: UUID)
+    /// Host → remote: the open conversation's transcript changed: ask for what's new now
+    /// (polling stays as a fallback).
+    case conversationChanged(sessionID: UUID)
     /// Remote → host: Claude's edits in a session after the change `after` (nil: from the first),
     /// a page at a time (RemoteEdits.swift). Hosts with `Feature.edits`.
     case editsRequest(sessionID: UUID, after: String?)
@@ -337,8 +345,14 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let renameFolder = "renameFolder"
         /// `editsRequest` / `netDiffRequest`.
         public static let edits = "edits"
+        /// `ChatPage.updated`: pages after an anchor also carry the entries up to it that changed
+        /// since (tool results that came in out of order).
+        public static let historyUpdates = "historyUpdates"
+        /// `conversationOpen` / `conversationClose`, answered with `conversationChanged`.
+        public static let conversationPush = "conversationPush"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
-                                              agentDetails, agentCompletion, homeFiles, renameFolder, edits]
+                                              agentDetails, agentCompletion, homeFiles, renameFolder, edits,
+                                              historyUpdates, conversationPush]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

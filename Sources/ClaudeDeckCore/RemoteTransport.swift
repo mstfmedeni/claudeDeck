@@ -190,6 +190,8 @@ public final class RemoteServer: @unchecked Sendable {
         var resync: Set<UUID> = []
         /// A phone that registered for pushes (it gets in-app alerts while connected).
         var pushToken: Data?
+        /// Sessions whose conversation this remote shows (`conversationOpen`): told when they change.
+        var conversations: Set<UUID> = []
     }
 
     /// Output stops being queued for a remote with this much unsent data.
@@ -302,6 +304,16 @@ public final class RemoteServer: @unchecked Sendable {
     public var onWatchedChanged: ((Set<UUID>) -> Void)?
 
     public var watchedSessions: Set<UUID> { peers.values.reduce(into: Set()) { $0.formUnion($1.watching) } }
+
+    /// Sessions whose conversation some remote has open.
+    public var openConversations: Set<UUID> { peers.values.reduce(into: Set()) { $0.formUnion($1.conversations) } }
+
+    /// The session's transcript changed: remotes with its conversation open ask for what's new.
+    public func conversationChanged(sessionID: UUID) {
+        for peer in peers.values where peer.conversations.contains(sessionID) {
+            peer.channel.send(.conversationChanged(sessionID: sessionID))
+        }
+    }
 
     /// New output of a session, for every remote watching it.
     public func sendOutput(sessionID: UUID, bytes: Data) {
@@ -471,6 +483,10 @@ public final class RemoteServer: @unchecked Sendable {
                         channel.send(.history(sessionID: sessionID, page: page ?? ChatPage(entries: [], hasMoreBefore: false, reset: true)))
                     }
                 }
+            case .conversationOpen(let sessionID):
+                peers[id]?.conversations.insert(sessionID)
+            case .conversationClose(let sessionID):
+                peers[id]?.conversations.remove(sessionID)
             case .editsRequest(let sessionID, let after):
                 let channel = peer.channel
                 onEditsRequest?(sessionID, after) { [queue] page in
@@ -668,6 +684,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
     public var onTerminalOutput: ((_ sessionID: UUID, _ bytes: Data) -> Void)?
     public var onTerminalEnded: ((_ sessionID: UUID) -> Void)?
     public var onHistory: ((_ sessionID: UUID, _ page: ChatPage) -> Void)?
+    /// The host says an open conversation changed (hosts with `Feature.conversationPush`).
+    public var onConversationChanged: ((_ sessionID: UUID) -> Void)?
     public var onEdits: ((_ sessionID: UUID, _ page: RemoteEditsPage) -> Void)?
     public var onNetDiff: ((_ sessionID: UUID, _ path: String, _ diff: RemoteNetDiff) -> Void)?
     public var onSessionStarted: ((UUID) -> Void)?
@@ -933,6 +951,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
             self.onTerminalEnded?(id)
         case .history(let id, let page) where authenticated:
             self.onHistory?(id, page)
+        case .conversationChanged(let id) where authenticated:
+            self.onConversationChanged?(id)
         case .edits(let id, let page) where authenticated:
             self.onEdits?(id, page)
         case .netDiff(let id, let path, let diff) where authenticated:

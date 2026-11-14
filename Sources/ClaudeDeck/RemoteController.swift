@@ -161,6 +161,11 @@ final class RemoteController {
             previousAttention?(event)
             self?.push(event)
         }
+        let previousTranscript = model.onTranscriptChanged
+        model.onTranscriptChanged = { [weak self] id in
+            previousTranscript?(id)
+            self?.transcriptChanged(id)
+        }
         model.terminals.onOutput = { [weak self] id, bytes in self?.terminalOutput(id, bytes) }
         model.terminals.onResize = { [weak self] id in self?.terminalResized(id) }
         let previousExit = model.terminals.onExit
@@ -744,7 +749,7 @@ final class RemoteController {
         }
         let size = ((try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber)?.intValue ?? 0
         if let cached = historyCache[id], cached.path == path, cached.size == size {
-            var page = ConversationLog.page(cached.reader.entries, before: before, after: after, limit: limit)
+            var page = cached.reader.page(before: before, after: after, limit: limit)
             page.contextTokens = cached.tokens
             page.agentNotes = model.agentNotes[id] ?? []
             reply(page)
@@ -771,11 +776,26 @@ final class RemoteController {
             self.historyCache[id] = (path, Int(reader.offset), reader, tokens)
             let notes = self.model?.agentNotes[id] ?? []
             for request in self.historyWaiting.removeValue(forKey: id) ?? [] {
-                var page = ConversationLog.page(reader.entries, before: request.before, after: request.after, limit: request.limit)
+                var page = reader.page(before: request.before, after: request.after, limit: request.limit)
                 page.contextTokens = tokens
                 page.agentNotes = notes
                 request.reply(page)
             }
+        }
+    }
+
+    /// Sessions with a `conversationChanged` on its way (a burst of lines sends one).
+    @ObservationIgnored private var conversationNotices: Set<UUID> = []
+
+    /// The transcript grew: phones with the conversation open ask for what's new right away
+    /// instead of at their next poll.
+    private func transcriptChanged(_ id: UUID) {
+        guard let server, server.openConversations.contains(id), conversationNotices.insert(id).inserted else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self else { return }
+            self.conversationNotices.remove(id)
+            self.server?.conversationChanged(sessionID: id)
         }
     }
 
