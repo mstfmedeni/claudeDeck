@@ -729,12 +729,13 @@ final class RemoteStore {
         requestLatest(id)
         announceConversations()
         // Tool results and long answers grow without a state change: check every few seconds
-        // (less often when the Mac says when the transcript changes).
+        // (less often when the Mac says when the transcript changes; not much less: it can only
+        // say so once a hook has come since it started).
         if conversationPoll == nil {
             conversationPoll = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     let pushed = self?.snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true
-                    try? await Task.sleep(for: .seconds(pushed ? 12 : 4))
+                    try? await Task.sleep(for: .seconds(pushed ? 6 : 4))
                     guard let self, !Task.isCancelled else { return }
                     for id in self.openConversations.keys { self.requestNewer(id) }
                 }
