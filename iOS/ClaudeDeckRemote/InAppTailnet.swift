@@ -57,6 +57,10 @@ final class InAppTailnet {
     @ObservationIgnored private let anchor = LoginAnchor()
     /// The user tapped Sign In: open the login page when the node has one.
     @ObservationIgnored private var wantsSignIn = false
+    /// The login page was opened for this sign-in (once: closing it doesn't bring it back).
+    @ObservationIgnored private var loginOpened = false
+    /// Signing out: the node may be started just to log out; its status isn't shown.
+    @ObservationIgnored private var signingOut = false
     @ObservationIgnored private var inForeground = true
     /// Bumped when the node stops: late results from the old one are ignored.
     @ObservationIgnored private var generation = 0
@@ -100,8 +104,9 @@ final class InAppTailnet {
     // MARK: Actions
 
     func signIn() {
-        guard enabled else { return }
+        guard enabled, !signingOut else { return }
         wantsSignIn = true
+        loginOpened = false
         if case .failed = status { stop() }
         status = .starting
         Task { await startNode() }
@@ -119,14 +124,21 @@ final class InAppTailnet {
 
     /// Logs the node out of the tailnet (best effort), stops it and deletes its state.
     func signOut() {
-        let node = self.node
-        self.node = nil
-        stop()
+        guard !signingOut else { return }
+        signingOut = true
+        wantsSignIn = false
         status = enabled ? .signedOut : .off
         Task {
+            // Not running (it starts when needed): start it, or control keeps the device.
+            if node == nil, hasState { _ = await runningHandle(timeout: 10) }
+            let node = self.node
+            self.node = nil
+            stop()
             if let node { await Self.logout(node) }
-            self.forgetState()
-            self.onChange?()
+            forgetState()
+            signingOut = false
+            status = enabled ? .signedOut : .off
+            onChange?()
         }
     }
 
@@ -187,7 +199,7 @@ final class InAppTailnet {
             do {
                 try await node.up()
             } catch {
-                guard let self, self.generation == generation else { return }
+                guard let self, self.generation == generation, !self.signingOut else { return }
                 let message = Self.message(error)
                 self.login?.cancel()
                 self.login = nil
@@ -215,6 +227,7 @@ final class InAppTailnet {
     }
 
     private func apply(_ node: NodeStatus) {
+        guard !signingOut else { return }
         switch node.backendState {
         case "Running":
             let wasConnected = { if case .connected = status { true } else { false } }()
@@ -229,7 +242,7 @@ final class InAppTailnet {
         case "NeedsLogin":
             if wantsSignIn {
                 status = .signingIn
-                if login == nil, let url = node.authURL { openLogin(url) }
+                if !loginOpened, let url = node.authURL { openLogin(url) }
             } else if node.authURL != nil {
                 // Logged out elsewhere (removed in the admin console, key expired): sign in again.
                 stop()
@@ -246,16 +259,23 @@ final class InAppTailnet {
 
     private func openLogin(_ url: URL) {
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, _ in
-            // Closed by the user (Cancel) or by us once the node runs.
+            // Closed by us once the node runs, or by the user: after logging in ("you can close
+            // this window") the node runs a moment later, so give it time before giving up.
             MainActor.assumeIsolated {
                 guard let self, self.login != nil else { return }
                 self.login = nil
-                if self.status == .signingIn { self.cancelSignIn() }
+                let generation = self.generation
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(15))
+                    guard let self, self.generation == generation, self.wantsSignIn, self.status == .signingIn else { return }
+                    self.cancelSignIn()
+                }
             }
         }
         session.presentationContextProvider = anchor
         session.prefersEphemeralWebBrowserSession = false
         login = session
+        loginOpened = true
         session.start()
     }
 
