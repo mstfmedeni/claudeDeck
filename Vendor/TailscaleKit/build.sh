@@ -8,6 +8,8 @@
 # plus the patches in Vendor/TailscaleKit/patches (applied to a copy; the submodule stays clean):
 #   0001-advertise-tags.patch  tailscale_set_advertise_tags / Configuration.advertiseTags, so the
 #                              node registers with an ACL tag (tsnet.Server.AdvertiseTags).
+#   0002-no-log-upload.patch   TS_NO_LOGS_NO_SUPPORT set in the library's init: no diagnostic logs
+#                              go to log.tailscale.com.
 # Needs Go (https://go.dev/dl, or Homebrew) and Xcode. The Go part cross-compiles tsnet for iOS:
 # the first build takes a few minutes, later ones use Go's build cache.
 set -eu

@@ -1,0 +1,19 @@
+diff --git a/nologs.go b/nologs.go
+new file mode 100644
+--- /dev/null
++++ b/nologs.go
+@@ -0,0 +1,14 @@
++// Copyright (c) Tailscale Inc & AUTHORS
++// SPDX-License-Identifier: BSD-3-Clause
++
++package main
++
++import "os"
++
++// ClaudeDeck: the node never uploads its diagnostic logs to log.tailscale.com
++// (envknob.NoLogsNoSupport, read when the log transport is made). Go copies
++// the environment when it starts, so a setenv from Swift would come too late;
++// this runs in the library's own init instead.
++func init() {
++	os.Setenv("TS_NO_LOGS_NO_SUPPORT", "true")
++}
