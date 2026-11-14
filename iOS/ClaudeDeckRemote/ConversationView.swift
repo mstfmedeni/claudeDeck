@@ -24,6 +24,14 @@ struct ConversationView: View {
     /// Claude's edits as diffs at their tool calls (SessionDetailView's toolbar switches it).
     @AppStorage(Self.inlineEditsKey) private var inlineEdits = true
     static let inlineEditsKey = "conversation.inlineEdits"
+    /// How many of the latest entries are drawn (a long session has thousands; laying them all out
+    /// again on every update kept the main thread busy for most of the time).
+    @State private var window = ConversationView.windowStep * 2
+    static let windowStep = 80
+
+    static func windowStart(count: Int, window: Int) -> Int {
+        ChatSync.windowStart(count: count, window: window, step: windowStep)
+    }
 
     var body: some View {
         let conversation = store.conversations[sessionID]
@@ -38,18 +46,22 @@ struct ConversationView: View {
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    // Not lazy: a page is at most a few dozen entries, and a lazy stack only guesses
-                    // the heights of rows it hasn't drawn, so scrolling to the end landed short and
-                    // left gaps until the list was scrolled by hand.
+                    // Not lazy: a lazy stack only guesses the heights of rows it hasn't drawn, so
+                    // scrolling to the end landed short and left gaps until the list was scrolled by
+                    // hand. Instead only the latest entries are drawn (`window`); "Earlier messages"
+                    // draws more, then asks the Mac for older ones.
                     VStack(alignment: .leading, spacing: 10) {
-                        if conversation?.hasMoreBefore == true {
+                        let entries = conversation?.entries ?? []
+                        let start = Self.windowStart(count: entries.count, window: window)
+                        if start > 0 || conversation?.hasMoreBefore == true {
                             Button {
-                                let anchor = conversation?.entries.first?.id
-                                store.loadOlder(sessionID)
+                                let anchor = entries.indices.contains(start) ? entries[start].id : nil
+                                if start == 0 { store.loadOlder(sessionID) }
+                                window += Self.windowStep
                                 // Keep the reading position when older entries come in on top.
                                 if let anchor {
                                     Task { @MainActor in
-                                        try? await Task.sleep(for: .milliseconds(400))
+                                        try? await Task.sleep(for: .milliseconds(start > 0 ? 50 : 400))
                                         proxy.scrollTo(anchor, anchor: .top)
                                     }
                                 }
@@ -66,22 +78,22 @@ struct ConversationView: View {
                         // The question the prompt on the Mac is showing: answerable here.
                         let pendingQuestion = session?.state == .needsAnswer
                             ? conversation?.entries.last(where: { $0.questions != nil }).flatMap { $0.result == nil ? $0.id : nil } : nil
-                        let edits = showsEdits ? store.edits[sessionID] : nil
-                        ForEach(ChatItem.group(conversation?.entries ?? [], apart: edits == nil ? [] : ChatItem.editTools)) { item in
-                            switch item {
-                            case .entry(let entry) where entry.questions != nil:
-                                QuestionCard(entry: entry, sessionID: sessionID, pending: entry.id == pendingQuestion).id(entry.id)
-                            case .entry(let entry):
-                                if let edits, entry.kind == .tool, let change = edits.change(entry.id) {
-                                    ChangeCard(sessionID: sessionID, root: edits.root, path: change.path, hunks: edits.hunks(change.id),
-                                               change: change, inline: true)
-                                        .id(entry.id)
-                                } else {
-                                    ChatEntryView(entry: entry).id(entry.id)
-                                }
-                            case .tools(let entries):
-                                ToolGroupView(entries: entries).id(item.id)
+                        // Its own view, compared before it's drawn again: a state or detail change in
+                        // the snapshot (every few seconds while Claude works) doesn't lay out the rows.
+                        ConversationRows(sessionID: sessionID, entries: Array(entries[start...]), pendingQuestion: pendingQuestion,
+                                         edits: showsEdits ? store.edits[sessionID] : nil)
+                            .equatable()
+                        // Waiting for permission: the buttons at the end too, where the reading is.
+                        if let session, session.permissionStamp != nil {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(MarkdownBlocks.shortToolNames(session.detail ?? String(localized: "Needs permission")))
+                                    .listFont(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                PermissionButtons(session: session)
                             }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .id("permission")
                         }
                         if session?.state == .running {
                             HStack(spacing: 6) {
@@ -119,6 +131,9 @@ struct ConversationView: View {
                     } else if conversation?.entries.isEmpty == true {
                         Text("No messages yet").foregroundStyle(.secondary)
                     }
+                }
+                .onChange(of: session?.permissionStamp) { _, stamp in
+                    if stamp != nil { withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) } }
                 }
                 .onChange(of: conversation?.entries.last?.id) { old, _ in
                     // Opening: straight to the end; new messages after that: animated.
@@ -497,6 +512,9 @@ struct ChatEntryView: View {
     @State private var expanded = false
 
     var body: some View {
+        #if DEBUG
+        let _ = DebugHooks.rowBodies += 1
+        #endif
         switch entry.kind {
         case .user:
             HStack {
@@ -776,6 +794,33 @@ struct MarkdownTableView: View {
             label.frame(width: 260, alignment: .leading).fixedSize(horizontal: false, vertical: true)
         } else {
             label.fixedSize()
+        }
+    }
+}
+
+/// The conversation's entries as rows (diffs at Claude's edits when `edits` is given).
+struct ConversationRows: View, Equatable {
+    let sessionID: UUID
+    let entries: [ChatEntry]
+    let pendingQuestion: String?
+    let edits: RemoteEditsState?
+
+    var body: some View {
+        ForEach(ChatItem.group(entries, apart: edits == nil ? [] : ChatItem.editTools)) { item in
+            switch item {
+            case .entry(let entry) where entry.questions != nil:
+                QuestionCard(entry: entry, sessionID: sessionID, pending: entry.id == pendingQuestion).id(entry.id)
+            case .entry(let entry):
+                if let edits, entry.kind == .tool, let change = edits.change(entry.id) {
+                    ChangeCard(sessionID: sessionID, root: edits.root, path: change.path, hunks: edits.hunks(change.id),
+                               change: change, inline: true)
+                        .id(entry.id)
+                } else {
+                    ChatEntryView(entry: entry).id(entry.id)
+                }
+            case .tools(let entries):
+                ToolGroupView(entries: entries).id(item.id)
+            }
         }
     }
 }

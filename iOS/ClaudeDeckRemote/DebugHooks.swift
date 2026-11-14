@@ -5,6 +5,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
+///   track.txt (seconds: the main run loop stays in tracking mode, as while a finger is on the screen) ·
 ///   homefiles.txt (a folder in the Mac's home) · addresses.txt (one per line; empty: automatic) · pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
 final class DebugHooks {
@@ -20,10 +21,56 @@ final class DebugHooks {
         hooks.timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             MainActor.assumeIsolated { hooks.tick() }
         }
+        // Tracking mode too: the report keeps coming while track.txt holds the run loop.
+        if let timer = hooks.timer { RunLoop.main.add(timer, forMode: .common) }
+        hooks.watchMainThread()
+        let arrivals = hooks.dir.appending(path: "arrivals.txt")
+        try? FileManager.default.removeItem(at: arrivals)
+        store.onHistoryPage = { id, page in
+            // When each entry (and each filled-in result) reached the phone, for latency checks.
+            let now = Date().timeIntervalSince1970
+            let lines = page.entries.map { "\(now) \(id.uuidString.prefix(8)) \(page.reset ? "reset" : page.before != nil ? "older" : "newer") \($0.id) \($0.result == nil && $0.kind == .tool ? "pending" : "done") \($0.text.prefix(40).replacingOccurrences(of: "\n", with: " "))" }
+                + (page.updated ?? []).map { "\(now) \(id.uuidString.prefix(8)) updated \($0.id) \($0.result == nil && $0.kind == .tool ? "pending" : "done")" }
+            guard !lines.isEmpty, let handle = (try? FileHandle(forWritingTo: arrivals)) ?? {
+                FileManager.default.createFile(atPath: arrivals.path, contents: nil)
+                return try? FileHandle(forWritingTo: arrivals)
+            }() else { return }
+            handle.seekToEndOfFile()
+            handle.write(Data((lines.joined(separator: "\n") + "\n").utf8))
+            try? handle.close()
+        }
         return hooks
     }
 
     private init(store: RemoteStore) { self.store = store }
+
+    /// Longest time the main thread didn't answer (a background thread pings it every 50 ms):
+    /// the worst since launch, and the worst and count over 250 ms since the last report.
+    nonisolated(unsafe) private static var stallWorst: TimeInterval = 0
+    nonisolated(unsafe) private static var stallRecent: TimeInterval = 0
+    nonisolated(unsafe) private static var stallCount = 0
+    private static let stallLock = NSLock()
+
+    private func watchMainThread() {
+        Thread.detachNewThread {
+            while true {
+                let sent = Date()
+                let answered = DispatchSemaphore(value: 0)
+                DispatchQueue.main.async { answered.signal() }
+                answered.wait()
+                let gap = Date().timeIntervalSince(sent)
+                Self.stallLock.lock()
+                Self.stallWorst = max(Self.stallWorst, gap)
+                Self.stallRecent = max(Self.stallRecent, gap)
+                if gap > 0.25 { Self.stallCount += 1 }
+                Self.stallLock.unlock()
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+    }
+
+    /// Row bodies drawn since launch (ConversationView's rows count themselves in DEBUG builds).
+    nonisolated(unsafe) static var rowBodies = 0
 
     private func tick() {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
@@ -159,6 +206,19 @@ final class DebugHooks {
             } else if file.hasSuffix(".approve") || file.hasSuffix(".deny"), let id {
                 try? FileManager.default.removeItem(at: url)
                 store.answer(id, stamp: store.snapshot?.session(id)?.permissionStamp, approve: file.hasSuffix(".approve"))
+            } else if file.hasSuffix(".older"), let id {
+                // "Earlier messages", once per tick until the file's count runs out.
+                let count = Int(((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+                if store.conversations[id]?.loadingOlder != true {
+                    store.loadOlder(id)
+                    if count > 1 { try? String(count - 1).write(to: url, atomically: true, encoding: .utf8) } else { try? FileManager.default.removeItem(at: url) }
+                }
+            } else if file == "track.txt" {
+                // Like a finger on the screen: only common-mode timers and the main queue run meanwhile.
+                let seconds = Double(((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 10
+                try? FileManager.default.removeItem(at: url)
+                let end = Date().addingTimeInterval(seconds)
+                while Date() < end { _ = RunLoop.main.run(mode: .tracking, before: Date().addingTimeInterval(0.05)) }
             } else if file.hasSuffix(".type"), let id, let text = try? String(contentsOf: url, encoding: .utf8) {
                 try? FileManager.default.removeItem(at: url)
                 store.sendTerminalInput(id, data: Data(text.replacingOccurrences(of: "\\r", with: "\r").utf8))
@@ -171,6 +231,10 @@ final class DebugHooks {
                      "terminals: \(store.terminalStates) usage=\(store.snapshot?.usage.map { "\($0.fiveHour ?? -1)/\($0.week ?? -1)" } ?? "-") past=\(store.pastConversations.values.map(\.count))",
                      "home: \(store.folders[""].map { "\($0.path) \($0.folders.count) folders" } ?? "-") lan: \(store.lanHosts.map(\.name)) via=\(store.connectedVia ?? "-") pairing=\(store.pairing?.addresses ?? [])",
                      "push: token=\(push.token?.count ?? 0) env=\(PushRegistration.environment) error=\(push.lastError ?? "-")"]
+        Self.stallLock.lock()
+        lines.append(String(format: "main: worst=%.0fms recent=%.0fms stalls>250ms=%d rowBodies=%d", Self.stallWorst * 1000, Self.stallRecent * 1000, Self.stallCount, Self.rowBodies))
+        Self.stallRecent = 0
+        Self.stallLock.unlock()
         lines.append("agents: \(store.snapshot?.agents?.map(\.name) ?? []) pending=\(store.snapshot?.pendingAgents?.map { "\($0.id.uuidString) \($0.name) \($0.host)" } ?? [])")
         if let details = store.agentDetails {
             for agent in details.agents {
@@ -183,7 +247,8 @@ final class DebugHooks {
         }
         for (id, conversation) in store.conversations {
             let questions = conversation.entries.filter { $0.questions != nil }.map { "\($0.id.suffix(6)):\($0.questions?.count ?? 0)q:\($0.result == nil ? "open" : "done")" }
-            lines.append("  conversation \(id.uuidString) entries=\(conversation.entries.count) questions=\(questions)")
+            let pending = conversation.entries.filter { $0.kind == .tool && $0.result == nil }.map { String($0.id.suffix(8)) }
+            lines.append("  conversation \(id.uuidString) entries=\(conversation.entries.count) questions=\(questions) pending=\(pending) last=\(conversation.entries.last.map { "\($0.id.suffix(8)) \($0.text.prefix(30))" } ?? "-")")
         }
         for item in store.transfers.items {
             lines.append("  transfer \(item.upload ? "up" : "down") \(item.name) \(item.done)/\(item.total) finished=\(item.finished) error=\(item.error ?? "-")")
