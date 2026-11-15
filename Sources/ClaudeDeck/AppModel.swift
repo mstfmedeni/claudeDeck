@@ -184,7 +184,7 @@ final class AppModel {
         usage.start()
         trackMenuBarCounts()
         menuBarCountsObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.trackMenuBarCounts() }
+            MainActor.assumeIsolated { self?.publishMenuBarCounts() }
         }
         // Resolving `claude` runs the login shell; keep it off the main thread.
         Task { @MainActor in
@@ -308,13 +308,19 @@ final class AppModel {
     /// `counts` reads nearly all session state: the label reads this copy instead, written only
     /// when a number changes and while the screen can be seen (caught up when it can again).
     private(set) var menuBarCounts = SessionCounts()
+    @ObservationIgnored private var latestCounts = SessionCounts()
     @ObservationIgnored private var menuBarCountsObserver: Any?
 
+    /// Recomputes `counts` after every change to what it reads (call once: each run re-arms itself).
     private func trackMenuBarCounts() {
-        let current = withObservationTracking { counts } onChange: { [weak self] in
+        latestCounts = withObservationTracking { counts } onChange: { [weak self] in
             Task { @MainActor in self?.trackMenuBarCounts() }
         }
-        if AppVisibility.shared.screenVisible, current != menuBarCounts { menuBarCounts = current }
+        publishMenuBarCounts()
+    }
+
+    private func publishMenuBarCounts() {
+        if AppVisibility.shared.screenVisible, latestCounts != menuBarCounts { menuBarCounts = latestCounts }
     }
 
     /// Sessions waiting for the user: blocked first, then finished-but-unseen; newest first.
