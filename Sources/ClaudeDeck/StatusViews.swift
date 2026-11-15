@@ -1,3 +1,4 @@
+import AppKit
 import ClaudeDeckCore
 import SwiftUI
 
@@ -40,18 +41,14 @@ enum StatusStyle {
 struct StatusDot: View {
     let display: DisplayState
     var unseen = false
-    @State private var pulse = false
 
     var body: some View {
         let color = StatusStyle.color(for: display)
         ZStack {
             if display.isBlocked || display.isRunning {
-                Circle()
-                    .fill(color.opacity(0.35))
+                PulseRing(color: NSColor(color.opacity(0.35)), filled: true, scale: 0.5...1, opacity: 1,
+                          duration: display.isBlocked ? 1.0 : 1.6, active: AppVisibility.shared.windowsVisible)
                     .frame(width: 14, height: 14)
-                    .scaleEffect(pulse ? 1 : 0.5)
-                    .opacity(pulse ? 0 : 1)
-                    .animation(.easeOut(duration: display.isBlocked ? 1.0 : 1.6).repeatForever(autoreverses: false), value: pulse)
             }
             if display.isIdle && !unseen {
                 // Seen "your turn": a quiet grey ring; only unseen ones are yellow.
@@ -65,7 +62,6 @@ struct StatusDot: View {
             }
         }
         .frame(width: 14, height: 14)
-        .onAppear { pulse = true }
         .accessibilityLabel(Text(accessibility))
     }
 
@@ -87,7 +83,6 @@ struct StatusDot: View {
 struct StatusPill: View {
     let display: DisplayState
     var unseen = false
-    @State private var pulse = false
 
     var body: some View {
         let inactive = display == .notStarted || display == .activity(.ended)
@@ -95,14 +90,13 @@ struct StatusPill: View {
         let fill: Color = inactive ? Color.secondary.opacity(0.18)
             : display.isIdle && !unseen ? StatusStyle.idle.opacity(0.45)
             : StatusStyle.color(for: display)
+        let live = AppVisibility.shared.windowsVisible
         HStack(spacing: 0) {
             Text(StatusStyle.label(for: display))
             if display.isRunning || display == .starting {
-                TimelineView(.periodic(from: .now, by: 0.35)) { context in
-                    let step = Int(context.date.timeIntervalSinceReferenceDate / 0.35) % 4
-                    Text(String(repeating: "·", count: step) + String(repeating: " ", count: 3 - step))
-                        .monospaced()
-                }
+                // Three character cells wide, like the "···" it draws.
+                Text("   ").monospaced().hidden()
+                    .overlay { FlowingDots(color: NSColor(StatusStyle.pillText(for: display)), active: live) }
             }
         }
         .font(.caption2.weight(.bold))
@@ -112,16 +106,209 @@ struct StatusPill: View {
         .background(Capsule().fill(fill))
         .overlay {
             if display.isBlocked {
-                Capsule()
-                    .stroke(StatusStyle.blocked, lineWidth: 2)
-                    .scaleEffect(pulse ? 1.25 : 1)
-                    .opacity(pulse ? 0 : 0.8)
-                    .animation(.easeOut(duration: 1.1).repeatForever(autoreverses: false), value: pulse)
+                PulseRing(color: NSColor(StatusStyle.blocked), filled: false, lineWidth: 2, scale: 1...1.25, opacity: 0.8,
+                          duration: 1.1, active: live)
             }
         }
         .fixedSize()
         .animation(.snappy, value: display)
-        .onAppear { pulse = true }
+    }
+}
+
+/// A shape that grows and fades out, over and over. Core Animation runs it in the render server,
+/// so it costs the app nothing per frame — a SwiftUI `repeatForever` animation re-renders the
+/// view graph (in the sidebar: the whole list's layout) on every frame. Stops while no window is
+/// visible.
+struct PulseRing: NSViewRepresentable {
+    var color: NSColor
+    /// A filled circle (the dot's halo) or a stroked capsule (the pill's ring).
+    var filled: Bool
+    var lineWidth: CGFloat = 0
+    var scale: ClosedRange<CGFloat>
+    var opacity: Float
+    var duration: CFTimeInterval
+    var active: Bool
+
+    func makeNSView(context: Context) -> PulseLayerView { PulseLayerView() }
+
+    func updateNSView(_ view: PulseLayerView, context: Context) {
+        view.configure(self)
+    }
+}
+
+final class PulseLayerView: NSView {
+    private let shape = CAShapeLayer()
+    private var config: PulseRing?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.addSublayer(shape)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func configure(_ config: PulseRing) {
+        let timingChanged = self.config.map {
+            $0.scale != config.scale || $0.opacity != config.opacity || $0.duration != config.duration
+        } ?? true
+        let shapeChanged = self.config.map { $0.filled != config.filled || $0.lineWidth != config.lineWidth } ?? true
+        self.config = config
+        applyColor()
+        if timingChanged { shape.removeAnimation(forKey: "pulse") }
+        if shapeChanged { needsLayout = true }
+        refreshAnimation()
+    }
+
+    override func layout() {
+        super.layout()
+        guard let config else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shape.bounds = bounds
+        shape.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        let inset = bounds.insetBy(dx: config.lineWidth / 2, dy: config.lineWidth / 2)
+        let radius = min(inset.width, inset.height) / 2
+        shape.path = config.filled
+            ? CGPath(ellipseIn: inset, transform: nil)
+            : CGPath(roundedRect: inset, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        shape.lineWidth = config.lineWidth
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshAnimation()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColor()
+    }
+
+    private func applyColor() {
+        guard let config else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let cg = config.color.cgColor
+            shape.fillColor = config.filled ? cg : nil
+            shape.strokeColor = config.filled ? nil : cg
+        }
+    }
+
+    /// Animates only in a window and while someone can see it; a reused list row or a window
+    /// coming back gets its animation again.
+    private func refreshAnimation() {
+        shape.opacity = 0
+        guard let config, config.active, window != nil else {
+            shape.removeAnimation(forKey: "pulse")
+            return
+        }
+        guard shape.animation(forKey: "pulse") == nil else { return }
+        let grow = CABasicAnimation(keyPath: "transform.scale")
+        grow.fromValue = config.scale.lowerBound
+        grow.toValue = config.scale.upperBound
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = config.opacity
+        fade.toValue = 0
+        let group = CAAnimationGroup()
+        group.animations = [grow, fade]
+        group.duration = config.duration
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.repeatCount = .infinity
+        group.isRemovedOnCompletion = false
+        shape.add(group, forKey: "pulse")
+    }
+}
+
+/// The running pill's "·", "··", "···" cycle (a step every 0.35 s), drawn by Core Animation like
+/// `PulseRing`; every pill shows the same step.
+struct FlowingDots: NSViewRepresentable {
+    var color: NSColor
+    var active: Bool
+
+    func makeNSView(context: Context) -> FlowingDotsView { FlowingDotsView() }
+
+    func updateNSView(_ view: FlowingDotsView, context: Context) {
+        view.color = color
+        view.active = active
+    }
+}
+
+final class FlowingDotsView: NSView {
+    static let step: CFTimeInterval = 0.35
+    private let dots = (0..<3).map { _ in CALayer() }
+    var color: NSColor = .labelColor { didSet { if color != oldValue { applyColor() } } }
+    var active = false { didSet { if active != oldValue { refreshAnimation() } } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        for dot in dots { layer?.addSublayer(dot) }
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // A font's middle dot sits about at the vertical center of the line.
+        let cell = bounds.width / 3
+        let size = max(2, (bounds.height * 0.19).rounded())
+        for (i, dot) in dots.enumerated() {
+            dot.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+            dot.cornerRadius = size / 2
+            dot.position = CGPoint(x: cell * (CGFloat(i) + 0.5), y: bounds.midY - 0.5)
+        }
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshAnimation()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColor()
+    }
+
+    private func applyColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            for dot in dots { dot.backgroundColor = color.cgColor }
+        }
+    }
+
+    private func refreshAnimation() {
+        applyColor()
+        guard active, window != nil else {
+            for dot in dots {
+                dot.removeAnimation(forKey: "step")
+                dot.opacity = 1
+            }
+            return
+        }
+        let period = Self.step * 4
+        let now = CACurrentMediaTime()
+        for (i, dot) in dots.enumerated() {
+            dot.opacity = 0
+            guard dot.animation(forKey: "step") == nil else { continue }
+            // Dot i shows from step i + 1 on.
+            let steps = CAKeyframeAnimation(keyPath: "opacity")
+            steps.values = [0, 1]
+            steps.keyTimes = [0, NSNumber(value: Double(i + 1) / 4), 1]
+            steps.calculationMode = .discrete
+            steps.duration = period
+            steps.repeatCount = .infinity
+            steps.isRemovedOnCompletion = false
+            // Same phase in every pill.
+            steps.beginTime = dot.convertTime(now - now.truncatingRemainder(dividingBy: period), from: nil)
+            dot.add(steps, forKey: "step")
+        }
     }
 }
 

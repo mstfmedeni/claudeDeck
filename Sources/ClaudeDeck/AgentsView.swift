@@ -83,6 +83,7 @@ private struct AgentsSessionView: View {
                 if next != snapshot { snapshot = next }
                 polled = true
                 try? await Task.sleep(for: .seconds(1))
+                await AppVisibility.shared.waitUntilVisible()
             }
         }
     }
@@ -263,8 +264,7 @@ private struct AgentTimeline: View {
 
     var body: some View {
         // Advances the window every few seconds; the data itself changes only with the transcript.
-        TimelineView(.periodic(from: .now, by: 5)) { context in
-            let now = context.date
+        VisibleTimeline(every: 5) { now in
             let start = now.addingTimeInterval(-Self.window)
             let nodes = Dictionary(uniqueKeysWithValues: snapshot.nodes.map { ($0.id, $0) })
             let lanes = snapshot.lanes.filter { lane in

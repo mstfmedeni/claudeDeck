@@ -7,7 +7,7 @@ struct MenuBarLabel: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        let c = model.counts
+        let c = model.menuBarCounts
         HStack(spacing: 3) {
             Image(systemName: c.blocked > 0 ? "exclamationmark.bubble.fill" : "rectangle.stack")
             if c.blocked > 0 { Text("\(c.blocked)") }

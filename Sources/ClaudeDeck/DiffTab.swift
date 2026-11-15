@@ -30,6 +30,7 @@ struct DiffTabView: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2.5))
+                await AppVisibility.shared.waitUntilVisible()
                 guard !Task.isCancelled else { return }
                 changes.refresh(after: .zero)
                 if let change = find(in: changes), let root = changes.repo { await loader.load(change, in: root) }

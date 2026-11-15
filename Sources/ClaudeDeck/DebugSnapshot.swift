@@ -320,6 +320,9 @@ enum DebugSnapshot {
 
     private static func write(to dir: String) {
         writeRowCounts(to: dir)
+        let visibility = AppVisibility.shared
+        try? "windowsVisible=\(visibility.windowsVisible) screenVisible=\(visibility.screenVisible) \(visibility.state)"
+            .write(toFile: (dir as NSString).appendingPathComponent("visibility.txt"), atomically: true, encoding: .utf8)
         for (i, window) in NSApp.windows.enumerated() where window.isVisible {
             guard let view = window.contentView?.superview ?? window.contentView else { continue }
             guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }

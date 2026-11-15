@@ -60,12 +60,14 @@ private struct EditsSessionView: View {
         .task(id: transcriptPath) {
             changes = nil
             guard let transcriptPath else { return }
-            // Polls only while the page is shown; each poll reads just what the transcript gained.
+            // Polls only while the page is shown and a window is visible; each poll reads just
+            // what the transcript gained.
             let tracker = EditsTrackers.tracker(for: transcriptPath)
             changes = await tracker.latest
             while !Task.isCancelled {
                 if let next = await tracker.poll() { changes = next }
                 try? await Task.sleep(for: .seconds(1))
+                await AppVisibility.shared.waitUntilVisible()
             }
         }
     }

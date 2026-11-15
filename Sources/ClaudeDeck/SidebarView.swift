@@ -636,8 +636,8 @@ struct RowTime: View {
 
     var body: some View {
         if let date {
-            TimelineView(.periodic(from: .now, by: 15)) { _ in
-                Text(RelativeTime.short(date))
+            VisibleTimeline(every: 15) { now in
+                Text(RelativeTime.short(date, now: now))
                     .sidebarFont(.caption2, monospacedDigit: true)
                     .foregroundStyle(.tertiary)
             }

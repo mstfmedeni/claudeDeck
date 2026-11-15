@@ -15,6 +15,10 @@ enum DisplayState: Equatable {
     var isIdle: Bool { self == .activity(.idle) }
 }
 
+struct SessionCounts: Equatable {
+    var blocked = 0, running = 0, unseen = 0
+}
+
 struct SessionStatus: Equatable {
     var display: DisplayState
     var detail: String?
@@ -178,6 +182,10 @@ final class AppModel {
         installAskScript()
         loadAgentNotes()
         usage.start()
+        trackMenuBarCounts()
+        menuBarCountsObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.trackMenuBarCounts() }
+        }
         // Resolving `claude` runs the login shell; keep it off the main thread.
         Task { @MainActor in
             claudePath = await Task.detached { ShellEnvironment.resolveClaude() }.value
@@ -285,15 +293,28 @@ final class AppModel {
 
     func needsAttention(_ id: UUID) -> Bool { status(of: id).display.isBlocked || isUnseenIdle(id) }
 
-    var counts: (blocked: Int, running: Int, unseen: Int) {
-        var blocked = 0, running = 0, unseen = 0
+    var counts: SessionCounts {
+        var c = SessionCounts()
         for s in deck.sessions {
             let st = status(of: s.id)
-            if st.display.isBlocked { blocked += 1 }
-            else if st.display.isRunning { running += 1 }
-            else if isUnseenIdle(s.id) { unseen += 1 }
+            if st.display.isBlocked { c.blocked += 1 }
+            else if st.display.isRunning { c.running += 1 }
+            else if isUnseenIdle(s.id) { c.unseen += 1 }
         }
-        return (blocked, running, unseen)
+        return c
+    }
+
+    /// `counts` for the menu bar label. A status item redraw snapshots the whole label, and
+    /// `counts` reads nearly all session state: the label reads this copy instead, written only
+    /// when a number changes and while the screen can be seen (caught up when it can again).
+    private(set) var menuBarCounts = SessionCounts()
+    @ObservationIgnored private var menuBarCountsObserver: Any?
+
+    private func trackMenuBarCounts() {
+        let current = withObservationTracking { counts } onChange: { [weak self] in
+            Task { @MainActor in self?.trackMenuBarCounts() }
+        }
+        if AppVisibility.shared.screenVisible, current != menuBarCounts { menuBarCounts = current }
     }
 
     /// Sessions waiting for the user: blocked first, then finished-but-unseen; newest first.
@@ -322,7 +343,7 @@ final class AppModel {
             next[session.id] = status
         }
         let previous = hookStatuses
-        hookStatuses = next
+        if next != previous { hookStatuses = next }
 
         for (id, status) in next where previous[id] != status {
             if deck.session(id)?.claudeSessionID != status.sessionID || deck.session(id)?.lastActivityAt != status.updatedAt {

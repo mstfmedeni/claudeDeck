@@ -407,6 +407,7 @@ private struct ChangesContent: View {
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2.5))
+                await AppVisibility.shared.waitUntilVisible()
                 if !Task.isCancelled { changes.refresh(after: .zero) }
             }
         }

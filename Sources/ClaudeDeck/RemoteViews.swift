@@ -322,8 +322,8 @@ struct RemoteConnectionLabel: View {
         case .connecting: Text("Connecting…").foregroundStyle(.secondary)
         case .connected: Text("Connected").foregroundStyle(.green)
         case .retrying(let reason, let at):
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let seconds = max(0, Int(at.timeIntervalSince(context.date).rounded()))
+            VisibleTimeline(every: 1) { now in
+                let seconds = max(0, Int(at.timeIntervalSince(now).rounded()))
                 Text("Retrying in \(seconds) s — \(reason)").foregroundStyle(.orange).lineLimit(2)
             }
         case .refused(let reason): Text(reason).foregroundStyle(.red).lineLimit(3)

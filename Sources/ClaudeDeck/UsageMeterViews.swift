@@ -59,10 +59,10 @@ struct UsageMeterFooter: View {
     var body: some View {
         if let usage = model.usage.state.usage, !usage.isEmpty {
             Button { showDetails.toggle() } label: {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
+                VisibleTimeline(every: 30) { now in
                     VStack(spacing: 3) {
-                        if let window = usage.fiveHour { UsageMeterRow(label: "5h", window: window, now: context.date) }
-                        if let window = usage.sevenDay { UsageMeterRow(label: "Week", window: window, now: context.date) }
+                        if let window = usage.fiveHour { UsageMeterRow(label: "5h", window: window, now: now) }
+                        if let window = usage.sevenDay { UsageMeterRow(label: "Week", window: window, now: now) }
                     }
                     .opacity(isStale ? 0.55 : 1)
                     .contentShape(Rectangle())
@@ -92,15 +92,15 @@ struct UsageDetailsView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
+        VisibleTimeline(every: 30) { now in
             VStack(alignment: .leading, spacing: 12) {
                 Text("Claude Plan Usage").font(.headline)
                 if let usage = model.usage.state.usage {
                     if let window = usage.fiveHour {
-                        section("Current session (5 hours)", window, now: context.date)
+                        section("Current session (5 hours)", window, now: now)
                     }
                     if let window = usage.sevenDay {
-                        section("This week", window, now: context.date)
+                        section("This week", window, now: now)
                     }
                     if case .failed = model.usage.state {
                         Text("Couldn't update — showing values from \(usage.fetchedAt.formatted(date: .omitted, time: .shortened)).")
@@ -113,7 +113,7 @@ struct UsageDetailsView: View {
                     Text("Usage isn't available. Sign in to Claude Code with a Claude plan to see it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                waitingSessions(now: context.date)
+                waitingSessions(now: now)
             }
         }
         .padding(14)
@@ -167,10 +167,10 @@ struct UsageMenuBarSummary: View {
 
     var body: some View {
         if let usage = model.usage.state.usage, !usage.isEmpty {
-            TimelineView(.periodic(from: .now, by: 30)) { context in
+            VisibleTimeline(every: 30) { now in
                 HStack(spacing: 12) {
-                    if let window = usage.fiveHour { item("5h", window, now: context.date) }
-                    if let window = usage.sevenDay { item("Week", window, now: context.date) }
+                    if let window = usage.fiveHour { item("5h", window, now: now) }
+                    if let window = usage.sevenDay { item("Week", window, now: now) }
                     Spacer(minLength: 0)
                 }
                 .font(.caption)

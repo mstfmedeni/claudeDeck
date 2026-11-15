@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var widget = WidgetBridge(model: model)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppVisibility.shared.start()
         attention = AttentionCenter(model: model)
         widget.attach()
         model.applyTheme()

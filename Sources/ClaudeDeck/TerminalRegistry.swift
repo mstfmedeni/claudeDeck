@@ -314,6 +314,31 @@ final class DeckTerminalView: LocalProcessTerminalView {
         needsDisplay = true
     }
 
+    /// While no window is visible, output still goes into the buffer but redraws wait: AppKit
+    /// draws the views of a covered window (or one on a sleeping display) too, and a busy TUI
+    /// had the terminal redrawn many times a second for nobody. One full redraw on resume.
+    var drawingPaused = false {
+        didSet {
+            guard !drawingPaused, oldValue, missedDisplay else { return }
+            missedDisplay = false
+            super.needsDisplay = true
+        }
+    }
+    private var missedDisplay = false
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        if drawingPaused { missedDisplay = true; return }
+        super.setNeedsDisplay(invalidRect)
+    }
+
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            if drawingPaused, newValue { missedDisplay = true; return }
+            super.needsDisplay = newValue
+        }
+    }
+
     /// Raw pty output (remote mode streams it to watching Macs).
     var onOutput: ((ArraySlice<UInt8>) -> Void)?
 
@@ -352,6 +377,9 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
             }
             return event
         }
+        visibilityObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.visibilityChanged() }
+        }
     }
 
     func isRunning(_ id: UUID) -> Bool { running.contains(id) }
@@ -369,6 +397,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
 
     func start(id: UUID, cwd: String, claudePath: String?, args: [String], environment: [String: String] = [:]) {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
+        view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
         view.onInput = { [weak self] data in self?.onUserInput?(id, data) }
         view.onOutput = { [weak self] data in self?.onOutput?(id, data) }
@@ -402,6 +431,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// inside it is not tracked as this session).
     func startShell(id: UUID, cwd: String) {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
+        view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
         view.onInput = { [weak self] data in self?.onUserInput?(id, data) }
         view.onOutput = { [weak self] data in self?.onOutput?(id, data) }
@@ -429,6 +459,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
             currentDirectory: dir
         )
         running.insert(id)
+        latestTitles[id] = nil
         titles[id] = nil
     }
 
@@ -524,6 +555,8 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         views[id]?.removeFromSuperview()
         views[id] = nil
         running.remove(id)
+        latestTitles[id] = nil
+        titles[id] = nil
     }
 
     /// On quit: signal every process without reporting exits (quit keeps `isOpen` for auto-resume).
@@ -545,11 +578,31 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
+    /// Claude Code's TUI rewrites its title with a spinner several times a second; every view that
+    /// shows a status reads `titles` (a plain terminal's detail line), so writing it on each
+    /// sequence re-rendered the sidebar and the menu bar label all the time. Only plain
+    /// terminals' titles are shown: only they are published, when they change, and while a
+    /// window is visible (the latest is applied when one is again).
     nonisolated func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
         MainActor.assumeIsolated {
-            guard let id = (source as? DeckTerminalView)?.sessionID else { return }
-            titles[id] = title
+            guard let view = source as? DeckTerminalView, !view.isClaude else { return }
+            latestTitles[view.sessionID] = title
+            publishTitles()
         }
+    }
+
+    @ObservationIgnored private var latestTitles: [UUID: String] = [:]
+    @ObservationIgnored private var visibilityObserver: Any?
+
+    private func visibilityChanged() {
+        let paused = !AppVisibility.shared.windowsVisible
+        for view in views.values { view.drawingPaused = paused }
+        publishTitles()
+    }
+
+    private func publishTitles() {
+        guard AppVisibility.shared.windowsVisible, titles != latestTitles else { return }
+        titles = latestTitles
     }
 
     nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}

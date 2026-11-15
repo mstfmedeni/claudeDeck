@@ -43,6 +43,9 @@ final class FileTree {
     private(set) var gitRoot: URL?
     private(set) var gitStatus: [String: GitFileState] = [:]
     @ObservationIgnored private var gitTask: Task<Void, Never>?
+    /// Files changed while no window was visible: everything loaded is re-read once one is.
+    @ObservationIgnored private var changedWhileHidden = false
+    @ObservationIgnored private var visibilityObserver: Any?
 
     init(root: URL) {
         self.root = root
@@ -50,6 +53,17 @@ final class FileTree {
         gitDirs = [resolvedRoot + "/.git"]
         refreshGit()
         startWatching()
+        visibilityObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.changedWhileHidden, AppVisibility.shared.windowsVisible else { return }
+                self.changedWhileHidden = false
+                self.reloadAll()
+            }
+        }
+    }
+
+    isolated deinit {
+        if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
     }
 
     func gitState(of url: URL) -> GitFileState? { gitStatus[url.resolvingSymlinksInPath().path] ?? gitStatus[url.path] }
@@ -143,6 +157,11 @@ final class FileTree {
     }
 
     private func handle(_ events: [FSEventsWatcher.Event]) {
+        // The tree and its git badges only feed the screen: catch up once someone can see them.
+        guard AppVisibility.shared.windowsVisible else {
+            changedWhileHidden = true
+            return
+        }
         var dirs = Set<String>()
         var git = false
         for event in events {
