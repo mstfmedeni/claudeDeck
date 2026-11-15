@@ -22,4 +22,32 @@ if [ -f "$SCENE.state" ]; then
 fi
 
 trap 'exit 0' HUP INT TERM
-while :; do sleep 3600 & wait $!; done
+
+# Load testing: while $DEMO/stream/<terminal id> (or $DEMO/stream/all) exists, redraw like Claude
+# Code's fullscreen TUI (alternate screen, mouse tracking, synchronized output, a spinner in the
+# title and on screen) about ten times a second.
+#   mkdir -p /tmp/ClaudeDeckDemo/stream && touch /tmp/ClaudeDeckDemo/stream/all
+streaming() { [ -f "$DEMO/stream/$ID" ] || [ -f "$DEMO/stream/all" ]; }
+stream() {
+  printf '%s[?1049h%s[?1000h%s[?1006h' "$ESC" "$ESC" "$ESC"
+  n=0
+  while streaming; do
+    n=$((n + 1))
+    case $((n % 4)) in 0) s='⠂' ;; 1) s='⠐' ;; 2) s='⠠' ;; *) s='⠄' ;; esac
+    [ -f "$DEMO/stream/notitle" ] || printf '%s]0;%s Working on the cart%s' "$ESC" "$s" "$(printf '\007')"
+    printf '%s[?2026h%s[H' "$ESC" "$ESC"
+    i=1
+    while [ $i -le 12 ]; do
+      printf '%s[%d;1H%s[2K%s[2m%3d%s[0m  line %d of the transcript, frame %d' "$ESC" "$i" "$ESC" "$ESC" "$i" "$ESC" "$i" "$n"
+      i=$((i + 1))
+    done
+    printf '%s[14;1H%s[2K%s[33m%s%s[0m Thinking… (%ds · esc to interrupt)' "$ESC" "$ESC" "$ESC" "$s" "$ESC" "$((n / 10))"
+    printf '%s[16;3H%s[?2026l' "$ESC" "$ESC"
+    sleep 0.1
+  done
+  printf '%s[?1006l%s[?1000l%s[?1049l' "$ESC" "$ESC" "$ESC"
+}
+
+while :; do
+  if streaming; then stream; else sleep 1 & wait $!; fi
+done
