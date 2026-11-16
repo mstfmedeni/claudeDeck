@@ -74,6 +74,9 @@ final class RemoteController {
     /// Held while a remote watches a terminal: App Nap would otherwise delay the output timer by
     /// seconds when ClaudeDeck is in the background. Doesn't keep the Mac awake.
     @ObservationIgnored private var streamingActivity: NSObjectProtocol?
+    /// Held while the server is up: App Nap would otherwise slow a hidden ClaudeDeck (display
+    /// asleep, window covered) until a phone's connection or replies lag. The Mac can still sleep.
+    @ObservationIgnored private var hostingActivity: NSObjectProtocol?
     /// Last push result (Settings).
     private(set) var pushStatus: String?
     @ObservationIgnored private var apnsToken: (value: String, issuedAt: Date)?
@@ -227,6 +230,7 @@ final class RemoteController {
         releaseFitted()
         watched = []
         updateStreamingActivity()
+        endHostingActivity()
         outputBuffers = [:]
         server?.stop()
         server = nil
@@ -236,6 +240,10 @@ final class RemoteController {
     }
 
     private func startHosting() {
+        if hostingActivity == nil {
+            hostingActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep, reason: "Hosting sessions for paired devices")
+        }
         if server == nil {
             let lan = model?.deck.settings.remoteLAN == true
             hostingLAN = lan
@@ -529,6 +537,7 @@ final class RemoteController {
         releaseFitted()
         watched = []
         updateStreamingActivity()
+        endHostingActivity()
         outputBuffers = [:]
         server?.stop()
         server = nil
@@ -665,6 +674,12 @@ final class RemoteController {
     }
 
     // MARK: Host — live terminals
+
+    private func endHostingActivity() {
+        guard let activity = hostingActivity else { return }
+        ProcessInfo.processInfo.endActivity(activity)
+        hostingActivity = nil
+    }
 
     private func updateStreamingActivity() {
         if watched.isEmpty, let activity = streamingActivity {
