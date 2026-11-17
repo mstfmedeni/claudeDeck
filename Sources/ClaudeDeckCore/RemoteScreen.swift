@@ -145,6 +145,15 @@ public enum RemoteTerminalOutput {
         return RemoteFrame(kind: RemoteFrameKind.terminalOutput.rawValue, payload: payload)
     }
 
+    /// The bytes in frames of at most `maxChunk` bytes each, in order (a terminal takes a
+    /// stream split anywhere, as the pty's own reads are).
+    public static func frames(sessionID: UUID, bytes: Data, maxChunk: Int) -> [RemoteFrame] {
+        guard bytes.count > maxChunk, maxChunk > 0 else { return [frame(sessionID: sessionID, bytes: bytes)] }
+        return stride(from: bytes.startIndex, to: bytes.endIndex, by: maxChunk).map { start in
+            frame(sessionID: sessionID, bytes: Data(bytes[start..<min(start + maxChunk, bytes.endIndex)]))
+        }
+    }
+
     public static func decode(_ frame: RemoteFrame) -> (sessionID: UUID, bytes: Data)? {
         guard frame.kind == RemoteFrameKind.terminalOutput.rawValue, frame.payload.count >= 16 else { return nil }
         let start = frame.payload.startIndex
