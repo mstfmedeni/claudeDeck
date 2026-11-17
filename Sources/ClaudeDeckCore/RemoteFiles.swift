@@ -35,7 +35,10 @@ public enum RemoteFiles {
 
     public static func read(_ relative: String, in root: String) -> (text: String?, size: Int, error: String?) {
         guard let url = resolve(relative, in: root) else { return (nil, 0, String(localized: "Outside the project")) }
-        let size = ((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize) ?? 0
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        let size = values?.fileSize ?? 0
+        // A named pipe, socket or device would block the read forever.
+        guard values?.isRegularFile == true else { return (nil, size, String(localized: "Can't read this file")) }
         guard size <= maxFileSize else { return (nil, size, String(localized: "Too large to show here")) }
         guard let data = try? Data(contentsOf: url) else { return (nil, size, String(localized: "Can't read this file")) }
         guard !data.prefix(8_192).contains(0), let text = String(data: data, encoding: .utf8) else { return (nil, size, String(localized: "Not a text file")) }
@@ -55,9 +58,11 @@ public enum RemoteTransfer {
     /// The piece of `relative` at `offset`, and the file's size.
     public static func read(_ relative: String, in root: String, offset: Int) -> (data: Data, total: Int, error: String?) {
         guard let url = RemoteFiles.resolve(relative, in: root) else { return (Data(), 0, String(localized: "Outside the project")) }
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey, .isRegularFileKey])
         guard values?.isDirectory != true else { return (Data(), 0, String(localized: "That's a folder")) }
         let total = values?.fileSize ?? 0
+        // A named pipe, socket or device would block the read forever.
+        guard values?.isRegularFile == true else { return (Data(), total, String(localized: "Can't read this file")) }
         guard total <= maxFileSize else { return (Data(), total, String(localized: "Too large to send")) }
         guard let handle = try? FileHandle(forReadingFrom: url) else { return (Data(), total, String(localized: "Can't read this file")) }
         defer { try? handle.close() }
@@ -84,11 +89,21 @@ public enum RemoteTransfer {
 
     /// Uploads in progress on the host: pieces go to a hidden file next to the destination.
     public final class Receiver: @unchecked Sendable {
-        struct Pending { var temp: URL; var folder: URL; var received: Int }
+        struct Pending { var temp: URL; var folder: URL; var received: Int; var updatedAt: Date }
         private var pending: [String: Pending] = [:]
         private let lock = NSLock()
+        /// An upload with no piece for this long was abandoned (the device went away mid-file):
+        /// its partial file is deleted. The device sends the next piece as soon as one is in.
+        private let abandonedAfter: TimeInterval
+        private let now: @Sendable () -> Date
 
-        public init() {}
+        public init(abandonedAfter: TimeInterval = 3600, now: @escaping @Sendable () -> Date = { Date() }) {
+            self.abandonedAfter = abandonedAfter
+            self.now = now
+        }
+
+        /// Uploads in progress (tests).
+        var pendingCount: Int { lock.withLock { pending.count } }
 
         /// Writes one piece; returns bytes in so far, and the saved file's path (relative to `root`)
         /// after the last one.
@@ -99,13 +114,18 @@ public enum RemoteTransfer {
             let key = folder.path + "/" + safe
             lock.lock()
             defer { lock.unlock() }
+            let now = self.now()
+            for (other, item) in pending where now.timeIntervalSince(item.updatedAt) > abandonedAfter {
+                try? FileManager.default.removeItem(at: item.temp)
+                pending[other] = nil
+            }
             if offset == 0 {
                 if let old = pending[key] { try? FileManager.default.removeItem(at: old.temp) }
                 let temp = folder.appending(path: ".\(safe).\(UUID().uuidString.prefix(8)).part")
                 guard FileManager.default.createFile(atPath: temp.path, contents: nil) else {
                     return (0, nil, String(localized: "Can't write in this folder"))
                 }
-                pending[key] = Pending(temp: temp, folder: folder, received: 0)
+                pending[key] = Pending(temp: temp, folder: folder, received: 0, updatedAt: now)
             }
             guard var item = pending[key], item.received == offset else {
                 return (pending[key]?.received ?? 0, nil, String(localized: "The upload was interrupted; try again"))
@@ -121,6 +141,7 @@ public enum RemoteTransfer {
                 return (0, nil, String(localized: "Can't write in this folder"))
             }
             item.received += data.count
+            item.updatedAt = now
             guard item.received >= total else {
                 pending[key] = item
                 return (item.received, nil, nil)
