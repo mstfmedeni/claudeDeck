@@ -156,7 +156,11 @@ public struct ServerPlanClient: Sendable {
     public func url(_ path: String, query: [URLQueryItem] = []) throws -> URL {
         let full = path.hasPrefix(ServerPlanContract.basePath) ? path : ServerPlanContract.basePath + path
         guard var components = URLComponents(url: config.baseURL, resolvingAgainstBaseURL: false) else { throw ServerPlanError.badURL }
-        let prefix = components.percentEncodedPath.hasSuffix("/") ? String(components.percentEncodedPath.dropLast()) : components.percentEncodedPath
+        // The panel's address, whatever was pasted: "…:5050/api" or a page URL would put the agent API under the
+        // panel's session-auth routes (401 "Oturum acmaniz gerekli"), so anything from "/api" on is dropped.
+        var prefix = components.percentEncodedPath
+        if let api = prefix.range(of: "/api") { prefix = String(prefix[..<api.lowerBound]) }
+        if prefix.hasSuffix("/") { prefix.removeLast() }
         components.percentEncodedPath = prefix + full
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else { throw ServerPlanError.badURL }

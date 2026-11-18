@@ -79,6 +79,11 @@ private func json(_ request: URLRequest) -> [String: Any] {
     @Test func pathUnderABasePath() throws {
         let client = ServerPlanClient(config: ServerPlanConfig(baseURL: URL(string: "https://x.example/panel")!, token: "t"))
         #expect(try client.url("/servers/1/health").absoluteString == "https://x.example/panel/api/v1/agent/servers/1/health")
+        // A pasted "/api…" address doesn't land on the panel's session routes.
+        for pasted in ["http://127.0.0.1:5050/api", "http://127.0.0.1:5050/api/", "http://127.0.0.1:5050/api/v1/agent", "http://127.0.0.1:5050/api/servers"] {
+            let pastedClient = ServerPlanClient(config: ServerPlanConfig(baseURL: URL(string: pasted)!, token: "t"))
+            #expect(try pastedClient.url("/me").absoluteString == "http://127.0.0.1:5050/api/v1/agent/me")
+        }
         #expect(try client.url("/servers/1/containers/\(ServerPlanClient.pathComponent("a b/c"))/logs").absoluteString
                 == "https://x.example/panel/api/v1/agent/servers/1/containers/a%20b%2Fc/logs")
     }
