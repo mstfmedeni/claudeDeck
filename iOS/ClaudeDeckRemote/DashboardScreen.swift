@@ -97,7 +97,11 @@ struct DashboardRow: View {
                     }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(8)
+            // Its own surface: the row's selection color (iPad) rings it instead of washing out the tiles.
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.vertical, -2)
+            .padding(.horizontal, -6)
         }
         .tag(MacScreen.dashboard)
         .accessibilityElement(children: .combine)

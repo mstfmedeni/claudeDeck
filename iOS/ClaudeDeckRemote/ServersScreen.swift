@@ -189,25 +189,25 @@ struct ServersScreen: View {
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 6)
-                if canFix {
-                    Button {
-                        store.fixDeploy(deploy.id, from: sceneID)
-                    } label: {
-                        if repairing {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Fix with Claude", systemImage: "wand.and.stars")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(repairing || store.connection != .connected)
-                }
+                Spacer(minLength: 0)
             }
             if let error = deploy.error, !error.isEmpty {
                 Text(error).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(4)
                     .textSelection(.enabled)
+            }
+            // Under the error: the full label fits on an iPhone too.
+            if canFix {
+                Button {
+                    store.fixDeploy(deploy.id, from: sceneID)
+                } label: {
+                    HStack(spacing: 6) {
+                        if repairing { ProgressView().controlSize(.small) } else { Image(systemName: "wand.and.stars") }
+                        Text("Fix with Claude")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(repairing || store.connection != .connected)
             }
         }
         .padding(.vertical, 2)
