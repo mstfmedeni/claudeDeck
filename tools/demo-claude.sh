@@ -8,18 +8,49 @@ ESC=$(printf '\033')
 
 [ -f "$SCENE.txt" ] && sed "s/\[\([0-9;]*m\)/$ESC[\1/g" "$SCENE.txt"
 
-if [ -f "$SCENE.state" ]; then
-  IFS='|' read -r STATE EVENT TOOL DETAIL < "$SCENE.state"
-  sleep 1   # after the app has recorded the launch
-  TRANSCRIPT=""; [ -f "$SCENE.jsonl" ] && TRANSCRIPT="$SCENE.jsonl"
+TRANSCRIPT=""; [ -f "$SCENE.jsonl" ] && TRANSCRIPT="$SCENE.jsonl"
+report() { # state, event, tool, detail
   jq -n --arg sid "demo-$ID" --arg tid "$ID" --argjson pid $$ --arg cwd "$PWD" --arg tp "$TRANSCRIPT" \
-        --arg state "$STATE" --arg event "$EVENT" --arg tool "$TOOL" --arg detail "$DETAIL" \
+        --arg state "$1" --arg event "$2" --arg tool "$3" --arg detail "$4" \
         '{session_id: $sid, terminal_id: $tid, pid: $pid, cwd: $cwd,
           transcript_path: (if $tp == "" then null else $tp end),
           state: $state, event: $event, detail: $detail,
           tool_name: (if $tool == "" then null else $tool end), updated_at: now}' \
     > "$DEMO/sessions/.$ID.tmp" && mv "$DEMO/sessions/.$ID.tmp" "$DEMO/sessions/demo-$ID.json"
+}
+
+STATE=""
+if [ -f "$SCENE.state" ]; then
+  IFS='|' read -r STATE EVENT TOOL DETAIL < "$SCENE.state"
+  sleep 1   # after the app has recorded the launch
+  report "$STATE" "$EVENT" "$TOOL" "$DETAIL"
 fi
+
+# CLAUDEDECK_DEMO_LIVE=1 (tools/demo.sh creates $DEMO/live): every half minute or so the session
+# moves on (working, a permission prompt, done, back to its scene) and its transcript gains a
+# tool call, so the dashboard has something to follow.
+STEP=0
+TICK=0
+PERIOD=$((20 + $(printf '%d' "0x$(printf '%s' "$ID" | tail -c 1)") * 3))
+live() {
+  [ -f "$DEMO/live" ] && [ -n "$STATE" ] || return 0
+  TICK=$((TICK + 1))
+  [ $TICK -ge $PERIOD ] || return 0
+  TICK=0
+  STEP=$((STEP + 1))
+  case $((STEP % 5)) in
+    1) report running PreToolUse Bash "Bash: npm test" ;;
+    2) report running PostToolUse Edit "Edit: src/index.ts" ;;
+    3) report needsPermission PermissionRequest Bash "Bash: git push origin HEAD" ;;
+    4) report idle Stop "" "Done — pushed the branch." ;;
+    0) report "$STATE" "$EVENT" "$TOOL" "$DETAIL" ;;
+  esac
+  if [ -n "$TRANSCRIPT" ]; then
+    jq -nc --arg id "$ID-$STEP" '{type: "assistant", timestamp: (now | strftime("%Y-%m-%dT%H:%M:%S.000Z")),
+      message: {id: "msg_live_\($id)", role: "assistant", content: [{type: "tool_use", id: "tu_live_\($id)", name: "Bash", input: {}}],
+                usage: {output_tokens: 420}}}' >> "$TRANSCRIPT"
+  fi
+}
 
 trap 'exit 0' HUP INT TERM
 
@@ -49,5 +80,5 @@ stream() {
 }
 
 while :; do
-  if streaming; then stream; else sleep 1 & wait $!; fi
+  if streaming; then stream; else sleep 1 & wait $!; live; fi
 done

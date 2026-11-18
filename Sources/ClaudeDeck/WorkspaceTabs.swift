@@ -230,6 +230,12 @@ extension AppModel {
         tabs.open(.skills)
         showMainWindow()
     }
+
+    /// The Dashboard tab.
+    func showDashboard() {
+        tabs.open(.dashboard)
+        showMainWindow()
+    }
 }
 
 extension UserDefaults {

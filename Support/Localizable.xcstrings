@@ -15450,6 +15450,556 @@
           }
         }
       }
+    },
+    "Dashboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano"
+          }
+        }
+      }
+    },
+    "Live dashboard (⇧⌘B)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Canlı pano (⇧⌘B)"
+          }
+        }
+      }
+    },
+    "Working": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışıyor"
+          }
+        }
+      }
+    },
+    "%@%% · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%%%@ · %@"
+          }
+        }
+      }
+    },
+    "ClaudeDeck’s own CPU and memory": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck’in kendi işlemci ve bellek kullanımı"
+          }
+        }
+      }
+    },
+    "Live": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Canlı"
+          }
+        }
+      }
+    },
+    "Updates while this tab is on screen; nothing runs while it’s hidden": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sekme ekrandayken güncellenir; gizliyken hiçbir şey çalışmaz"
+          }
+        }
+      }
+    },
+    "%lld devices": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cihaz"
+          }
+        }
+      }
+    },
+    "No phone connected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlı telefon yok"
+          }
+        }
+      }
+    },
+    "of %lld open sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld açık oturumdan"
+          }
+        }
+      }
+    },
+    "Waiting on you": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seni bekliyor"
+          }
+        }
+      }
+    },
+    "All clear": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekleyen yok"
+          }
+        }
+      }
+    },
+    "Permission or question": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzin ya da soru"
+          }
+        }
+      }
+    },
+    "Finished, not yet seen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitti, henüz bakılmadı"
+          }
+        }
+      }
+    },
+    "Lines today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü satırlar"
+          }
+        }
+      }
+    },
+    "−%@ removed · %@ tokens out": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "−%@ silindi · %@ çıktı token’ı"
+          }
+        }
+      }
+    },
+    "%lld answered today · median %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün %lld yanıt · ortanca %@"
+          }
+        }
+      }
+    },
+    "Nobody’s waiting on you": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seni bekleyen yok"
+          }
+        }
+      }
+    },
+    "Show this session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumu göster"
+          }
+        }
+      }
+    },
+    "and %lld more": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ve %lld tane daha"
+          }
+        }
+      }
+    },
+    "Today’s edits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü düzenlemeler"
+          }
+        }
+      }
+    },
+    "%lld files · %lld sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dosya · %lld oturum"
+          }
+        }
+      }
+    },
+    "No edits by Claude yet today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude bugün henüz bir şey düzenlemedi"
+          }
+        }
+      }
+    },
+    "Lines added and removed per hour today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün saat başına eklenen ve silinen satırlar"
+          }
+        }
+      }
+    },
+    "Tool calls today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü araç çağrıları"
+          }
+        }
+      }
+    },
+    "%@ calls · %lld agents": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ çağrı · %lld ajan"
+          }
+        }
+      }
+    },
+    "No tool calls yet today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün henüz araç çağrısı yok"
+          }
+        }
+      }
+    },
+    "Reading transcripts…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma kayıtları okunuyor…"
+          }
+        }
+      }
+    },
+    "Activity river": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etkinlik akışı"
+          }
+        }
+      }
+    },
+    "Span": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aralık"
+          }
+        }
+      }
+    },
+    "No Claude session has been active in this span": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu aralıkta etkin Claude oturumu yok"
+          }
+        }
+      }
+    },
+    "Hover to scrub through time; click a lane to open that session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zamanda gezinmek için üzerine gel; oturumu açmak için bir şeride tıkla"
+          }
+        }
+      }
+    },
+    "Now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şimdi"
+          }
+        }
+      }
+    },
+    "· %lld working · %lld waiting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· %lld çalışıyor · %lld bekliyor"
+          }
+        }
+      }
+    },
+    "Usage burn": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanım tüketimi"
+          }
+        }
+      }
+    },
+    "Usage isn’t available (sign in to Claude Code)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanım bilgisi yok (Claude Code’a giriş yap)"
+          }
+        }
+      }
+    },
+    "Resets in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sonra sıfırlanır"
+          }
+        }
+      }
+    },
+    "Limit at %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sınıra %@ civarı ulaşılır"
+          }
+        }
+      }
+    },
+    "Lasts until the reset": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sıfırlanmaya kadar yeter"
+          }
+        }
+      }
+    },
+    "%@%% per hour": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saatte %%%@"
+          }
+        }
+      }
+    },
+    "Pace of the last 90 minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son 90 dakikanın hızı"
+          }
+        }
+      }
+    },
+    "Average pace since this window began": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu dönem başladığından beri ortalama hız"
+          }
+        }
+      }
+    },
+    "This week’s rhythm": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu haftanın ritmi"
+          }
+        }
+      }
+    },
+    "%@ %lld:00 · %lld events": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ %lld:00 · %lld olay"
+          }
+        }
+      }
+    },
+    "Replies, prompts and tool calls per hour": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saat başına yanıtlar, istemler ve araç çağrıları"
+          }
+        }
+      }
+    },
+    "Tokens out today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü çıktı token’ları"
+          }
+        }
+      }
+    },
+    "No replies yet today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün henüz yanıt yok"
+          }
+        }
+      }
+    },
+    "%lld/%lld succeeded this week": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hafta %lld/%lld başarılı"
+          }
+        }
+      }
+    },
+    "No automations yet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz otomasyon yok"
+          }
+        }
+      }
+    },
+    "Next in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sıradaki %@ sonra"
+          }
+        }
+      }
+    },
+    "On demand": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İstendiğinde"
+          }
+        }
+      }
+    },
+    "Pull requests & CI": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pull request’ler ve CI"
+          }
+        }
+      }
+    },
+    "%lld failing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld başarısız"
+          }
+        }
+      }
+    },
+    "Link a session to an issue or pull request to follow it here": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Burada takip etmek için bir oturumu bir issue ya da pull request’e bağla"
+          }
+        }
+      }
+    },
+    "Not checked yet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz bakılmadı"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

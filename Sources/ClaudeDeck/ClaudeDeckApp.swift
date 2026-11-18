@@ -26,6 +26,8 @@ struct ClaudeDeckApp: App {
                 OpenAutomationsButton(model: delegate.model) // Automations tab
                 Button("GitHub Inbox…") { delegate.model.showInbox() }
                 OpenHistorySearchButton(model: delegate.model) // Search and Skills tabs
+                Button("Dashboard") { delegate.model.showDashboard() }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
             }
             CommandGroup(after: .newItem) {
                 Divider()
@@ -95,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeWindowsAndPower()
         installZoomKeys()
         model.start()
+        DashboardRecorder.shared.start(model: model)
         // Demo mode polls only with tools/demo.sh's stand-in gh (fixture PRs and issues).
         if !AppModel.isDemo || ProcessInfo.processInfo.environment["CLAUDEDECK_GH_PATH"] != nil {
             GitHubMonitor.shared.start(model: model)
@@ -104,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         model.prepareForQuit()
+        DashboardRecorder.shared.stop()
         widget.publishQuit()
     }
 

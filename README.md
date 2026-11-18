@@ -199,6 +199,9 @@ Billing, usage limits and sign-in stay entirely with Claude Code. ClaudeDeck doe
   pull request) with Run Now and a run history.
 - 🔎 **History search (⇧⌘H):** full-text search over your past Claude conversations; open a hit to jump to
   its session or resume it.
+- 📊 **Dashboard (⇧⌘B):** mission control for every session at once: who is working, who is waiting on you,
+  a scrubbable activity river, usage burn with a projection of when you'll hit the limit, today's edits and
+  tool calls, the week's rhythm, automations, CI and connected phones.
 - 🪄 **Skills:** browse, preview, create and trash your user, project and plugin skills.
 - 🔄 **Restart Session (⌥⌘R):** quits `claude` and resumes the same conversation, so new MCP servers and
   settings take effect.
@@ -501,6 +504,24 @@ ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same v
 - Automations run only while ClaudeDeck is running. A run the Mac slept through is skipped once it is older
   than the "If missed" limit. Keep the app in the menu bar and open it at login to never miss one.
 
+### Dashboard (⇧⌘B)
+- File › Dashboard (⇧⌘B) opens it as a tab. Everything on it updates live while it's on screen and stops
+  completely while it's hidden or closed.
+- **Now:** how many Claude sessions are working, waiting on you and finished but unseen, and the lines Claude
+  changed today.
+- **Activity river:** one lane per session over the last 1, 3, 12 or 24 hours, colored by state (working,
+  permission, question, your turn). Hover to scrub through time; click a lane to open that session.
+- **Waiting on you:** blocked sessions, longest wait first, with how many prompts you answered today and your
+  median response time. Click one to open it.
+- **Usage burn:** the 5-hour and weekly windows with the current pace and when it would hit the limit, before
+  or after the reset.
+- **Today's edits** (most-edited files open in the editor), **tool calls**, the **week's rhythm** (a heat map
+  of activity per hour) and **tokens out** per project.
+- **Automations** (recent runs, next run), **pull requests and CI** of linked sessions (click to open on
+  GitHub) and connected phones.
+- State changes are recorded as they happen (no polling) and kept for a week; counts come from the session
+  transcripts, read only while the dashboard is shown and only what was appended since the last read.
+
 ### Search conversation history
 - File › Search Conversation History… (⇧⌘H) opens the Search tab. It searches what you and Claude wrote in
   `~/.claude/projects` (tool output, thinking and attachments are skipped), in the selected session's project
@@ -647,6 +668,7 @@ Turn it on in Settings › iCloud (off by default). No entitlement is needed; it
 | What | Where |
 |---|---|
 | Projects, groups, sessions, panes, settings, GitHub links, automations and their run history | `~/Library/Application Support/ClaudeDeck/deck.json` |
+| Dashboard history (session states, usage readings; one week) | `~/Library/Application Support/ClaudeDeck/dashboard.json` |
 | Open tabs, panel layout | The app's preferences (`defaults read <bundle-id>`) |
 | Live session states (written by the hook) | `~/.claude/deck/sessions/<session_id>.json` |
 | Hook script | `~/.claude/deck/bin/deck-hook.sh` |
