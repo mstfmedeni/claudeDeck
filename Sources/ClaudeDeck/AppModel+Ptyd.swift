@@ -68,6 +68,17 @@ extension AppModel {
     /// Settings › Sessions toggle.
     func setKeepSessionsRunning(_ on: Bool) {
         if on {
+            // Experimental: say what turning it on does before anything is registered or started.
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Keep sessions running? (Experimental)")
+            var text = String(localized: "New sessions will run in a small background helper (claudedeck-ptyd), so they keep running when ClaudeDeck quits, crashes or updates. ClaudeDeck reattaches to them at launch. Restarting the Mac or logging out still ends them. You can turn this off again at any time.")
+            if ptyd.mode == .launchAgent {
+                text += "\n\n" + String(localized: "The helper is listed under ClaudeDeck in System Settings › General › Login Items.")
+            }
+            alert.informativeText = text
+            alert.addButton(withTitle: String(localized: "Turn On"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
             Task { await ptyd.enable() }
             return
         }

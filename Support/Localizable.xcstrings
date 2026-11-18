@@ -17910,6 +17910,66 @@
           }
         }
       }
+    },
+    "Experimental": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deneysel"
+          }
+        }
+      }
+    },
+    "Keep sessions running? (Experimental)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar çalışmaya devam etsin mi? (Deneysel)"
+          }
+        }
+      }
+    },
+    "Turn On": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aç"
+          }
+        }
+      }
+    },
+    "%lld%%": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%%%lld"
+          }
+        }
+      }
+    },
+    "New sessions will run in a small background helper (claudedeck-ptyd), so they keep running when ClaudeDeck quits, crashes or updates. ClaudeDeck reattaches to them at launch. Restarting the Mac or logging out still ends them. You can turn this off again at any time.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni oturumlar küçük bir arka plan yardımcısında (claudedeck-ptyd) çalışır; böylece ClaudeDeck kapandığında, çöktüğünde ya da güncellendiğinde çalışmaya devam ederler. ClaudeDeck açılışta onlara yeniden bağlanır. Mac'i yeniden başlatmak ya da oturumu kapatmak yine de onları sonlandırır. Bunu istediğin zaman yeniden kapatabilirsin."
+          }
+        }
+      }
+    },
+    "The helper is listed under ClaudeDeck in System Settings › General › Login Items.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcı, Sistem Ayarları › Genel › Giriş Öğeleri'nde ClaudeDeck altında listelenir."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -7,10 +7,20 @@ struct PtydSettingsRows: View {
 
     var body: some View {
         let ptyd = model.ptyd
-        Toggle("Keep sessions running when ClaudeDeck quits", isOn: Binding(
+        Toggle(isOn: Binding(
             get: { model.deck.settings.keepSessionsRunning },
             set: { model.setKeepSessionsRunning($0) }
-        ))
+        )) {
+            HStack(spacing: 6) {
+                Text("Keep sessions running when ClaudeDeck quits")
+                Text("Experimental")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.orange.opacity(0.15), in: Capsule())
+            }
+        }
         Text("New sessions run in a small background helper and keep running when ClaudeDeck quits, crashes or updates. At launch ClaudeDeck reattaches to them, with their recent output, instead of resuming them. Sessions already open stay as they are. Restarting the Mac or logging out still ends them.")
             .font(.caption).foregroundStyle(.secondary)
         if ptyd.isConnected {
