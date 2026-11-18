@@ -677,7 +677,7 @@ final class AppModel {
         }
         terminals.attachHelper(id, cwd: session.workingDirectory ?? project.path, isClaude: session.kind == .claude,
                                client: client, readOnly: readOnly, known: info)
-        // Program Status picks up from the next report (the replayed scrollback isn't scanned).
+        // Program Status: the replayed scrollback brings back its last report (DeckTerminalView.replay).
         if session.kind == .shell, deck.showsProgramStatus(id) { terminals.showProgramStatus(true, for: id) }
         deck.updateSession(id) { $0.isOpen = true }
         lastNotified[id] = nil

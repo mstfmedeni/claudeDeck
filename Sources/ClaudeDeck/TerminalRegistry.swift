@@ -343,6 +343,11 @@ final class DeckTerminalView: LocalProcessTerminalView {
                 guard let self, self.replayToken == token else { return }
                 let end = min(offset + 256 * 1024, bytes.count)
                 self.feed(byteArray: bytes[offset..<end])
+                // Program Status picks up what the scrollback last reported (no replies to old queries).
+                if self.programMonitor != nil {
+                    let now = Date()
+                    if self.programMonitor?.feed(bytes[offset..<end], now: now).changed == true { self.onProgramStatus?() }
+                }
                 offset = end
                 await Task.yield()
             }

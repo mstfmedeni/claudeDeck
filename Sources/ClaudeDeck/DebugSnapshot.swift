@@ -284,6 +284,13 @@ enum DebugSnapshot {
         }
         // `ptyd.cmd`: "on" / "off-keep" / "off-end" / "restart" for the session helper (no dialogs);
         // `screens.dump`: every session's visible text and status to `screens.txt`.
+        // `serverplan.terminal`: "<server id> <name>" opens that ServerPlan server's terminal.
+        for file in files where file == "serverplan.terminal" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let parts = contents(path).trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ", maxSplits: 1).map(String.init)
+            try? FileManager.default.removeItem(atPath: path)
+            if parts.count == 2, let id = Int(parts[0]) { model.openServerPlanTerminal(serverID: id, serverName: parts[1], runClaude: false) }
+        }
         for file in files where file == "ptyd.cmd" {
             let path = (dir as NSString).appendingPathComponent(file)
             let command = contents(path)
