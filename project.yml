@@ -22,7 +22,8 @@ settings:
 packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
-    from: 1.20.0
+    # 1.99 changed the terminal APIs the app overrides (dataReceived, getTerminal): stay on 1.20.x.
+    minorVersion: 1.20.0
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.0
