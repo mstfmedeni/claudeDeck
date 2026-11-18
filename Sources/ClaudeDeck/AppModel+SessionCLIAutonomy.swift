@@ -139,7 +139,7 @@ extension AppModel {
         guard let client = controller.client else { return SessionCLI.failure(403, "serverplan_off", exit: .refused) }
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         var me = controller.me
-        if me == nil || ServerPlanCLI.commands[command]?.feature != nil { me = (try? await client.me()) ?? me }
+        if me == nil || ServerPlanCLI.commands[command]?.v11 == true { me = (try? await client.me()) ?? me }
         let runner = ServerPlanCLI.Runner(client: client, me: me, approve: { [weak self] command, target, summary in
             await self?.ownerApproves(caller, command: command, target: target, summary: summary) ?? false
         }, log: { [weak self] line in

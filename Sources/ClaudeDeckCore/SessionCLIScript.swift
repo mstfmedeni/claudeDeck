@@ -34,6 +34,35 @@ extension SessionCLI {
       claudedeck skill setup [--user|--project] [--force]
           Installs the Claude Code skill that explains this command.
 
+    Projects and sessions (Settings > Agents: "Sessions may add projects and start Claude sessions"):
+      claudedeck projects [--json]
+          The deck's projects: id, sessions, group, name, path.
+      claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
+          Adds a folder as a project (an existing one: returns it). --create makes the folder,
+          only under your home folder. Prints the project id.
+      claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME] [--json]
+          Starts a Claude session (in this session's project by default) and types TEXT once
+          Claude is up. Prints the session id; wait, capture and send work on it.
+
+    ServerPlan (Settings > Agents: "Sessions may use ServerPlan"):
+      claudedeck server list | projects | dirs | features | cloudflare | deployments [--project P]
+      claudedeck server health|containers|ports SERVER
+      claudedeck server logs SERVER CONTAINER [--tail N] [--follow]
+      claudedeck server deploy PROJECT [--server S] [--force] [--wait]
+      claudedeck server deploy-status DEPLOYMENT [--wait]
+      claudedeck server container SERVER CONTAINER start|stop|restart   (the owner confirms)
+      claudedeck server scan DIR-ID|PATH
+      claudedeck server project show PROJECT
+      claudedeck server project set PROJECT [--server S] [--port N] [--volume PATH] [--dockerfile PATH]
+      claudedeck server env get PROJECT
+      claudedeck server env set PROJECT [--from-file FILE | -] [--secret KEY]... [KEY=VALUE...]
+      claudedeck server dockerfile template PROJECT | dockerfile write PROJECT (--from-file FILE | -) [--port N]
+      claudedeck server db create PROJECT
+      claudedeck server domain list [--server S]
+      claudedeck server domain add PROJECT SUBDOMAIN BASE [--server S] [--port N] [--websocket] [--target T]
+      claudedeck server dns sync DOMAIN | zone add NAME | ns set DOMAIN
+          SERVER, PROJECT: an id or a name. Not every panel has every command: see server features.
+
     ID: an id from `claudedeck list`, its first 8 characters, or "self".
     Exit codes: 0 ok/finished, 1 failed (or another error), 2 usage, 3 blocked (needs the user),
     4 refused, 5 unknown id, 124 timeout.
@@ -58,12 +87,13 @@ extension SessionCLI {
     # call PATH CURL-ARGS...: the answer's body in $body, its exit code in $code.
     call() {
       path=$1; shift
-      out=$(curl -sS -m "${max_time:-40}" -w '\n%{http_code} %header{x-claudedeck-exit}' \
+      out=$(curl -sS -m "${max_time:-40}" -w '\n%{http_code} %header{x-claudedeck-exit} %header{x-claudedeck-next}' \
         -H "Authorization: Bearer $CLAUDEDECK_CLI_TOKEN" "$@" "$CLAUDEDECK_CLI_URL$path" 2>&1)
       status=$(printf '%s\n' "$out" | tail -n 1)
       body=$(printf '%s\n' "$out" | sed '$d')
-      http=${status%% *}
-      code=${status#* }
+      # "<http> <exit header> <next header>"; either header may be missing.
+      set -- $status
+      http=${1:-000}; code=${2:-}; next=${3:-}
       case "$http" in
         000) die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1 ;;
       esac
@@ -87,7 +117,14 @@ extension SessionCLI {
             printf '%s\n' "$body"
           else
             reason=$(printf '%s' "$body" | sed -n 's/.*"error":"\([^"]*\)".*/\1/p')
+            message=$(printf '%s' "$body" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
             case "$reason" in
+              setting_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > Command-line tool)" ;;
+              too_many_starts|too_many_projects|too_many_running) hint=" (rate limit or cap; try later)" ;;
+              unknown_project) hint=" (see claudedeck projects)" ;;
+              owner_refused) hint=" (the owner refused or didn't answer in ClaudeDeck)" ;;
+              serverplan_off) hint=" (ServerPlan isn't set up in ClaudeDeck)" ;;
+              not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
               not_yours) hint=" (only terminals this session opened, or ones beside it)" ;;
               unknown_session) hint=" (see claudedeck list)" ;;
@@ -96,7 +133,7 @@ extension SessionCLI {
               blocked) hint=" (a permission or a question is on screen)" ;;
               *) hint="" ;;
             esac
-            printf 'claudedeck: %s%s (HTTP %s)\n' "${reason:-$body}" "$hint" "$http" >&2
+            printf 'claudedeck: %s%s%s (HTTP %s)\n' "${reason:-$body}" "${message:+: $message}" "$hint" "$http" >&2
           fi
           ;;
       esac
@@ -261,6 +298,271 @@ extension SessionCLI {
       finish
     }
 
+    cmd_projects() {
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          *) die "projects: unknown option $1" ;;
+        esac
+        shift
+      done
+      need_session
+      call /projects -G --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    # An absolute path for PATH (relative ones are from here; the folder needn't exist).
+    abs_path() {
+      case "$1" in
+        /*) printf '%s' "$1" ;;
+        *) printf '%s/%s' "$(pwd -P)" "${1#./}" ;;
+      esac
+    }
+
+    cmd_project() {
+      [ "${1:-}" = add ] || die "project: try claudedeck project add PATH [--name NAME] [--group GROUP] [--create]"
+      shift
+      path=""; name=""; group=""; create=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --name) [ $# -ge 2 ] || die "project add: --name needs a name"; name=$2; shift ;;
+          --name=*) name=${1#*=} ;;
+          --group) [ $# -ge 2 ] || die "project add: --group needs a name"; group=$2; shift ;;
+          --group=*) group=${1#*=} ;;
+          --create) create=1 ;;
+          --json) json=1 ;;
+          -*) die "project add: unknown option $1" ;;
+          *) [ -z "$path" ] || die "project add: one PATH only"; path=$1 ;;
+        esac
+        shift
+      done
+      [ -n "$path" ] || die "project add: which folder?"
+      need_session
+      call /projects --data-urlencode "path=$(abs_path "$path")" --data-urlencode "name=$name" \
+        --data-urlencode "group=$group" --data-urlencode "create=$create" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_new() {
+      project=self; name=""; prompt=""; worktree=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --project) [ $# -ge 2 ] || die "new: --project needs an id, name or path"; project=$2; shift ;;
+          --project=*) project=${1#*=} ;;
+          --name) [ $# -ge 2 ] || die "new: --name needs a name"; name=$2; shift ;;
+          --name=*) name=${1#*=} ;;
+          --prompt) [ $# -ge 2 ] || die "new: --prompt needs text (- reads stdin)"; prompt=$2; shift ;;
+          --prompt=*) prompt=${1#*=} ;;
+          --worktree) [ $# -ge 2 ] || die "new: --worktree needs a name"; worktree=$2; shift ;;
+          --worktree=*) worktree=${1#*=} ;;
+          --json) json=1 ;;
+          *) die "new: unknown argument $1" ;;
+        esac
+        shift
+      done
+      [ -n "$project" ] || die "new: --project needs an id, name or path"
+      [ "$prompt" = "-" ] && prompt=$(cat)
+      case "$project" in
+        /*|./*|../*) project=$(abs_path "$project") ;;
+      esac
+      ref=$(printf '%s' "$project" | sed 's/%/%25/g; s/\//%2F/g; s/ /%20/g; s/?/%3F/g; s/#/%23/g')
+      need_session
+      call "/projects/$ref/sessions" --data-urlencode "name=$name" --data-urlencode "prompt=$prompt" \
+        --data-urlencode "worktree=$worktree" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    # claudedeck server …: the app calls ServerPlan (this command never has its token).
+    srv() { # NAME [GET] CURL-ARGS...
+      srv_name=$1; shift
+      if [ "${1:-}" = GET ]; then shift; set -- -G "$@"; fi
+      call "/server/$srv_name" "$@" --data-urlencode "format=$(fmt)"
+    }
+
+    # Follows a deploy: new log lines and status changes until it ends (0 success, 1 failed).
+    deploy_wait() {
+      since=0; last=""
+      while :; do
+        max_time=45
+        srv deploy-status GET --data-urlencode "id=$1" --data-urlencode "wait=25" --data-urlencode "since=$since" \
+          --data-urlencode "status=$last"
+        case "$http" in 2??) ;; *) finish ;; esac
+        [ -n "$body" ] && printf '%s\n' "$body"
+        if [ -n "$next" ]; then since=${next%%:*}; last=${next#*:}; fi
+        [ "$code" = 124 ] && continue
+        exit "$code"
+      done
+    }
+
+    cmd_server() {
+      sub=${1:-}; [ $# -gt 0 ] && shift
+      case "$sub" in
+        ""|help) usage; exit 0 ;;
+        env) cmd_server_env "$@"; return ;;
+      esac
+      p1=""; p2=""; p3=""; p4=""; n=0
+      wait=0; follow=0; force=0; websocket=0; stdin=0; file=""
+      tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          --wait) wait=1 ;;
+          --follow|-f) follow=1 ;;
+          --force) force=1 ;;
+          --websocket) websocket=1 ;;
+          --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
+          -) stdin=1 ;;
+          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target)
+            [ $# -ge 2 ] || die "server $sub: $1 needs a value"
+            case "$1" in
+              --tail) tail=$2 ;; --server) server=$2 ;; --project) sproject=$2 ;; --name) sname=$2 ;;
+              --port) port=$2 ;; --volume) volume=$2 ;; --dockerfile) dockerfile=$2 ;; --target) target=$2 ;;
+            esac
+            shift ;;
+          -*) die "server $sub: unknown option $1" ;;
+          *)
+            n=$((n + 1))
+            case $n in 1) p1=$1 ;; 2) p2=$1 ;; 3) p3=$1 ;; 4) p4=$1 ;; *) die "server $sub: too many arguments" ;; esac
+            ;;
+        esac
+        shift
+      done
+      for number in "$tail" "$port"; do
+        case "$number" in ""|*[!0-9]*) [ -z "$number" ] || die "server $sub: not a number: $number" ;; esac
+      done
+      args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
+      case "$sub" in
+        list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns) ;;
+        *) die "server: unknown command $sub (claudedeck help)" ;;
+      esac
+      case "$sub" in
+        list|projects|dirs|features|cloudflare|deployments) args 0 "no arguments" ;;
+        health|containers|ports) args 1 "which server?" ;;
+        logs) args 2 "logs SERVER CONTAINER" ;;
+        deploy) args 1 "which project?" ;;
+        deploy-status) args 1 "which deployment?"; case "$p1" in *[!0-9]*) die "server deploy-status: a deployment id" ;; esac ;;
+        container) args 3 "container SERVER CONTAINER start|stop|restart"
+          case "$p3" in start|stop|restart) ;; *) die "server container: start, stop or restart" ;; esac ;;
+        scan) args 1 "which folder?" ;;
+        project) case "$p1" in show|set) args 2 "project $p1 PROJECT" ;; *) die "server project: show or set PROJECT" ;; esac ;;
+        dockerfile) case "$p1" in template) args 2 "dockerfile template PROJECT" ;;
+          write) args 2 "dockerfile write PROJECT"
+            [ -n "$file" ] || [ "$stdin" = 1 ] || die "server dockerfile write: --from-file FILE or - (stdin)"
+            [ -z "$file" ] || [ -r "$file" ] || die "server dockerfile write: can't read $file" ;;
+          *) die "server dockerfile: template or write PROJECT" ;; esac ;;
+        db) [ "$p1" = create ] || die "server db: try server db create PROJECT"; args 2 "db create PROJECT" ;;
+        domain) case "$p1" in list) args 1 "domain list" ;; add) args 4 "domain add PROJECT SUBDOMAIN BASE" ;;
+          *) die "server domain: list, or add PROJECT SUBDOMAIN BASE" ;; esac ;;
+        dns) [ "$p1" = sync ] || die "server dns: try server dns sync DOMAIN"; args 2 "dns sync DOMAIN" ;;
+        zone) [ "$p1" = add ] || die "server zone: try server zone add NAME"; args 2 "zone add NAME" ;;
+        ns) [ "$p1" = set ] || die "server ns: try server ns set DOMAIN"; args 2 "ns set DOMAIN" ;;
+      esac
+      need_session
+      case "$sub" in
+        list|projects|dirs|features|cloudflare) srv "$sub" GET ;;
+        deployments) srv deployments GET --data-urlencode "project=$sproject" ;;
+        health|containers) srv "$sub" GET --data-urlencode "server=$p1" ;;
+        ports) srv ports GET --data-urlencode "server=$p1" ;;
+        logs)
+          if [ "$follow" = 1 ]; then
+            first=${tail:-100}
+            while :; do
+              max_time=45
+              srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$first" --data-urlencode "follow=25"
+              case "$http" in 2??) ;; *) finish ;; esac
+              [ -n "$body" ] && printf '%s\n' "$body"
+              first=0
+              [ "$code" = 124 ] && continue
+              exit "$code"
+            done
+          fi
+          srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$tail" ;;
+        deploy)
+          was_json=$json; json=0
+          srv deploy --data-urlencode "project=$p1" --data-urlencode "server=$server" --data-urlencode "force=$force"
+          json=$was_json
+          case "$http" in 2??) ;; *) finish ;; esac
+          if [ "$wait" = 1 ]; then printf '%s\n' "$body"; deploy_wait "$body"; fi
+          if [ "$json" = 1 ]; then body="{\"deployment_id\":$body}"; fi
+          ;;
+        deploy-status)
+          [ "$wait" = 1 ] && deploy_wait "$p1"
+          srv deploy-status GET --data-urlencode "id=$p1" ;;
+        container)
+          # The owner has 2 minutes to answer in ClaudeDeck.
+          max_time=150
+          srv container --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "action=$p3" ;;
+        scan) case "$p1" in *[!0-9]*) dir=$(abs_path "$p1") ;; *) dir=$p1 ;; esac
+          srv scan --data-urlencode "dir=$dir" ;;
+        project)
+          if [ "$p1" = show ]; then srv project-show GET --data-urlencode "project=$p2"
+          else srv project-set --data-urlencode "project=$p2" --data-urlencode "server=$server" --data-urlencode "port=$port" \
+              --data-urlencode "volume=$volume" --data-urlencode "dockerfile=$dockerfile"
+          fi ;;
+        dockerfile)
+          if [ "$p1" = template ]; then srv dockerfile-template GET --data-urlencode "project=$p2"
+          else
+            if [ -n "$file" ]; then content=$(cat "$file"); else content=$(cat); fi
+            srv dockerfile-write --data-urlencode "project=$p2" --data-urlencode "content=$content" --data-urlencode "port=$port"
+          fi ;;
+        db) srv db-create --data-urlencode "project=$p2" ;;
+        domain)
+          if [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
+          else max_time=150
+            srv domain-add --data-urlencode "project=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
+              --data-urlencode "server=$server" --data-urlencode "port=$port" --data-urlencode "websocket=$websocket" --data-urlencode "target=$target"
+          fi ;;
+        dns) max_time=150; srv dns-sync --data-urlencode "domain=$p2" ;;
+        zone) srv zone-add --data-urlencode "name=$p2" ;;
+        ns) max_time=150; srv ns-set --data-urlencode "domain=$p2" ;;
+      esac
+      finish
+    }
+
+    # env set reads values from stdin (-) or a file so secrets stay out of the shell history;
+    # values are never printed.
+    cmd_server_env() {
+      action=${1:-}; [ $# -gt 0 ] && shift
+      case "$action" in get|set) ;; *) die "server env: get or set" ;; esac
+      project=""; vars=""; secrets=""; file=""; stdin=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          --from-file) [ $# -ge 2 ] || die "env set: --from-file needs a file"; file=$2; shift ;;
+          --from-file=*) file=${1#*=} ;;
+          --secret) [ $# -ge 2 ] || die "env set: --secret needs a key"; secrets="$secrets${secrets:+,}$2"; shift ;;
+          --secret=*) secrets="$secrets${secrets:+,}${1#*=}" ;;
+          -) stdin=1 ;;
+          -*) die "env: unknown option $1" ;;
+          *)
+            if [ -z "$project" ]; then project=$1
+            else
+              case "$1" in *=*) vars="$vars$1
+    " ;; *) die "env set: KEY=VALUE, not $1" ;; esac
+            fi
+            ;;
+        esac
+        shift
+      done
+      [ -n "$project" ] || die "env $action: which project?"
+      if [ "$action" = get ]; then
+        need_session
+        srv env-get GET --data-urlencode "project=$project"
+        finish
+      fi
+      if [ -n "$file" ]; then
+        [ -r "$file" ] || die "env set: can't read $file"
+        vars="$vars$(cat "$file")
+    "
+      fi
+      if [ "$stdin" = 1 ]; then vars="$vars$(cat)
+    "; fi
+      [ -n "$vars" ] || die "env set: KEY=VALUE arguments, --from-file FILE, or - for stdin"
+      need_session
+      srv env-set --data-urlencode "project=$project" --data-urlencode "vars=$vars" --data-urlencode "secret=$secrets"
+      finish
+    }
+
     skill_text() {
       cat <<'SKILL'
     \#(skill)
@@ -321,6 +623,10 @@ extension SessionCLI {
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
+      projects) cmd_projects "$@" ;;
+      project) cmd_project "$@" ;;
+      new) cmd_new "$@" ;;
+      server) cmd_server "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
     """# + "\n"
@@ -329,7 +635,7 @@ extension SessionCLI {
     public static let skill = #"""
     ---
     name: claudedeck
-    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool.
+    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user; add projects and start other Claude sessions; list, deploy and watch ServerPlan servers, containers and deployments. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool, or when work needs a new project, a parallel Claude session or a deploy.
     ---
 
     # claudedeck
@@ -365,6 +671,76 @@ extension SessionCLI {
     `ID` is a full id from `list`, its first 8 characters, or `self`. Add `--json` for
     machine-readable output.
 
+    ### Projects and Claude sessions
+
+    Only when the user turned on "Sessions may add projects and start Claude sessions"
+    (otherwise exit 4 with `setting_off`; don't retry).
+
+    ```sh
+    claudedeck projects [--json]                   # id, sessions, group, name, path
+    claudedeck project add PATH [--name N] [--group G] [--create]
+                                                   # prints the project id; already a project: same id, exit 0
+    claudedeck new [--project ID|NAME|PATH] [--name N] [--prompt TEXT] [--worktree NAME]
+                                                   # prints the new session's id (default: your project)
+    ```
+
+    - `--create` makes the folder, only under the user's home folder.
+    - `new` types `--prompt` once Claude is up. You may `send` to sessions you started, and
+      `wait`/`capture` them like terminals.
+    - Limits: 5 new sessions per 10 minutes and 10 new projects per hour per session, 8
+      started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it.
+    - The user gets a notification for each and can see them in the activity log. Start
+      sessions only when parallel work really helps, and say why in the prompt.
+
+    ### ServerPlan
+
+    Only when the user turned on "Sessions may use ServerPlan" and set up ServerPlan in ClaudeDeck.
+    ClaudeDeck makes the calls; you never need or see the ServerPlan token.
+
+    ```sh
+    claudedeck server list                         # servers
+    claudedeck server projects                     # ServerPlan projects (not ClaudeDeck's)
+    claudedeck server health SERVER
+    claudedeck server containers SERVER
+    claudedeck server logs SERVER CONTAINER [--tail N] [--follow]
+    claudedeck server deploy PROJECT [--server S] [--wait]   # prints the deployment id
+    claudedeck server deploy-status ID [--wait]
+    claudedeck server deployments [--project P]
+    claudedeck server container SERVER CONTAINER start|stop|restart   # the user must approve
+    claudedeck server features                     # which commands this panel offers
+    ```
+
+    Newer panels (v1.1; see `server features`, otherwise exit 4 "ServerPlan doesn't offer this yet"):
+
+    ```sh
+    claudedeck server dirs                         # registered project dirs (projects live in these)
+    claudedeck server scan DIR-ID|PATH             # (re)scan; with a project's PATH prints that project
+    claudedeck server ports SERVER                 # used ports, suggested_port, free ports
+    claudedeck server project show PROJECT
+    claudedeck server project set PROJECT [--server S] [--port N] [--volume P] [--dockerfile P]
+    claudedeck server env get PROJECT              # secrets are never shown
+    claudedeck server env set PROJECT --from-file .env.production [--secret KEY]...
+    printf 'API_KEY=%s\n' "$KEY" | claudedeck server env set PROJECT - --secret API_KEY
+    claudedeck server dockerfile template PROJECT | dockerfile write PROJECT --from-file Dockerfile
+    claudedeck server db create PROJECT            # PostgreSQL; writes DB_NAME/DB_HOST/DB_PORT to the env
+    claudedeck server domain list [--server S]
+    claudedeck server domain add PROJECT SUBDOMAIN BASE [--server S] [--port N] [--websocket]
+    claudedeck server dns sync DOMAIN
+    claudedeck server cloudflare | zone add example.com
+    claudedeck server ns set DOMAIN                # Namecheap nameservers to Cloudflare's
+    ```
+
+    - The port is the container's internal port (Traefik routes the domain to it). Only
+      PostgreSQL databases; domains can't be bought here.
+    - An existing database, domain or Dockerfile is an error (`conflict`), never overwritten.
+
+    - `deploy` starts without asking (`--wait` streams the log; exit 0 success, 1 failed with the
+      error and the log). Container stop/start/restart, replacing a DNS record and changing
+      custom nameservers wait for the user's answer in ClaudeDeck (up to 2 minutes); exit 4 if
+      they refuse. Don't retry a refusal.
+    - Pass secrets with `env set --from-file` or stdin (`-`), never as `KEY=value` arguments.
+    - `--json` passes ServerPlan's answer through.
+
     ## Exit codes
 
     | Code | Meaning |
@@ -373,8 +749,8 @@ extension SessionCLI {
     | 1 | `wait`: the command failed (its code is printed); otherwise an error |
     | 2 | Bad arguments, or not inside a ClaudeDeck session |
     | 3 | `wait`: the Claude session needs the user (permission or question) |
-    | 4 | Refused: this session isn't allowed to do that |
-    | 5 | Unknown id |
+    | 4 | Refused: not allowed, the setting is off, a rate limit, or the user said no |
+    | 5 | Unknown id, project, server or deployment |
     | 124 | `wait` timed out; the process is still running |
 
     ## Rules
@@ -403,6 +779,33 @@ extension SessionCLI {
     # Re-run in the same terminal
     claudedeck send "$id" "swift test --filter CartTests" --enter
     claudedeck wait "$id" --timeout 600
+
+    # A second Claude session on another part of the work, then its result
+    sid=$(claudedeck new --name "api tests" --worktree api-tests --prompt "Add tests for the cart API; commit them.")
+    claudedeck wait "$sid" --timeout 1800; claudedeck capture "$sid" --lines 40 --trim
     ```
+
+    ## How to ship a new service
+
+    1. `claudedeck projects` - is it already a ClaudeDeck project?
+    2. `claudedeck project add ~/Projects/new-api --create --group Services` - prints its id.
+    3. `claudedeck new --project new-api --prompt "Scaffold the service: …"`, then
+       `claudedeck wait ID` until it's done.
+    4. `claudedeck server deploy new-api --wait` - exit 0 when it's live.
+    5. `claudedeck server deploy-status DEPLOYMENT` later, or `server logs SERVER CONTAINER --tail 100`.
+
+    ## New service on a server (ServerPlan v1.1)
+
+    1. `claudedeck server dirs` - create the folder inside a registered dir
+       (`claudedeck project add DIR/new-api --create`), then `claudedeck server scan DIR/new-api`:
+       it prints the ServerPlan project.
+    2. `claudedeck server ports SERVER` - build the service for its `suggested` port, then
+       `claudedeck server project set PROJECT --server SERVER --port PORT`.
+    3. `claudedeck server db create PROJECT` if it needs PostgreSQL.
+    4. `claudedeck server env set PROJECT --from-file .env.production --secret API_KEY`.
+    5. `claudedeck server domain add PROJECT api example.com` (the Cloudflare zone and A record
+       are created automatically).
+    6. For a fresh domain: `claudedeck server ns set api.example.com`.
+    7. `claudedeck server deploy PROJECT --wait`.
     """#
 }

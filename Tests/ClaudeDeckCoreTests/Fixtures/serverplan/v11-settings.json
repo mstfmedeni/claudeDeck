@@ -1,0 +1,1 @@
+{"default_server_id":2,"default_server":{"id":2,"name":"hetzner-1"},"default_port":6079,"volume_path":"/data/new-api","dockerfile_path":"Dockerfile","linked_domain":{"fqdn":"api.example.com"},"env_vars":[{"id":1,"key":"DB_NAME","value":"new_api","is_secret":false,"source":"auto-db"},{"id":2,"key":"API_KEY","value":null,"is_secret":true,"source":"manual"}]}

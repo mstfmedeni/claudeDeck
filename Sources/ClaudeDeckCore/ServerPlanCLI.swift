@@ -4,9 +4,9 @@ import Foundation
 /// ServerPlan token; the app runs these with its client (token from the Keychain) when ServerPlan
 /// is set up and Settings › Agents › "Sessions may use ServerPlan" is on.
 ///
-/// `commands` is the table: each CLI command, the method the script uses, the `/me` feature and
-/// scope it needs, and what happens on a 428 (confirm_required). Panel answers are passed through
-/// as JSON (`--json`) and read tolerantly for text, so shape changes only touch the text columns.
+/// `commands` is the table: each CLI command, the method the script uses, what it needs from the
+/// panel, and what happens on a 428 (confirm_required). Panel answers are passed through as JSON
+/// (`--json`) and read tolerantly for text, so a shape change only touches the text columns.
 public enum ServerPlanCLI {
     /// What a 428 (confirm_required) leads to.
     public enum Gate: Sendable, Equatable {
@@ -21,53 +21,62 @@ public enum ServerPlanCLI {
     public struct Command: Sendable, Equatable {
         public var name: String
         public var method: String
-        /// A `/me` feature the panel must list (nil: part of v1, always there).
-        public var feature: String?
-        /// The token scope it needs (nil: any).
+        /// Part of the v1.1 agent API: an older panel answers "not available".
+        public var v11: Bool
+        /// A v1.1 token scope; a panel whose `/me` lacks it doesn't offer the command (yet).
         public var scope: String?
         public var gate: Gate
-    }
 
-    /// `/me` features of the v1.1 API (draft; the names may still change).
-    public enum Feature {
-        public static let ports = "ports"
-        public static let projectsWrite = "projects_write"
-        public static let env = "env"
-        public static let databases = "databases"
-        public static let domains = "domains"
-        public static let dns = "dns"
-        public static let namecheap = "namecheap"
+        init(_ name: String, _ method: String, v11: Bool = false, scope: String? = nil, gate: Gate = .none) {
+            self.name = name
+            self.method = method
+            self.v11 = v11
+            self.scope = scope
+            self.gate = gate
+        }
     }
 
     public static let commands: [String: Command] = {
         let list: [Command] = [
             // v1
-            Command(name: "list", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "health", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "projects", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "containers", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "logs", method: "GET", feature: nil, scope: "logs", gate: .none),
-            Command(name: "deploy", method: "POST", feature: nil, scope: "deploy", gate: .auto),
-            Command(name: "deploy-status", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "deployments", method: "GET", feature: nil, scope: "read", gate: .none),
-            Command(name: "container", method: "POST", feature: nil, scope: "containers", gate: .owner),
-            Command(name: "features", method: "GET", feature: nil, scope: nil, gate: .none),
-            // v1.1 (draft)
-            Command(name: "ports", method: "GET", feature: Feature.ports, scope: "read", gate: .none),
-            Command(name: "dirs", method: "GET", feature: Feature.projectsWrite, scope: "read", gate: .none),
-            Command(name: "scan", method: "POST", feature: Feature.projectsWrite, scope: "projects_write", gate: .none),
-            Command(name: "project-set", method: "POST", feature: Feature.projectsWrite, scope: "projects_write", gate: .none),
-            Command(name: "env-get", method: "GET", feature: Feature.env, scope: "projects_write", gate: .none),
-            Command(name: "env-set", method: "POST", feature: Feature.env, scope: "projects_write", gate: .none),
-            Command(name: "db-create", method: "POST", feature: Feature.databases, scope: "databases", gate: .none),
-            Command(name: "domain-list", method: "GET", feature: Feature.domains, scope: "domains", gate: .none),
-            Command(name: "domain-add", method: "POST", feature: Feature.domains, scope: "domains", gate: .none),
-            Command(name: "dns-status", method: "GET", feature: Feature.dns, scope: "dns", gate: .none),
-            Command(name: "dns-sync", method: "POST", feature: Feature.dns, scope: "dns", gate: .owner),
-            Command(name: "ns-set", method: "POST", feature: Feature.namecheap, scope: "dns", gate: .owner),
+            Command("list", "GET"),
+            Command("health", "GET"),
+            Command("projects", "GET"),
+            Command("containers", "GET"),
+            Command("logs", "GET"),
+            Command("deploy", "POST", gate: .auto),
+            Command("deploy-status", "GET"),
+            Command("deployments", "GET"),
+            Command("container", "POST", gate: .owner),
+            Command("features", "GET"),
+            // v1.1
+            Command("ports", "GET", v11: true),
+            Command("dirs", "GET", v11: true),
+            Command("scan", "POST", v11: true, scope: "projects_write"),
+            Command("project-show", "GET", v11: true),
+            Command("project-set", "POST", v11: true, scope: "projects_write"),
+            Command("env-get", "GET", v11: true),
+            Command("env-set", "POST", v11: true, scope: "projects_write"),
+            Command("dockerfile-template", "GET", v11: true),
+            Command("dockerfile-write", "POST", v11: true, scope: "projects_write"),
+            Command("db-create", "POST", v11: true, scope: "databases"),
+            Command("domain-list", "GET", v11: true),
+            Command("domain-add", "POST", v11: true, scope: "domains", gate: .owner),
+            Command("dns-sync", "POST", v11: true, scope: "dns", gate: .owner),
+            Command("cloudflare", "GET", v11: true),
+            Command("zone-add", "POST", v11: true, scope: "dns"),
+            Command("ns-set", "POST", v11: true, scope: "dns", gate: .owner),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
+
+    /// Whether the panel behind `me` offers a v1.1 command (its scope is granted; v1 ones always).
+    public static func offers(_ command: Command, me: ServerPlanMe?) -> Bool {
+        guard command.v11, let scope = command.scope, let me else { return true }
+        return me.scopes.contains(scope)
+    }
+
+    static let notAvailable = "not available: ServerPlan doesn't offer this yet"
 
     /// What the app sends back for one command.
     public struct Outcome: Sendable {
@@ -142,16 +151,15 @@ public enum ServerPlanCLI {
         public func run(_ name: String, method: String, form: [String: String]) async -> Outcome {
             guard let command = ServerPlanCLI.commands[name] else { return .error(404, "unknown_command", exit: .usage) }
             guard command.method == method else { return .error(405, "method_not_allowed", exit: .usage) }
-            if let feature = command.feature, me?.has(feature: feature) != true {
-                return .error(501, "not_available", "not available: ServerPlan doesn't offer this yet", exit: .refused)
-            }
-            if let scope = command.scope, let me, !me.scopes.isEmpty, !me.scopes.contains(scope) {
-                return .error(403, "serverplan_scope", "the ServerPlan token lacks the \(scope) scope", exit: .refused)
+            guard ServerPlanCLI.offers(command, me: me) else {
+                return .error(501, "not_available", ServerPlanCLI.notAvailable + " (or the token lacks the \(command.scope ?? "") scope)", exit: .refused)
             }
             do {
                 return try await perform(command, form: form)
             } catch let refusal as Refusal {
                 return refusal.outcome
+            } catch ServerPlanError.notFound where command.v11 && ["ports", "dirs", "domain-list", "cloudflare"].contains(command.name) {
+                return .error(501, "not_available", ServerPlanCLI.notAvailable, exit: .refused)
             } catch {
                 return ServerPlanCLI.outcome(for: error)
             }
@@ -194,47 +202,69 @@ public enum ServerPlanCLI {
                 return try await container(form)
             case "features":
                 let me = try await client.me()
-                let planned = ServerPlanCLI.commands.values.filter { $0.feature != nil }.sorted { $0.name < $1.name }
-                let lines = planned.map { "\($0.name): " + (me.has(feature: $0.feature!) ? "available" : "not available (ServerPlan doesn't offer this yet)") }
+                let planned = ServerPlanCLI.commands.values.filter(\.v11).sorted { $0.name < $1.name }
+                let lines = planned.map { "\($0.name): " + (ServerPlanCLI.offers($0, me: me) ? "available" : "not available (ServerPlan doesn't offer this yet)") }
                 let object: [String: Any] = ["features": me.features, "scopes": me.scopes,
-                                             "commands": Dictionary(uniqueKeysWithValues: planned.map { ($0.name, me.has(feature: $0.feature!)) })]
-                return Outcome(json: ServerPlanCLI.data(object), text: (["features: " + me.features.joined(separator: ", "),
-                                                                          "scopes: " + me.scopes.joined(separator: ", ")] + lines).joined(separator: "\n"))
-            // v1.1 (draft)
+                                             "commands": Dictionary(uniqueKeysWithValues: planned.map { ($0.name, ServerPlanCLI.offers($0, me: me)) })]
+                return Outcome(json: ServerPlanCLI.data(object), text: (["scopes: " + me.scopes.joined(separator: ", ")] + lines).joined(separator: "\n"))
+            // v1.1
             case "ports":
                 let server = try await serverID(form["server"])
-                var query: [URLQueryItem] = []
-                if form["suggest"] == "1" { query.append(URLQueryItem(name: "suggest", value: "1")) }
-                for key in ["from", "to"] { if let value = form[key], Int(value) != nil { query.append(URLQueryItem(name: key, value: value)) } }
-                let data = try await raw("GET", "/servers/\(server)/ports", query: query)
-                let object = ServerPlanCLI.object(data)
-                var text = ServerPlanCLI.listText(ServerPlanCLI.data(object?["used"] ?? []), [("PORT", "port"), ("BY", "by.type"), ("NAME", "by.name")])
-                if let suggested = object?["suggested"].flatMap(ServerPlanCLI.string) { text += "\nsuggested: \(suggested)" }
-                return Outcome(json: data, text: text)
+                let data = try await raw("GET", "/servers/\(server)/ports")
+                return Outcome(json: data, text: ServerPlanCLI.portsText(data))
             case "dirs":
                 let data = try await raw("GET", "/project-dirs")
                 return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("REMOTE", "is_remote"), ("PATH", "path")]))
             case "scan":
-                guard let path = form["path"], path.hasPrefix("/") else { throw Refusal(outcome: .error(400, "bad_path", "an absolute path", exit: .usage)) }
-                let data = try await raw("POST", "/projects/scan", json: ["path": path])
-                let object = ServerPlanCLI.object(data) ?? [:]
-                let lines = ["created", "updated", "found"].flatMap { key in
-                    ((object[key] as? [[String: Any]]) ?? []).map { "\(key): #\(ServerPlanCLI.value($0, "id") ?? "?") \(ServerPlanCLI.value($0, "display_name|name") ?? "")" }
+                // A dir id, or a path in (or of) a registered dir: the project at that path is the answer.
+                let ref = (form["dir"] ?? "").trimmingCharacters(in: .whitespaces)
+                let dirs = ServerPlanCLI.array(try await raw("GET", "/project-dirs")) ?? []
+                let dir: [String: Any]?
+                if let id = Int(ref) {
+                    dir = dirs.first { ServerPlanCLI.value($0, "id") == String(id) }
+                } else {
+                    guard ref.hasPrefix("/") else { throw Refusal(outcome: .error(400, "bad_path", "a dir id or an absolute path", exit: .usage)) }
+                    dir = ServerPlanCLI.dir(containing: ref, dirs)
                 }
-                return Outcome(json: data, text: lines.isEmpty ? "no projects found" : lines.joined(separator: "\n"))
-            case "project-set":
+                guard let dir, let dirID = ServerPlanCLI.value(dir, "id") else {
+                    let known = dirs.compactMap { ServerPlanCLI.value($0, "path") }.joined(separator: ", ")
+                    throw Refusal(outcome: .error(404, "unknown_dir", "not in a registered project dir (\(known))", exit: .unknown))
+                }
+                let data = try await raw("POST", "/project-dirs/\(dirID)/scan")
+                let projects = ServerPlanCLI.array(data) ?? []
+                if ref.hasPrefix("/"), (ServerPlanCLI.value(dir, "path") ?? "") != ref {
+                    guard let found = projects.first(where: { ServerPlanCLI.samePath(ServerPlanCLI.value($0, "repo_path|path"), ref) }) else {
+                        throw Refusal(outcome: .error(404, "not_found_by_scan", "the scan found no project at \(ref)", exit: .unknown))
+                    }
+                    return Outcome(json: ServerPlanCLI.data(found), text: "project #\(ServerPlanCLI.value(found, "id") ?? "?") \(ServerPlanCLI.value(found, "display_name|name") ?? "")")
+                }
+                return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("NAME", "display_name|name"), ("PATH", "repo_path|path")]))
+            case "project-show":
                 let project = try await projectID(form["project"])
+                let data = try await raw("GET", "/projects/\(project)/settings")
+                return Outcome(json: ServerPlanCLI.redactedSettings(data), text: ServerPlanCLI.settingsText(data))
+            case "project-set":
+                // The panel replaces all four: what isn't given is sent as it is now.
+                let project = try await projectID(form["project"])
+                let current = ServerPlanCLI.object(try await raw("GET", "/projects/\(project)/settings")) ?? [:]
                 var body: [String: Any] = [:]
-                if let server = form["server"], !server.isEmpty { body["default_server_id"] = try await serverID(server) }
+                body["default_server_id"] = current["default_server_id"] ?? NSNull()
+                body["default_port"] = current["default_port"] ?? 0
+                body["volume_path"] = current["volume_path"] ?? ""
+                body["dockerfile_path"] = current["dockerfile_path"] ?? ""
+                var changed = false
+                if let server = form["server"], !server.isEmpty { body["default_server_id"] = try await serverID(server); changed = true }
                 if let port = form["port"], !port.isEmpty {
                     guard let number = Int(port), (1...65535).contains(number) else { throw Refusal(outcome: .error(400, "bad_port", exit: .usage)) }
                     body["default_port"] = number
+                    changed = true
                 }
-                if let volume = form["volume"], !volume.isEmpty { body["volume_path"] = volume }
-                if let dockerfile = form["dockerfile"], !dockerfile.isEmpty { body["dockerfile_path"] = dockerfile }
-                guard !body.isEmpty else { throw Refusal(outcome: .error(400, "nothing_to_set", exit: .usage)) }
-                let data = try await raw("PATCH", "/projects/\(project)", json: body)
-                return Outcome(json: data, text: ServerPlanCLI.objectText(data))
+                if let volume = form["volume"], !volume.isEmpty { body["volume_path"] = volume; changed = true }
+                if let dockerfile = form["dockerfile"], !dockerfile.isEmpty { body["dockerfile_path"] = dockerfile; changed = true }
+                guard changed else { throw Refusal(outcome: .error(400, "nothing_to_set", "--server, --port, --volume or --dockerfile", exit: .usage)) }
+                let data = try await raw("PUT", "/projects/\(project)/settings", json: body)
+                let shown = ServerPlanCLI.object(data) == nil ? ServerPlanCLI.data(body) : data
+                return Outcome(json: ServerPlanCLI.redactedSettings(shown), text: ServerPlanCLI.settingsText(shown))
             case "env-get":
                 let project = try await projectID(form["project"])
                 let data = try await raw("GET", "/projects/\(project)/env")
@@ -248,39 +278,70 @@ public enum ServerPlanCLI {
                 let project = try await projectID(form["project"])
                 let vars = ServerPlanCLI.envAssignments(form["vars"] ?? "")
                 guard !vars.isEmpty else { throw Refusal(outcome: .error(400, "no_variables", "KEY=value lines", exit: .usage)) }
-                let secrets = (form["secret"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                let data = try await raw("PUT", "/projects/\(project)/env", json: ["vars": vars, "secret_keys": secrets])
-                let written = (ServerPlanCLI.object(data)?["written"] as? [Any])?.compactMap(ServerPlanCLI.string) ?? vars.keys.sorted()
-                return Outcome(json: data, text: "written: " + written.joined(separator: ", "))
+                let secrets = Set((form["secret"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
+                let list = vars.keys.sorted().map { key -> [String: Any] in ["key": key, "value": vars[key]!, "is_secret": secrets.contains(key)] }
+                _ = try await raw("POST", "/projects/\(project)/env/bulk", json: ["env_vars": list])
+                // Only the keys: what the panel echoes may hold the values.
+                return Outcome(json: ServerPlanCLI.data(["written": vars.keys.sorted(), "secret": secrets.sorted()]),
+                               text: "written: " + vars.keys.sorted().map { secrets.contains($0) ? "\($0) (secret)" : $0 }.joined(separator: ", "))
+            case "dockerfile-template":
+                let project = try await projectID(form["project"])
+                let data = try await raw("GET", "/projects/\(project)/dockerfile/template")
+                let object = ServerPlanCLI.object(data)
+                let text = object.flatMap { ServerPlanCLI.value($0, "content|template|dockerfile") } ?? String(decoding: data, as: UTF8.self)
+                return Outcome(json: object == nil ? ServerPlanCLI.data(["content": text]) : data, text: text)
+            case "dockerfile-write":
+                let project = try await projectID(form["project"])
+                let content = form["content"] ?? ""
+                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Refusal(outcome: .error(400, "no_content", exit: .usage)) }
+                var body: [String: Any] = ["content": content]
+                if let port = form["port"], let number = Int(port), number > 0 { body["port"] = number }
+                let data = try await raw("POST", "/projects/\(project)/dockerfile", json: body)
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("written"))
             case "db-create":
                 let project = try await projectID(form["project"])
-                var body: [String: Any] = [:]
-                if let name = form["name"], !name.isEmpty { body["name"] = name }
-                let data = try await raw("POST", "/projects/\(project)/database", json: body)
+                let data = try await raw("POST", "/projects/\(project)/auto-create-db")
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
             case "domain-list":
-                let data = try await raw("GET", "/domains")
-                return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("PORT", "port"), ("DNS", "dns.synced"), ("PROJECT", "project_name"), ("FQDN", "fqdn")]))
+                var query: [URLQueryItem] = []
+                if let server = form["server"], !server.isEmpty { query.append(URLQueryItem(name: "server_id", value: String(try await serverID(server)))) }
+                let data = try await raw("GET", "/domains", query: query)
+                return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("SERVER", "server_id"), ("PORT", "port"), ("PROJECT", "project_name"),
+                                                                              ("FQDN", "fqdn|domain|name")]))
             case "domain-add":
-                let project = try await projectID(form["project"])
-                guard let sub = form["subdomain"], let base = form["base"], !base.isEmpty else { throw Refusal(outcome: .error(400, "bad_domain", exit: .usage)) }
-                var body: [String: Any] = ["project_id": project, "subdomain": sub, "base_domain": base]
-                if let server = form["server"], !server.isEmpty { body["server_id"] = try await serverID(server) }
-                if let port = form["port"], let number = Int(port) { body["port"] = number }
-                if form["websocket"] == "1" { body["websocket"] = true }
-                let data = try await raw("POST", "/domains", json: body)
-                return Outcome(json: data, text: ServerPlanCLI.objectText(data))
-            case "dns-status":
-                let domain = try await domainID(form["domain"])
-                let data = try await raw("GET", "/domains/\(domain.id)/dns")
-                return Outcome(json: data, text: ServerPlanCLI.objectText(data))
+                // Server and port: given, or the project's settings.
+                let projects = try await client.projects()
+                let project = try pick(form["project"], projects.map { ($0.id, $0.name) }, what: "project")
+                let sub = (form["subdomain"] ?? "").trimmingCharacters(in: .whitespaces)
+                let base = (form["base"] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                guard !base.isEmpty, base.contains(".") else { throw Refusal(outcome: .error(400, "bad_domain", "SUBDOMAIN BASE (e.g. api example.com)", exit: .usage)) }
+                let settings = ServerPlanCLI.object(try await raw("GET", "/projects/\(project.id)/settings")) ?? [:]
+                let server: Int? = if let given = form["server"], !given.isEmpty { try await serverID(given) } else { ServerPlanCLI.int(settings["default_server_id"]) }
+                guard let server else { throw Refusal(outcome: .error(400, "no_server", "--server, or set the project's server first", exit: .usage)) }
+                let port = Int(form["port"] ?? "") ?? ServerPlanCLI.int(settings["default_port"]) ?? 0
+                guard port > 0 else { throw Refusal(outcome: .error(400, "no_port", "--port, or set the project's port first", exit: .usage)) }
+                var body: [String: Any] = ["server_id": server, "subdomain": sub, "base_domain": base, "type": "go_app", "port": port,
+                                           "ssl_enabled": true, "clean_urls": false, "websocket_enabled": form["websocket"] == "1",
+                                           "project_name": project.name]
+                if let target = form["target"], !target.isEmpty { body["target"] = target }
+                let fqdn = sub.isEmpty ? base : "\(sub).\(base)"
+                let data = try await gated(command, "POST", "/domains", body: body, target: fqdn)
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("added: \(fqdn)"))
             case "dns-sync":
                 let domain = try await domainID(form["domain"])
-                let data = try await gated(command, "POST", "/domains/\(domain.id)/dns", target: domain.fqdn)
+                let data = try await gated(command, "POST", "/domains/\(domain.id)/dns-sync", target: domain.fqdn)
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("synced: \(domain.fqdn)"))
+            case "cloudflare":
+                let data = try await raw("GET", "/cloudflare/status")
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data))
+            case "zone-add":
+                let name = (form["name"] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                guard name.contains(".") else { throw Refusal(outcome: .error(400, "bad_zone", "a domain like example.com", exit: .usage)) }
+                let data = try await raw("POST", "/cloudflare/zones", json: ["name": name])
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data))
             case "ns-set":
                 let domain = try await domainID(form["domain"])
-                let data = try await gated(command, "POST", "/domains/\(domain.id)/namecheap/nameservers", target: domain.fqdn)
+                let data = try await gated(command, "POST", "/domains/\(domain.id)/namecheap/nameservers", target: domain.base)
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
             default:
                 return .error(404, "unknown_command", exit: .usage)
@@ -435,14 +496,17 @@ public enum ServerPlanCLI {
             return try pick(ref, try await client.projects().map { ($0.id, $0.name) }, what: "project").id
         }
 
-        func domainID(_ ref: String?) async throws -> (id: Int, fqdn: String) {
+        /// A domain by id or FQDN, with its base domain (Namecheap's confirmation).
+        func domainID(_ ref: String?) async throws -> (id: Int, fqdn: String, base: String) {
             let rows = ServerPlanCLI.array(try await raw("GET", "/domains")) ?? []
             let items = rows.compactMap { row -> (Int, String)? in
                 guard let id = ServerPlanCLI.value(row, "id").flatMap(Int.init) else { return nil }
-                return (id, ServerPlanCLI.value(row, "fqdn") ?? "")
+                return (id, ServerPlanCLI.value(row, "fqdn|domain|name") ?? "")
             }
             let found = try pick(ref, items, what: "domain")
-            return (found.id, found.name)
+            let row = rows.first { ServerPlanCLI.value($0, "id") == String(found.id) } ?? [:]
+            let base = ServerPlanCLI.value(row, "base_domain") ?? found.name.split(separator: ".").suffix(2).joined(separator: ".")
+            return (found.id, found.name, base)
         }
     }
 
@@ -502,6 +566,61 @@ public enum ServerPlanCLI {
         }
         walk(object, "")
         return lines.joined(separator: "\n")
+    }
+
+    static func int(_ value: Any?) -> Int? {
+        switch value {
+        case let number as NSNumber: number.intValue
+        case let text as String: Int(text)
+        default: nil
+        }
+    }
+
+    static func samePath(_ a: String?, _ b: String) -> Bool {
+        guard let a else { return false }
+        func trimmed(_ p: String) -> String { p.count > 1 && p.hasSuffix("/") ? String(p.dropLast()) : p }
+        return trimmed(a) == trimmed(b)
+    }
+
+    /// The registered dir a path is in (the longest match), or is.
+    static func dir(containing path: String, _ dirs: [[String: Any]]) -> [String: Any]? {
+        dirs.filter { dir in
+            guard let root = value(dir, "path") else { return false }
+            return samePath(root, path) || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+        }.max { (value($0, "path") ?? "").count < (value($1, "path") ?? "").count }
+    }
+
+    /// `/servers/:id/ports`: the suggested port, the used ones (with their domain and project) and
+    /// some free ones.
+    public static func portsText(_ data: Data) -> String {
+        guard let object = object(data) else { return String(decoding: data, as: UTF8.self) }
+        let used = object["used_ports"] as? [String: Any] ?? [:]
+        let projects = object["port_projects"] as? [String: Any] ?? [:]
+        var lines: [String] = []
+        if let suggested = object["suggested_port"].flatMap(string) { lines.append("suggested: \(suggested)") }
+        let ports = Set(used.keys).union(projects.keys).sorted { (Int($0) ?? 0) < (Int($1) ?? 0) }
+        if !ports.isEmpty {
+            lines.append(SessionCLI.table([["PORT", "DOMAIN", "PROJECT"]] + ports.map { [$0, used[$0].flatMap(string) ?? "-", projects[$0].flatMap(string) ?? "-"] }))
+        }
+        if let free = object["free_ports"] as? [Any], !free.isEmpty {
+            lines.append("free: " + free.prefix(10).compactMap(string).joined(separator: ", ") + (free.count > 10 ? ", …" : ""))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// `/projects/:id/settings` as text: env vars by key only (secrets are null anyway).
+    public static func settingsText(_ data: Data) -> String {
+        guard var object = object(data) else { return String(decoding: data, as: UTF8.self) }
+        let env = object.removeValue(forKey: "env_vars") as? [[String: Any]]
+        var text = objectText(ServerPlanCLI.data(object))
+        if let env { text += "\nenv_vars: " + env.compactMap { value($0, "key") }.joined(separator: ", ") }
+        return text
+    }
+
+    static func redactedSettings(_ data: Data) -> Data {
+        guard var object = object(data) else { return data }
+        if let env = object["env_vars"] { object["env_vars"] = (try? JSONSerialization.jsonObject(with: redactedEnv(ServerPlanCLI.data(env)))) ?? env }
+        return ServerPlanCLI.data(object)
     }
 
     /// `KEY=value` lines (from stdin or a file); blank lines and `#` comments skipped, `export ` allowed.
