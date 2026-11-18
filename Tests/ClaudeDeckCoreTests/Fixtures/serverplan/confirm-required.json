@@ -1,0 +1,1 @@
+{ "error": "confirm_required", "message": "Bu işlem onay gerektirir", "summary": "payments-api → prod-eu-1: imaj derlenir, SSH ile aktarılır, payments-api konteyneri yenisiyle değiştirilir", "confirm": "payments-api" }

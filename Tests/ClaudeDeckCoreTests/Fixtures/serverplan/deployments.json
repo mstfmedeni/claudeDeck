@@ -1,0 +1,9 @@
+[
+  { "id": 208, "project_id": 13, "project_name": "blog", "server_id": 2, "server_name": "staging", "status": "building",
+    "step": "build", "error": null, "branch": "main", "commit": null, "started_at": "2026-11-18T09:40:00Z", "finished_at": null },
+  { "id": 207, "project_id": 11, "project_name": "payments-api", "server_id": 1, "server_name": "prod-eu-1", "status": "failed",
+    "step": "build", "error": "docker build failed: go: missing go.sum entry for module github.com/stripe/stripe-go/v76",
+    "branch": "main", "commit": "4f2c9e1b7a3d5e6f", "started_at": "2026-11-18T09:11:02Z", "finished_at": "2026-11-18T09:12:44Z" },
+  { "id": 205, "project_id": 12, "project_name": "acme-storefront", "server_id": 1, "server_name": "prod-eu-1", "status": "success",
+    "step": "deploy", "error": null, "branch": "main", "commit": "a1b2c3d", "started_at": "2026-11-18T08:01:30Z", "finished_at": "2026-11-18T08:03:10Z" }
+]

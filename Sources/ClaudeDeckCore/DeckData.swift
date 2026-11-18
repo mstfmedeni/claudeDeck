@@ -70,6 +70,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var linkedWorkItem: LinkedWorkItem?
     /// Claude sessions: messages waiting for "your turn", sent one per turn, oldest first.
     public var queue: [QueuedPrompt] = []
+    /// Shell sessions that are a ServerPlan server's terminal (its SSH session through the panel)
+    /// instead of a local shell. Older versions read such a session as a plain terminal.
+    public var serverPlanTerminal: ServerPlanTerminalTarget?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -108,6 +111,21 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         workingDirectory = try c.decodeIfPresent(String.self, forKey: .workingDirectory)
         linkedWorkItem = try? c.decodeIfPresent(LinkedWorkItem.self, forKey: .linkedWorkItem)
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
+        serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
+    }
+}
+
+/// The server a ServerPlan terminal session connects to.
+public struct ServerPlanTerminalTarget: Codable, Sendable, Equatable {
+    public var serverID: Int
+    public var serverName: String
+    /// Start `claude` in the remote shell once it's up.
+    public var runClaude: Bool
+
+    public init(serverID: Int, serverName: String, runClaude: Bool = false) {
+        self.serverID = serverID
+        self.serverName = serverName
+        self.runClaude = runClaude
     }
 }
 
@@ -186,6 +204,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
+    /// ServerPlan panel address (Settings › ServerPlan); the token is in the keychain. Empty: off.
+    public var serverPlanURL = ""
 
     public init() {}
 
@@ -223,6 +243,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agentAPIEnabled = try c.decodeIfPresent(Bool.self, forKey: .agentAPIEnabled) ?? d.agentAPIEnabled
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
+        serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
     }
 }
 
@@ -244,6 +265,8 @@ public struct DeckData: Codable, Sendable, Equatable {
     public var automationRuns: [AutomationRun] = []
     /// "Fix with Claude" requests for failed CI check runs (see GitHubInbox.swift).
     public var ciRepairRequests: [CIRepairRequest] = []
+    /// "Fix with Claude" requests for failed ServerPlan deploys (see ServerPlanRepair.swift).
+    public var deployRepairRequests: [DeployRepairRequest] = []
 
     public static let maxPanes = 4
 
@@ -262,6 +285,7 @@ public struct DeckData: Codable, Sendable, Equatable {
         automations = try c.decodeIfPresent([Automation].self, forKey: .automations) ?? []
         automationRuns = try c.decodeIfPresent([AutomationRun].self, forKey: .automationRuns) ?? []
         ciRepairRequests = (try? c.decodeIfPresent([Lossy<CIRepairRequest>].self, forKey: .ciRepairRequests))?.compactMap(\.value) ?? []
+        deployRepairRequests = (try? c.decodeIfPresent([Lossy<DeployRepairRequest>].self, forKey: .deployRepairRequests))?.compactMap(\.value) ?? []
     }
 
     // MARK: Mutations

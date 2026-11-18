@@ -1,0 +1,6 @@
+{
+  "id": 207, "project_id": 11, "project_name": "payments-api", "server_id": 1, "server_name": "prod-eu-1",
+  "status": "failed", "step": "build", "error": "docker build failed: go: missing go.sum entry for module github.com/stripe/stripe-go/v76",
+  "branch": "main", "commit": "4f2c9e1b7a3d5e6f", "started_at": "2026-11-18T09:11:02Z", "finished_at": "2026-11-18T09:12:44Z",
+  "log": "[git_pull] Already up to date.\n[build] Step 1/9 : FROM golang:1.22-alpine AS build\n[build] Step 5/9 : RUN go build -o /out/api ./cmd/api\n[build] internal/webhooks/stripe.go:8:2: missing go.sum entry for module providing package github.com/stripe/stripe-go/v76 (imported by example.com/payments/internal/webhooks); to add:\n[build] \tgo get example.com/payments/internal/webhooks\n[build] The command '/bin/sh -c go build -o /out/api ./cmd/api' returned a non-zero code: 1\n[deploy] aborted: image build failed\n"
+}
