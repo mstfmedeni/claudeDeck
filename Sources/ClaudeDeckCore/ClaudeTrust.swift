@@ -305,13 +305,23 @@ public enum ClaudeTrust {
         return .done(.trusted)
     }
 
+    /// A lock older than this was left by a process that's gone: proper-lockfile's holders touch
+    /// it every few seconds (its own stale limit is 10 s), so one untouched this long is reclaimed.
+    public static let staleLock: TimeInterval = 30
+
     /// Claude Code's lock on its config (proper-lockfile): the folder `<file>.lock`, made with
-    /// mkdir. A held lock is waited for, never broken.
-    private static func acquire(_ lock: String, wait: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(wait)
+    /// mkdir. A live lock is waited for, never broken; a stale one (`staleLock`) is removed.
+    static func acquire(_ lock: String, wait: TimeInterval, now: () -> Date = Date.init) -> Bool {
+        let deadline = now().addingTimeInterval(wait)
         while true {
             if mkdir(lock, 0o755) == 0 { return true }
-            guard errno == EEXIST, Date() < deadline else { return false }
+            guard errno == EEXIST else { return false }
+            if let modified = (try? FileManager.default.attributesOfItem(atPath: lock))?[.modificationDate] as? Date,
+               now().timeIntervalSince(modified) > staleLock {
+                rmdir(lock)
+                continue
+            }
+            guard now() < deadline else { return false }
             usleep(50_000)
         }
     }

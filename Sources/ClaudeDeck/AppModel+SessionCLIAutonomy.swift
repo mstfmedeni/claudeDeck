@@ -122,6 +122,10 @@ extension AppModel {
         case .failed(let reason):
             logAgent(callerName, inbound: true, "claudedeck new · \(name): couldn't trust the folder (\(reason)); Claude Code will ask", ok: false)
             queueStartNotice(caller, String(localized: "Started \(name) in \(project.name); Claude Code asks whether to trust its folder"))
+        case .skipped(let reason):
+            // A folder the rules leave alone may well be trusted already: the plain notice.
+            logAgent(callerName, inbound: true, "claudedeck new · \(name): folder trust left to Claude Code (\(reason))")
+            queueStartNotice(caller, String(localized: "Started \(name) in \(project.name)"))
         case .alreadyTrusted:
             queueStartNotice(caller, String(localized: "Started \(name) in \(project.name)"))
         }
@@ -133,6 +137,9 @@ extension AppModel {
     enum StartedSessionTrust: Equatable {
         case alreadyTrusted
         case trusted(String)
+        /// The rules leave this folder alone (`ClaudeTrust.Refusal`).
+        case skipped(String)
+        /// It should have been trusted, but writing the config didn't work.
         case failed(String)
     }
 
@@ -142,7 +149,7 @@ extension AppModel {
     func trustFolderForStartedSession(_ path: String) async -> StartedSessionTrust {
         let folder: String
         switch ClaudeTrust.decide(startedByCLI: true, settingOn: deck.settings.sessionsMayStartSessions, path: path, roots: cliCreateRoots) {
-        case .failure(let refusal): return .failed(refusal.rawValue)
+        case .failure(let refusal): return .skipped(refusal.rawValue)
         case .success(let resolved): folder = resolved
         }
         guard let file = ClaudeTrust.configFile(environment: ProcessInfo.processInfo.environment,

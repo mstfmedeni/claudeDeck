@@ -196,6 +196,19 @@ import Testing
         #expect(ClaudeTrust.isTrusted(try object(file), folder: "/Users/someone/code/x"))
     }
 
+    @Test func aStaleLockIsReclaimed() throws {
+        let dir = try temporaryFolder()
+        let file = dir.appending(path: ".claude.json")
+        try FileManager.default.copyItem(at: Self.fixtureURL, to: file)
+        let lock = file.path + ".lock"
+        try FileManager.default.createDirectory(atPath: lock, withIntermediateDirectories: false)
+        // Untouched for a minute: its holder is gone.
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: lock)
+        #expect(ClaudeTrust.trust("/Users/someone/code/x", in: file, lockWait: 0.2) == .trusted)
+        #expect(!FileManager.default.fileExists(atPath: lock))
+        #expect(ClaudeTrust.isTrusted(try object(file), folder: "/Users/someone/code/x"))
+    }
+
     @Test func concurrentWritersDontLoseEachOthersKeys() async throws {
         let dir = try temporaryFolder()
         let file = dir.appending(path: ".claude.json")

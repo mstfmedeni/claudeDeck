@@ -285,13 +285,14 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   sessions started with `new`, with the setting on, and only for a folder `--create` could make:
   absolute, below the home folder (not the home itself), not `~/Library`, no dot folder in it,
   never a system folder. Claude Code's own processes rewrite that file, so the change is made the
-  way they make theirs: under their lock (`~/.claude.json.lock`, waited for up to 3 s, never
-  broken), from a fresh read, inserted into the text so every other byte stays, checked (the
+  way they make theirs: under their lock (`~/.claude.json.lock`, waited for up to 3 s; only
+  one untouched for 30 s, left by a process that's gone, is removed), from a fresh read, inserted into the text so every other byte stays, checked (the
   result must be the old config plus that key), written to a temporary file and renamed over the
   original only if the file is unchanged since the read (inode, size, modification time),
   otherwise read and done again. Nothing is written when the file isn't a JSON object. It's in
   the Activity Log and the notification ("… and trusted its folder"); when it can't be done, the
-  notification says Claude Code is asking. Sessions the owner starts keep asking as before. The
+  notification says Claude Code is asking. A folder outside those rules is left to Claude Code
+  (Activity Log only; it may already be trusted). Sessions the owner starts keep asking as before. The
   demo uses its own `~/.claude.json` (in its home), never the real one, and its stand-in `claude`
   shows the question in folders that aren't trusted.
 - **Guardrails:** per calling session at most 5 `new` in 10 minutes and 10 new projects an hour;
