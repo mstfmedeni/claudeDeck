@@ -128,8 +128,11 @@ final class SimulatorsController {
             for use in list where !sessions.contains(use.session) { sessions.append(use.session) }
             lastUse[udid] = LastUse(sessions: sessions, processes: Array(Set(list.map(\.process))).sorted(), at: now)
         }
+        // Only listed devices count: a booted tvOS (or unavailable) simulator also runs a launchd_sim
+        // and would otherwise re-run simctl on every tick.
         let listed = Set(booted.map(\.udid))
-        if Set(sample.launchdSims.keys) != listed || now.timeIntervalSince(listedAt ?? .distantPast) > Self.listInterval {
+        let known = Set(devices.map(\.udid))
+        if Set(sample.launchdSims.keys).intersection(known) != listed || now.timeIntervalSince(listedAt ?? .distantPast) > Self.listInterval {
             await reloadList()
         }
     }
