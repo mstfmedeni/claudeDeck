@@ -166,7 +166,8 @@ claudedeck skill setup [--user|--project] [--force]
 - **list:** every session and terminal: id, kind (`claude`/`terminal`), state, pane (1 = leftmost,
   `-` when not on screen) and whose it is (`self`, `mine` for terminals it opened). A terminal's
   state is `running` (a command has the terminal), `idle` (at its prompt), `failed` (its first
-  command exited non-zero) or `stopped`; a Claude session's is as in `/v1/projects`.
+  command exited non-zero), `blocked` (its program says it waits for you; terminals with Program
+  Status) or `stopped`; a Claude session's is as in `/v1/projects`.
 - **open:** a plain terminal in the session's project, in the session's folder (or `--cwd`), running
   `COMMAND`; prints the new id. One argument is a shell command line (`"npm run dev && open …"`),
   several are run as given. The terminal goes in a pane beside the caller when the caller is on
@@ -181,8 +182,9 @@ claudedeck skill setup [--user|--project] [--force]
   command `open` started reports its exit code. After `send --enter` into a terminal, it waits until
   no other process has the terminal, the shell is back in its line editor (zsh, bash; at most 30 s
   for shells without one, like `sh`) and the output has settled; a typed command's exit code isn't
-  known (`finished`). After a send to a Claude session, only a newer hook state counts. No
-  `--timeout` (or `0`): no limit.
+  known (`finished`). After a send to a Claude session, only a newer hook state counts. A
+  terminal with Program Status answers from it: blocked ends the wait with 3, and a typed command's
+  result (shell integration) gives its exit code. No `--timeout` (or `0`): no limit.
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -198,7 +200,7 @@ claudedeck skill setup [--user|--project] [--force]
 | 0 | OK; `wait`: the command exited 0, the Claude session is idle, or the target isn't running |
 | 1 | `wait`: the command failed (its code is printed); otherwise an error (API off, not running…) |
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
-| 3 | `wait`: the Claude session needs you (a permission or a question); `send`: one is on screen |
+| 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool is off, or too many requests |
 | 5 | Unknown id |
 | 124 | `wait` timed out; still running |

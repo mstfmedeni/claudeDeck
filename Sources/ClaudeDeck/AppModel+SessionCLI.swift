@@ -97,7 +97,8 @@ extension AppModel {
         return SessionCLI.answer(200, infos, text: SessionCLI.listText(infos), exit: .ok, json: json)
     }
 
-    /// A Claude session's state name; a terminal's: `running`, `idle` (at its prompt), `failed` or `stopped`.
+    /// A Claude session's state name; a terminal's: `running`, `idle` (at its prompt), `failed`,
+    /// `blocked` (its program waits for the user; Program Status) or `stopped`.
     private func cliState(_ session: DeckSession) -> String {
         guard session.kind == .shell else { return Self.stateName(status(of: session.id).display) }
         switch cliProgress(session.id) {
@@ -252,10 +253,14 @@ extension AppModel {
             cli.exitFiles[id] = nil
             try? FileManager.default.removeItem(at: file)
         }
-        return SessionCLI.shellProgress(running: terminals.isRunning(id), commandPending: cli.exitFiles[id] != nil,
-                                        commandExit: cli.commandExits[id], processExit: cli.processExits[id],
-                                        foregroundBusy: terminals.foregroundBusy(id), sentAt: cli.sentAt[id],
-                                        lineEditing: terminals.lineEditing(id), lastOutput: terminals.lastOutput(of: id))
+        let running = terminals.isRunning(id)
+        let guessed = SessionCLI.shellProgress(running: running, commandPending: cli.exitFiles[id] != nil,
+                                               commandExit: cli.commandExits[id], processExit: cli.processExits[id],
+                                               foregroundBusy: terminals.foregroundBusy(id), sentAt: cli.sentAt[id],
+                                               lineEditing: terminals.lineEditing(id), lastOutput: terminals.lastOutput(of: id))
+        // Program Status, when the terminal shows it: what the program says (blocked, its result).
+        guard running, deck.showsProgramStatus(id), let program = terminals.programStatuses[id] else { return guessed }
+        return SessionCLI.programProgress(program.state, exitCode: program.exitCode, fallback: guessed)
     }
 
     private func cliNotify(_ caller: UUID, form: [String: String], json: Bool) -> AgentHTTPResponse {

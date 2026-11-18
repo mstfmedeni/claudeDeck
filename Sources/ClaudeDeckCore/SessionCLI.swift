@@ -276,6 +276,29 @@ public enum SessionCLI {
         return .finished(nil)
     }
 
+    /// A terminal with Program Status (ProgramStatus.swift): what its program says wins over the
+    /// guesses above, except that a command typed a moment ago (`fallback` still `.running`) isn't
+    /// reported done by the previous command's result. Blocked is "blocked" (exit 3 for `wait`).
+    public static func programProgress(_ program: ProgramStatus.State?, exitCode: Int32?, fallback: Progress) -> Progress {
+        guard let program else { return fallback }
+        switch program {
+        case .blocked: return .blocked(blockedState)
+        case .working: return .running
+        case .finished, .failed:
+            switch fallback {
+            // Still starting, or a code of its own (the command `open` ran): that's newer.
+            case .running, .finished(.some), .failed: return fallback
+            case .stopped: return fallback
+            case .blocked, .finished(nil):
+                if program == .failed { return .failed(exitCode ?? 1) }
+                return .finished(exitCode ?? 0)
+            }
+        }
+    }
+
+    /// The `state` of a terminal whose program waits for the user (`list`, `wait`).
+    public static let blockedState = "blocked"
+
     /// The code in a `waitpid` status: the exit code, or 128 + the signal.
     public static func exitCode(waitStatus status: Int32) -> Int32 {
         let signal = status & 0x7f
@@ -290,7 +313,8 @@ public enum SessionCLI {
         case .running: "timeout: still running"
         case .finished(let code): code.map { "finished (exit \($0))" } ?? "finished"
         case .failed(let code): "failed (exit \(code))"
-        case .blocked(let state): "blocked: " + (state == "needsPermission" ? "needs permission" : "asking a question")
+        case .blocked(let state): "blocked: "
+            + (state == "needsPermission" ? "needs permission" : state == blockedState ? "needs input" : "asking a question")
             + (detail.map { " — \($0)" } ?? "")
         case .stopped: "stopped: not running"
         }

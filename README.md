@@ -340,6 +340,10 @@ badge, sends a notification, and shows up on the phone.
     your `.zprofile`, `.zshrc` and `.zlogin` as usual. bash starts with `--init-file`, which reads the
     files a login bash would (`/etc/profile`, then `~/.bash_profile`, `~/.bash_login` or `~/.profile`)
     and adds the hooks; an existing DEBUG trap (bash-preexec) is left alone.
+  - A terminal `claudedeck open` starts with a command marks that command too, and the shell it
+    becomes afterwards keeps the hooks (zsh and bash).
+  - ServerPlan terminals: OSC 7501 from programs on the server (the integration can't reach the
+    remote shell).
   - It applies when the terminal starts: after turning Program Status on, Restart Terminal. OSC 7501
     works at once.
   - A command stopped with Ctrl+C (exit 130) shows nothing; an empty line isn't a command.

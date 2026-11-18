@@ -476,6 +476,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
         var args = ["-l"]
         var execName = "-" + (shell as NSString).lastPathComponent
+        var integration: (shell: ShellIntegration.Shell, folder: URL)?
         // Program Status: our zsh / bash integration marks each command (OSC 133). Without it
         // (other shells, or the scripts couldn't be written) OSC 7501 still works.
         if programStatus, let folder = shellIntegrationFolder, let kind = ShellIntegration.shell(forPath: shell),
@@ -484,6 +485,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
             env.merge(launch.environment) { $1 }
             args = launch.args
             execName = (launch.login ? "-" : "") + (shell as NSString).lastPathComponent
+            integration = (kind, folder)
         }
         view.programMonitor = programStatus ? ProgramStatusMonitor() : nil
         view.onProgramStatus = { [weak self] in self?.programStatusChanged(id) }
@@ -491,9 +493,9 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         if let command, let exitFile {
             // An interactive login shell (the user's rc files, job control) runs the command as a
             // job of its own, so Ctrl+C stops only the command and the terminal comes back to this
-            // shell, which records the code and becomes the user's shell (same pid).
-            let script = #"trap : INT; "$0" -c "$1"; code=$?; trap - INT; printf '%s\n' "$code" > "$2"; exec "$0" -l"#
-            args = ["-l", "-i", "-c", script, shell, command, exitFile.path]
+            // shell, which records the code and becomes the user's shell (same pid), keeping the
+            // shell integration.
+            args = ShellIntegration.commandArgs(shell: shell, command: command, exitFile: exitFile.path, integration: integration)
         }
         view.startProcess(
             executable: shell,
@@ -580,8 +582,9 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     func lastOutput(of id: UUID) -> Date? { views[id]?.lastOutputAt }
 
     /// Runs `executable` directly in the terminal (no shell): ServerPlan terminals, whose process
-    /// is ClaudeDeck itself bridging the pty to the panel's WebSocket.
-    func startProcess(id: UUID, cwd: String, executable: String, args: [String], environment: [String: String]) {
+    /// is ClaudeDeck itself bridging the pty to the panel's WebSocket. With `programStatus` the
+    /// program can report its status (OSC 7501).
+    func startProcess(id: UUID, cwd: String, executable: String, args: [String], environment: [String: String], programStatus: Bool = false) {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
         view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
@@ -601,6 +604,8 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         env["TERM_PROGRAM"] = "ClaudeDeck"
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
         env.merge(environment) { _, new in new }
+        view.programMonitor = programStatus ? ProgramStatusMonitor() : nil
+        view.onProgramStatus = { [weak self] in self?.programStatusChanged(id) }
         view.getTerminal().resetToInitialState()
         view.startProcess(
             executable: executable,
@@ -612,6 +617,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         running.insert(id)
         latestTitles[id] = nil
         titles[id] = nil
+        setProgramStatus(nil, for: id)
     }
 
     /// The grid a terminal has (or will have: the default for a new one).

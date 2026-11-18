@@ -62,7 +62,10 @@ extension AppModel {
                 environment[ServerPlanTerminalBridge.errorVariable] = String(localized: "ServerPlan isn't set up (Settings › ServerPlan).")
             }
             guard !terminals.isRunning(id), deck.session(id) != nil else { return }
-            terminals.startProcess(id: id, cwd: cwd, executable: executable, args: [ServerPlanTerminalBridge.argument], environment: environment)
+            // Program Status when it applies: OSC 7501 from programs on the server (our shell
+            // integration can't reach the remote shell).
+            terminals.startProcess(id: id, cwd: cwd, executable: executable, args: [ServerPlanTerminalBridge.argument], environment: environment,
+                                   programStatus: deck.showsProgramStatus(id))
             mutate(userInitiated: false) { $0.updateSession(id) { $0.isOpen = true } }
             onCountsChanged?()
         }

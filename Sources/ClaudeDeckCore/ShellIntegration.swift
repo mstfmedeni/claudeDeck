@@ -40,6 +40,30 @@ public enum ShellIntegration {
         }
     }
 
+    /// `claudedeck open`'s command: an interactive login shell runs it as a job of its own (Ctrl+C
+    /// stops only the command), writes its exit code to `exitFile`, then becomes the user's shell
+    /// (same pid). With the integration (`integration`, as passed to `launch`) the command is
+    /// marked like one typed at the prompt (OSC 133 C, then D with its code) and the shell it
+    /// becomes keeps the hooks: zsh gets our `ZDOTDIR` back (our `.zshenv` put the user's in place
+    /// in the first shell), bash starts with `--init-file` again.
+    public static func commandArgs(shell: String, command: String, exitFile: String, integration: (shell: Shell, folder: URL)?) -> [String] {
+        let run = #"trap : INT; "$0" -c "$1"; code=$?; trap - INT; "#
+        let save = #"printf '%s\n' "$code" > "$2"; "#
+        guard let integration else {
+            return ["-l", "-i", "-c", run + save + #"exec "$0" -l"#, shell, command, exitFile]
+        }
+        let marked = #"printf '\033]133;C\007'; "# + run + #"printf '\033]133;D;%s\007' "$code"; "# + save
+        switch integration.shell {
+        case .zsh:
+            let rearm = #"if [ -n "${ZDOTDIR+x}" ]; then export \#(userZDOTDIRKey)="$ZDOTDIR"; else unset \#(userZDOTDIRKey); fi; "#
+                + #"export ZDOTDIR="$3"; exec "$0" -l"#
+            return ["-l", "-i", "-c", marked + rearm, shell, command, exitFile, integration.folder.appending(path: "zsh").path]
+        case .bash:
+            return ["-l", "-i", "-c", marked + #"exec "$0" --init-file "$3""#, shell, command, exitFile,
+                    integration.folder.appending(path: "bash/claudedeck.bash").path]
+        }
+    }
+
     /// Writes the scripts into `folder` (only what changed).
     public static func install(in folder: URL) throws {
         for (path, contents) in files {
