@@ -21,6 +21,9 @@ struct ConversationView: View {
     @AppStorage("composer.queue") private var queueMode = false
     @State private var editingPrompt: QueuedPrompt?
     @State private var editText = ""
+    /// A message's text in the "Select Text" sheet.
+    @State private var selecting: SelectableText?
+    @State private var selectorID = UUID()
     /// Claude's edits as diffs at their tool calls (SessionDetailView's toolbar switches it).
     @AppStorage(Self.inlineEditsKey) private var inlineEdits = true
     static let inlineEditsKey = "conversation.inlineEdits"
@@ -119,6 +122,8 @@ struct ConversationView: View {
                 .dynamicTypeSize(ConversationTextSize.size(textSize))
                 .environment(\.listFontScale, ConversationTextSize.listScale(textSize))
                 // Pinch: one step bigger or smaller per gesture.
+                .environment(\.selectText, SelectTextAction(id: selectorID) { selecting = SelectableText(text: $0) })
+                .sheet(item: $selecting) { SelectTextSheet(text: $0.text) }
                 .simultaneousGesture(MagnifyGesture().onEnded { value in
                     if value.magnification > 1.15 { textSize = ConversationTextSize.listStep(textSize, by: 1) }
                     if value.magnification < 0.87 { textSize = ConversationTextSize.listStep(textSize, by: -1) }
@@ -522,6 +527,7 @@ struct AttachmentChip: View {
 struct ChatEntryView: View {
     let entry: ChatEntry
     @State private var expanded = false
+    @Environment(\.selectText) private var selectText
 
     var body: some View {
         #if DEBUG
@@ -537,9 +543,12 @@ struct ChatEntryView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16))
+                    .messageCopyMenu(entry.text)
             }
         case .assistant:
             MarkdownView(text: entry.text)
+                .contentShape(Rectangle())
+                .messageCopyMenu(entry.text, markdown: true)
         case .tool:
             VStack(alignment: .leading, spacing: 4) {
                 Button {
@@ -560,6 +569,15 @@ struct ChatEntryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button { UIPasteboard.general.string = entry.text } label: { Label("Copy", systemImage: "doc.on.doc") }
+                    if let result = entry.result {
+                        Button { UIPasteboard.general.string = result } label: { Label("Copy Result", systemImage: "doc.on.clipboard") }
+                    }
+                    Button { selectText(entry.result.map { entry.text + "\n\n" + $0 } ?? entry.text) } label: {
+                        Label("Select Text…", systemImage: "selection.pin.in.out")
+                    }
+                }
                 if expanded, let result = entry.result {
                     Text(result)
                         .listFont(.caption2, design: .monospaced)
@@ -568,6 +586,7 @@ struct ChatEntryView: View {
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                        .messageCopyMenu(result)
                 }
             }
             .padding(.vertical, 2)
@@ -576,12 +595,13 @@ struct ChatEntryView: View {
                 .listFont(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
+                .messageCopyMenu(entry.text)
         }
     }
 
-    /// Bold, italics, `code` and links; headings and lists stay as written.
+    /// Bold, italics, `code` and links (bare URLs too); headings and lists stay as written.
     static func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+        TextLinks.linkify((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text))
     }
 
     static func symbol(_ tool: String?) -> String {
@@ -758,9 +778,16 @@ struct MarkdownView: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let text):
-                    Text(ChatEntryView.markdown(text))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(Array(MarkdownSegments.split(text).enumerated()), id: \.offset) { _, segment in
+                        switch segment {
+                        case .prose(let prose):
+                            Text(ChatEntryView.markdown(prose))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        case .code(let code):
+                            CodeBlockView(code: code)
+                        }
+                    }
                 case .heading(let level, let text):
                     Text(ChatEntryView.markdown(text))
                         .listFont(level <= 1 ? .title3 : level == 2 ? .headline : .subheadline, weight: level <= 1 ? .bold : .semibold)
