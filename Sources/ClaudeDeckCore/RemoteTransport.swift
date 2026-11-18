@@ -59,6 +59,12 @@ public final class RemoteChannel: @unchecked Sendable {
 
     public func send(_ frame: RemoteFrame) {
         guard !closed else { return }
+        // The peer drops the connection over a frame it can't take (`RemoteFrame.maxPayload`):
+        // leave one that big out instead. Checked before sealing, which uses up a nonce.
+        guard Self.fits(frame, sealed: cipher != nil) else {
+            droppedOversized += 1
+            return
+        }
         var frame = frame
         if cipher != nil {
             guard let sealed = try? cipher!.seal(frame) else { finish(String(localized: "Encryption failed")); return }
@@ -75,6 +81,19 @@ public final class RemoteChannel: @unchecked Sendable {
 
     /// Bytes handed to the connection and not yet sent (backpressure for terminal output).
     public private(set) var pendingBytes = 0
+    /// Frames left out for being larger than the peer accepts (diagnostics).
+    public private(set) var droppedOversized = 0
+
+    /// Whether the peer's decoder takes this frame (sealing adds the kind byte and the tag).
+    static func fits(_ frame: RemoteFrame, sealed: Bool) -> Bool {
+        frame.payload.count + (sealed ? 17 : 0) <= RemoteFrame.maxPayload
+    }
+
+    /// Until the handshake is done, larger frames close the connection. Set by the host on
+    /// incoming connections: `hello` and `auth` are a few hundred bytes, and nobody who hasn't
+    /// proved the key gets to make it buffer megabytes. (Not on the remote side: the host's
+    /// first sealed snapshot can arrive in the same read as `welcome`, before the cipher is on.)
+    public var maxPayloadBeforeHandshake: Int?
 
     /// Sends `refused` (if given) and closes once it is out.
     public func close(refusing reason: String? = nil) {
@@ -94,6 +113,7 @@ public final class RemoteChannel: @unchecked Sendable {
             guard let self, !self.closed else { return }
             if let data, !data.isEmpty {
                 self.lastReceived = Date()
+                self.decoder.maxPayload = self.cipher == nil ? (self.maxPayloadBeforeHandshake ?? RemoteFrame.maxPayload) : RemoteFrame.maxPayload
                 do {
                     for wire in try self.decoder.append(data) {
                         // After the handshake only sealed frames are accepted (no injected plaintext).
@@ -200,6 +220,33 @@ public final class RemoteServer: @unchecked Sendable {
     private var failures: [String: [Date]] = [:]
     static let maxFailures = 10
     static let failureWindow: TimeInterval = 600
+    /// Connections from one address that haven't proved the key yet, at once (a device races a
+    /// few addresses, not dozens). Per address, so one peer can't crowd the others out.
+    public var maxPendingPerAddress = 16
+    /// Largest frame accepted before the handshake (`RemoteChannel.maxPayloadBeforeHandshake`).
+    static let maxPayloadBeforeHandshake = 64 << 10
+    /// APNs device tokens are 32 bytes, topics a bundle id: anything far larger isn't a phone's.
+    static let maxPushToken = 256
+    static let maxPushTopic = 256
+    /// Live output goes out in frames of at most this many bytes (a burst held up behind a busy
+    /// main thread can't become one frame larger than the peer accepts).
+    static let maxOutputChunk = 1 << 20
+
+    /// Forgets addresses whose wrong passwords are all older than `failureWindow` (the map
+    /// would otherwise keep every address that ever failed).
+    func pruneFailures(now: Date = Date()) {
+        failures = failures.compactMapValues { times in
+            let recent = times.filter { now.timeIntervalSince($0) < Self.failureWindow }
+            return recent.isEmpty ? nil : recent
+        }
+    }
+
+    func noteFailure(_ ip: String, at date: Date = Date()) {
+        failures[ip, default: []].append(date)
+    }
+
+    /// Addresses with recent wrong passwords (tests).
+    var failingAddresses: Int { failures.count }
 
     public private(set) var state: State = .stopped { didSet { if state != oldValue { onStateChange?(state) } } }
     public var onStateChange: ((State) -> Void)?
@@ -223,6 +270,7 @@ public final class RemoteServer: @unchecked Sendable {
         var hostNonce: Data?
         var name: String?
         var startedAt: Date
+        var ip: String
     }
 
     /// `acceptsPeer` filters by the peer's IP before any byte is read (Tailscale addresses only).
@@ -317,14 +365,16 @@ public final class RemoteServer: @unchecked Sendable {
 
     /// New output of a session, for every remote watching it.
     public func sendOutput(sessionID: UUID, bytes: Data) {
-        let frame = RemoteTerminalOutput.frame(sessionID: sessionID, bytes: bytes)
+        let frames = RemoteTerminalOutput.frames(sessionID: sessionID, bytes: bytes, maxChunk: Self.maxOutputChunk)
         for (id, peer) in peers where peer.watching.contains(sessionID) {
-            if peer.resync.contains(sessionID) { continue }
-            if peer.channel.pendingBytes > Self.maxPendingBytes {
-                peers[id]?.resync.insert(sessionID)
-                continue
+            for frame in frames {
+                if peers[id]?.resync.contains(sessionID) != false { break }
+                if peer.channel.pendingBytes > Self.maxPendingBytes {
+                    peers[id]?.resync.insert(sessionID)
+                    break
+                }
+                peer.channel.send(frame)
             }
-            peer.channel.send(frame)
         }
         resyncDrained()
     }
@@ -432,13 +482,19 @@ public final class RemoteServer: @unchecked Sendable {
         }
         // Wrong passwords: at most `maxFailures` per address in `failureWindow`.
         let now = Date()
-        failures[ip] = failures[ip]?.filter { now.timeIntervalSince($0) < Self.failureWindow }
+        pruneFailures(now: now)
         if (failures[ip]?.count ?? 0) >= Self.maxFailures {
             connection.cancel()
             return
         }
+        // Unfinished handshakes are dropped after 10 s; until then only so many per address.
+        guard pending.values.filter({ $0.ip == ip }).count < maxPendingPerAddress else {
+            connection.cancel()
+            return
+        }
+        channel.maxPayloadBeforeHandshake = Self.maxPayloadBeforeHandshake
         let id = ObjectIdentifier(channel)
-        pending[id] = PendingPeer(channel: channel, startedAt: Date())
+        pending[id] = PendingPeer(channel: channel, startedAt: Date(), ip: ip)
         channel.onMessage = { [weak self] message in self?.received(message, from: id) }
         channel.onClose = { [weak self] _ in
             guard let self else { return }
@@ -575,7 +631,8 @@ public final class RemoteServer: @unchecked Sendable {
                 onPasteFiles?(sessionID, files) { [queue] error in
                     queue.async { channel.send(.promptResult(sessionID: sessionID, error: error)) }
                 }
-            case .registerPush(let token, let topic, let environment, let deviceName) where !token.isEmpty && !topic.isEmpty:
+            case .registerPush(let token, let topic, let environment, let deviceName)
+                where !token.isEmpty && !topic.isEmpty && token.count <= Self.maxPushToken && topic.utf8.count <= Self.maxPushTopic:
                 peers[id]?.pushToken = token
                 onRegisterPush?(PushDevice(token: token, topic: topic, environment: environment == "production" ? "production" : "development", name: String(deviceName.prefix(80)), addedAt: Date()))
             default:
@@ -604,7 +661,7 @@ public final class RemoteServer: @unchecked Sendable {
             guard let key = key(), let remoteNonce = peer.remoteNonce, let hostNonce = peer.hostNonce,
                   RemoteHandshake.matches(proof, RemoteHandshake.remoteProof(key: key, remoteNonce: remoteNonce, hostNonce: hostNonce))
             else {
-                if let ip = peer.channel.remoteIP { failures[ip, default: []].append(Date()) }
+                noteFailure(peer.ip)
                 peer.channel.close(refusing: String(localized: "The password or pairing key doesn't match."))
                 return
             }
