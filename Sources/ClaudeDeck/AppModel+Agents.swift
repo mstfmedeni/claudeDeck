@@ -477,18 +477,22 @@ extension AppModel {
         guard deck.project(projectID) != nil else { return nil }
         let title = name ?? prompt?.split(separator: "\n").first.map(String.init)
         guard let id = newSession(in: projectID, title: title.flatMap { $0.isEmpty ? nil : $0 }) else { return nil }
-        if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let launched = Date()
-            Task { @MainActor [weak self] in
-                for _ in 0..<120 {
-                    if let hook = self?.hookStatuses[id], hook.updatedAt >= launched { break }
-                    try? await Task.sleep(for: .milliseconds(500))
-                }
-                try? await Task.sleep(for: .seconds(1))
-                self?.rememberAgentPrompt(prompt, in: id)
-                self?.typePrompt(prompt, into: id)
-            }
-        }
+        typeWhenClaudeIsUp(prompt, into: id)
         return id
+    }
+
+    /// Types `prompt` into a session that just launched, once Claude's hooks say it's up (at most 60 s).
+    func typeWhenClaudeIsUp(_ prompt: String?, into id: UUID) {
+        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let launched = Date()
+        Task { @MainActor [weak self] in
+            for _ in 0..<120 {
+                if let hook = self?.hookStatuses[id], hook.updatedAt >= launched { break }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            try? await Task.sleep(for: .seconds(1))
+            self?.rememberAgentPrompt(prompt, in: id)
+            self?.typePrompt(prompt, into: id)
+        }
     }
 }

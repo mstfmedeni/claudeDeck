@@ -75,6 +75,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var showProgramStatus: Bool?
     /// Terminals a session opened with `claudedeck open`: that session (it may type into them).
     public var openedBy: UUID?
+    /// Claude sessions another session started with `claudedeck new`: that session (it may type
+    /// into this one without "May type into Claude"; counts toward the running cap).
+    public var startedBy: UUID?
     /// Shell sessions that are a ServerPlan server's terminal (its SSH session through the panel)
     /// instead of a local shell. Older versions read such a session as a plain terminal.
     public var serverPlanTerminal: ServerPlanTerminalTarget?
@@ -121,6 +124,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
         showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
         openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
+        startedBy = try? c.decodeIfPresent(UUID.self, forKey: .startedBy)
         serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
         helperHost = try? c.decodeIfPresent(PtydHost.self, forKey: .helperHost)
     }
@@ -217,6 +221,11 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var sessionCLIEnabled = false
     /// `claudedeck send` may type into another Claude session; off, the text becomes a note.
     public var sessionsMayTypeIntoClaude = false
+    /// `claudedeck project add` and `claudedeck new`: sessions add projects and start Claude
+    /// sessions on their own (rate-limited, capped, logged). Off by default.
+    public var sessionsMayStartSessions = false
+    /// `claudedeck server …`: sessions use ServerPlan through the app (never its token). Off by default.
+    public var sessionsMayUseServerPlan = false
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
@@ -272,6 +281,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort
         sessionCLIEnabled = try c.decodeIfPresent(Bool.self, forKey: .sessionCLIEnabled) ?? d.sessionCLIEnabled
         sessionsMayTypeIntoClaude = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayTypeIntoClaude) ?? d.sessionsMayTypeIntoClaude
+        sessionsMayStartSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayStartSessions) ?? d.sessionsMayStartSessions
+        sessionsMayUseServerPlan = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseServerPlan) ?? d.sessionsMayUseServerPlan
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
