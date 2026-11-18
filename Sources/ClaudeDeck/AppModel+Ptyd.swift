@@ -48,15 +48,14 @@ extension AppModel {
     /// the way it would at launch: attached if it is somehow still alive in a helper, resumed
     /// once its old process is gone, left alone if that process still runs.
     func recoverHelperSessions(_ ids: [UUID]) async {
+        // The children got SIGHUP: give them all together a moment to exit.
+        let hosts = ids.compactMap { deck.session($0)?.helperHost }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while hosts.contains(where: PtydLaunchPlan.processAlive), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
         for id in ids {
-            guard let session = deck.session(id), !terminals.isRunning(id) else { continue }
-            if let host = session.helperHost {
-                // The children got SIGHUP: give them a moment to exit.
-                let deadline = ContinuousClock.now + .seconds(5)
-                while PtydLaunchPlan.processAlive(host), ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(100))
-                }
-            }
+            guard deck.session(id) != nil, !terminals.isRunning(id) else { continue }
             guard let current = deck.session(id) else { continue }
             if case .ended = ptyd.gate(for: current) {
                 mutate(userInitiated: false) { $0.updateSession(id) { $0.isOpen = false; $0.helperHost = nil } }

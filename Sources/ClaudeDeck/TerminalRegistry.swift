@@ -724,6 +724,12 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// exit is reported here and the child is reaped in the background (SIGKILL after 5 s).
     func terminate(_ id: UUID) {
         guard let view = views[id], running.contains(id) else { return }
+        // Watched read-only in a helper this app can't drive: it can't be ended from here
+        // (Restart Helper does it).
+        if readOnlySessions.contains(id) {
+            NSSound.beep()
+            return
+        }
         if let client = helperClients[id] {
             // Like closing the pty (SIGHUP) plus SIGTERM, SIGKILL after 5 s — done by the helper.
             // Its exit notice is then only forgotten: the exit is reported here and now.

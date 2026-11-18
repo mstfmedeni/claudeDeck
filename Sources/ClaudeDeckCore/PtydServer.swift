@@ -583,6 +583,11 @@ public final class PtydServer: @unchecked Sendable {
                            ws_xpixel: 0, ws_ypixel: 0)
         var empty = sigset_t()
         sigemptyset(&empty)
+        // Ignored signals survive exec: a helper started with SIGHUP ignored (nohup, a shell's
+        // background job, launchd) would hand that on, and a session would outlive the helper.
+        var byDefault = sigaction()
+        byDefault.__sigaction_u.__sa_handler = SIG_DFL
+        sigemptyset(&byDefault.sa_mask)
         var master: Int32 = -1
         let pid = argv.withUnsafeBufferPointer { argvPtr in
             envp.withUnsafeBufferPointer { envPtr -> pid_t in
@@ -590,6 +595,7 @@ public final class PtydServer: @unchecked Sendable {
                 if pid == 0 {
                     // Dispatch threads may block signals; the child starts with none blocked.
                     sigprocmask(SIG_SETMASK, &empty, nil)
+                    for signal in 1..<NSIG { _ = sigaction(signal, &byDefault, nil) }
                     if let dir { _ = chdir(dir) }
                     execve(path, UnsafeMutablePointer(mutating: argvPtr.baseAddress!),
                            UnsafeMutablePointer(mutating: envPtr.baseAddress!))

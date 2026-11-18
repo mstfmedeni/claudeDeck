@@ -30,6 +30,7 @@ if let oldest = value("--oldest-client").flatMap(Int.init) { options.oldestCompa
 // Under launchd (the app's launch agent) stderr goes nowhere: log next to the socket instead.
 if let job = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"], job.hasSuffix(".ptyd") {
     freopen(paths.log.path, "a", stderr)
+    chmod(paths.log.path, 0o600)
 }
 setvbuf(stderr, nil, _IOLBF, 0)
 nonisolated(unsafe) let formatter = ISO8601DateFormatter()

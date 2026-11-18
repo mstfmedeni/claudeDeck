@@ -9,8 +9,9 @@ import ServiceManagement
 /// AppModel which sessions to attach instead of starting (PtydLaunchPlan).
 ///
 /// The helper runs as a launch agent registered with SMAppService (the plist ships in
-/// Contents/Library/LaunchAgents), so macOS lists it under ClaudeDeck in Login Items and the
-/// sessions keep ClaudeDeck's privacy permissions. In demo mode, with CLAUDEDECK_DATA_DIR set,
+/// Contents/Library/LaunchAgents), so macOS lists it under ClaudeDeck in Login Items and should
+/// attribute the sessions' privacy (TCC) requests to ClaudeDeck rather than to a separate binary
+/// (not verified yet: check folder access on first use). In demo mode, with CLAUDEDECK_DATA_DIR set,
 /// or when the build has no plist, it runs as a detached child process instead (no launchd).
 @MainActor
 @Observable
@@ -145,9 +146,9 @@ final class PtydController {
         let sessions = (try? await candidate.list()) ?? []
         let alive = sessions.filter(\.alive)
         let outdated = candidate.welcome.build != Self.appBuild || !candidate.isFull
-        if outdated, alive.isEmpty, startIfNeeded, candidate.isFull {
+        if outdated, alive.isEmpty, startIfNeeded {
             ptydLog.info("replacing helper build \(candidate.welcome.build, privacy: .public) with \(Self.appBuild, privacy: .public)")
-            candidate.shutdown()
+            stopHelper(candidate)
             if await waitForLockRelease(.seconds(6)) {
                 candidate.close()
                 kickstart()
@@ -238,6 +239,16 @@ final class PtydController {
             try? await Task.sleep(for: .milliseconds(100))
         }
         return true
+    }
+
+    /// Ends the helper process (and with it its sessions). A read-only connection may not ask
+    /// it to shut down, so then the lock holder gets SIGTERM; its children get SIGHUP either way.
+    private func stopHelper(_ connection: PtydClient?) {
+        if let connection, connection.isFull {
+            connection.shutdown()
+        } else if paths.helperHoldsLock(), let pid = paths.lockHolderPID() {
+            kill(pid, SIGTERM)
+        }
     }
 
     // MARK: Starting the helper
@@ -389,9 +400,10 @@ final class PtydController {
             }
             orphans = []
         }
-        if endSessions || aliveCount == 0 {
-            client.shutdown()
+        if endSessions || aliveCount == 0 || !client.isFull {
+            stopHelper(client)
             _ = await waitForLockRelease(.seconds(6))
+            liveSessions = [:]
             unregister()
         } else {
             model?.mutate { $0.settings.retireSessionHelper = true }
@@ -404,7 +416,8 @@ final class PtydController {
         guard let model, model.deck.settings.retireSessionHelper, !model.deck.settings.keepSessionsRunning,
               aliveCount == 0 else { return }
         model.mutate(userInitiated: false) { $0.settings.retireSessionHelper = false }
-        client?.shutdown()
+        stopHelper(client)
+        liveSessions = [:]
         unregister()
     }
 
@@ -435,10 +448,8 @@ final class PtydController {
             // Taken off the helper first: their exits during the shutdown are an interruption to
             // recover from, not the end of the session.
             toRecover += model?.terminals.helperLost(client) ?? []
-            client.shutdown()
-        } else if paths.helperHoldsLock(), let pid = paths.lockHolderPID() {
-            kill(pid, SIGTERM)
         }
+        stopHelper(client)
         guard await waitForLockRelease(.seconds(8)) else {
             problem = String(localized: "The session helper didn't stop.")
             return

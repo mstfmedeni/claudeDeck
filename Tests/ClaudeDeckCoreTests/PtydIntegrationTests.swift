@@ -246,6 +246,29 @@ struct PtydIntegrationTests {
         kill(info.pid, SIGKILL)
     }
 
+    /// Started with SIGHUP ignored (nohup, a background job), the helper must not pass that on:
+    /// its sessions have to end with it.
+    @Test func childrenStartWithDefaultSignals() throws {
+        let dir = URL(fileURLWithPath: "/tmp/cdptyd-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", #"trap '' HUP INT; exec "$0" --dir "$1" --build test"#, try #require(helperBinary).path, dir.path]
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        defer { if process.isRunning { kill(process.processIdentifier, SIGKILL) } }
+        let paths = PtydPaths(directory: dir)
+        #expect(waitFor { (try? PtydClient.connect(socket: paths.socket, build: "test", timeout: 1, callbackQueue: DispatchQueue(label: "p"))) != nil })
+        let collector = Collector()
+        let client = try PtydClient.connect(socket: paths.socket, build: "test", callbackQueue: DispatchQueue(label: "c"))
+        client.onExit = { collector.exited($0) }
+        let spawn = shellSpawn("kill -HUP $$; sleep 5; echo survived")
+        _ = try sync { client.spawn(spawn, $0) }
+        #expect(waitFor { collector.exit(spawn.id) != nil })
+        #expect(collector.exit(spawn.id)?.exitSignal == SIGHUP)
+    }
+
     @Test func secondHelperForTheSameFolderStepsAside() throws {
         let helper = try HelperProcess()
         #expect(helper.waitUntilListening())
@@ -268,6 +291,11 @@ struct PtydIntegrationTests {
         #expect(client.compatibility == .readOnly)
         #expect(throws: PtydClientError.refused(PtydErrorCode.readOnly, nil)) { _ = try sync { client.spawn(shellSpawn("sleep 5"), $0) } }
         #expect((try? sync { client.list($0) }) == [])
+        // Nor may it shut the helper down (the app SIGTERMs the lock holder instead).
+        #expect(throws: PtydClientError.refused(PtydErrorCode.readOnly, nil)) {
+            _ = try sync { (done: @escaping @Sendable (Result<PtydFrame, PtydClientError>) -> Void) in client.shutdown(done) }
+        }
+        #expect(helper.process.isRunning)
         helper.kill()
     }
 
