@@ -207,7 +207,7 @@ enum DebugSnapshot {
         }
         // `<name>.tab`: "diff\t<dir>\t<path>\t<staged 0|1>" opens that diff tab (as a Changes click would),
         // "file\t<path>\t<preview 0|1>" an editor tab, "repo\t<dir>\t<history|worktrees>" a repository page,
-        // "automations" / "inbox" / "sessions" / "skills" those tabs, "search\t<query>\t<all 0|1>" the Search
+        // "automations" / "inbox" / "sessions" / "skills" / "simulators" those tabs, "search\t<query>\t<all 0|1>" the Search
         // tab with that query; "close-all" closes every tab but Sessions.
         for file in files where file.hasSuffix(".tab") {
             let path = (dir as NSString).appendingPathComponent(file)
@@ -225,6 +225,8 @@ enum DebugSnapshot {
                 model.tabs.open(.inbox)
             } else if parts == ["skills"] {
                 model.showSkills()
+            } else if parts == ["simulators"] {
+                model.showSimulators()
             } else if parts.count == 3, parts[0] == "search" {
                 model.showHistorySearch()
                 HistorySearchController.shared.scope = parts[2] == "1" ? .all : .project

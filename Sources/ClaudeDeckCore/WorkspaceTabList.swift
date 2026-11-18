@@ -19,6 +19,9 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     case skills
     /// Live terminal of a session on the paired Mac (remote mode).
     case remoteTerminal(UUID)
+    /// The Simulators page (Settings › Simulators). Not restored at launch: an older version
+    /// couldn't decode the saved tab list with it.
+    case simulators
 
     public var fileURL: URL? {
         if case .file(let url) = self { url } else { nil }
@@ -121,7 +124,7 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
         copy.tabs = tabs.filter {
             switch $0 {
             case .sessions, .file, .automations, .inbox, .search, .skills: true
-            case .diff, .repository, .remoteTerminal: false
+            case .diff, .repository, .remoteTerminal, .simulators: false
             }
         }
         if !copy.tabs.contains(selected) { copy.selected = .sessions }

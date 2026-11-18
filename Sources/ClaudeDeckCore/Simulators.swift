@@ -427,12 +427,13 @@ public enum SimulatorUsage {
         }
     }
 
-    /// UDID → the uses found under `roots` (session id → its terminal's top process).
+    /// UDID → the uses found in `roots` (session id → its terminal's top process) and below them.
+    /// The root counts too: a plain terminal's startup command may be the xcodebuild itself.
     public static func link(roots: [UUID: pid_t], table: ProcessTable, devices: [Simulator],
                             arguments: (pid_t) -> ProcessArguments?) -> [String: [Use]] {
         var result: [String: [Use]] = [:]
         for (session, root) in roots.sorted(by: { $0.key.uuidString < $1.key.uuidString }) where root > 0 {
-            for pid in table.descendants(of: root) {
+            for pid in [root] + table.descendants(of: root) {
                 guard let args = arguments(pid) else { continue }
                 let name = table.entry(pid)?.name ?? ""
                 for udid in SimulatorUsageInference.udids(in: args, devices: devices) {

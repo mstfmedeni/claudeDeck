@@ -65,7 +65,7 @@ struct WorkspaceView: View {
         case .automations: ""
         case .repository(let repo, _): (repo as NSString).abbreviatingWithTildeInPath
         case .inbox: ""
-        case .search, .skills, .remoteTerminal: ""
+        case .search, .skills, .remoteTerminal, .simulators: ""
         }
     }
 }
@@ -101,6 +101,8 @@ private struct TabContent: View {
         case .remoteTerminal(let id):
             // Streams only while shown; coming back fetches a fresh screen.
             if isSelected { RemoteTerminalTab(sessionID: id) }
+        case .simulators:
+            if isSelected { SimulatorsView() }   // samples processes only while shown
         }
     }
 }
@@ -256,6 +258,7 @@ private struct TabItem: View {
         case .search: Image(systemName: "text.magnifyingglass")
         case .skills: Image(systemName: "wand.and.stars")
         case .remoteTerminal: Image(systemName: "desktopcomputer")
+        case .simulators: Image(systemName: "iphone.gen3")
         }
     }
 
@@ -507,6 +510,7 @@ extension WorkspaceTab {
         case .search: "search"
         case .skills: "skills"
         case .remoteTerminal(let id): "remote:\(id.uuidString)"
+        case .simulators: "simulators"
         }
     }
 
@@ -524,6 +528,7 @@ extension WorkspaceTab {
         case .skills: String(localized: "Skills")
         case .remoteTerminal(let id):
             MainActor.assumeIsolated { RemoteController.tabTitle(id) }
+        case .simulators: String(localized: "Simulators")
         }
     }
 
@@ -544,6 +549,7 @@ extension WorkspaceTab {
         case .inbox: String(localized: "GitHub issues and pull requests")
         case .search: String(localized: "Search conversation history (⇧⌘H)")
         case .skills: String(localized: "Skills")
+        case .simulators: String(localized: "Simulators")
         default: url.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }

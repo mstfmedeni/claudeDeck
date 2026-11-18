@@ -186,6 +186,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
+    /// The Simulators tab (File › Simulators…): iOS, watchOS and visionOS simulators with their
+    /// memory and the sessions using them. Off by default.
+    public var simulators = false
 
     public init() {}
 
@@ -223,6 +226,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agentAPIEnabled = try c.decodeIfPresent(Bool.self, forKey: .agentAPIEnabled) ?? d.agentAPIEnabled
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
+        simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
     }
 }
 
