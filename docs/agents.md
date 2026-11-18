@@ -201,17 +201,19 @@ claudedeck skill setup [--user|--project] [--force]
 | 1 | `wait`: the command failed (its code is printed); otherwise an error (API off, not running…) |
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
-| 4 | Refused: the session's token doesn't allow it, the tool is off, or too many requests |
-| 5 | Unknown id |
+| 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
+| 5 | Unknown id, project, server, container or deployment |
 | 124 | `wait` timed out; still running |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask |
-|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | |
+
+`start` (project add, new) and `server` also need their settings (below).
 
 `send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
 session gets the text **as a note** unless **May type into Claude: sessions may send text to other
@@ -238,10 +240,110 @@ Off, they answer `404 not_found`.
 | GET | `/v1/cli/sessions/{ref}/wait` | `timeout` (seconds, at most 25 per request) | wait |
 | POST | `/v1/cli/notify` | `text` | notify |
 | POST | `/v1/cli/ask` | `question, agent` | ask |
+| GET | `/v1/cli/projects` | | projects |
+| POST | `/v1/cli/projects` | `path, name, group, create=1` | start |
+| POST | `/v1/cli/projects/{ref}/sessions` | `name, prompt, worktree` | start |
+| GET/POST | `/v1/cli/server/{command}` | per command (below) | server |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
-`409 not_running` / `blocked` / `not_started`, `429 too_many`. The routes for agents above are unchanged.
+`409 not_running` / `blocked` / `not_started`, `429 too_many`; for the commands below also
+`403 setting_off` / `system_path` / `outside_home` / `owner_refused` / `serverplan_off`,
+`404 unknown_project` / `no_such_folder`, `429 too_many_starts` / `too_many_projects` /
+`too_many_running`, `501 not_available`. The routes for agents above (`/v1/projects`,
+`/v1/sessions/{id}/prompt`, …) are unchanged.
+
+### Projects and Claude sessions
+
+```sh
+claudedeck projects [--json]
+claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
+claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME] [--json]
+```
+
+They need **Sessions may add projects and start Claude sessions** (Settings › Agents ›
+Command-line tool; off by default, exit 4 `setting_off`). When it's on there's no prompt per action.
+
+- **projects:** id, name, path, group and number of sessions.
+- **project add:** adds a folder like Add Project and prints the project's id. A folder that is
+  already a project answers with that project (exit 0, `"existing": true`). The path is resolved
+  (`..`, symlinks); `/` and system folders (`/System`, `/usr`, `/bin`, `/sbin`, `/etc`, `/Library`,
+  `/Applications`, `/dev`, `/Volumes`, …) are refused. `--create` makes a missing folder, only below
+  the user's home (not `~/Library` or a dot folder; a demo also allows its own folder). `--group`
+  puts it in that group, made if needed.
+- **new:** a Claude session in the project (`self`, the default: the caller's project; or an id,
+  a unique prefix, a name, a path), through the same start as **New Claude Session** (or a
+  worktree session with `--worktree`). `--prompt` is typed once Claude's hooks say it's up (at
+  most 60 s). Prints the session id; `wait`, `capture` and `send` work on it. The owner's selection
+  stays where it was. The session records who started it (`startedBy`): the caller may `send` to
+  it without **May type into Claude**. Unknown project: exit 5.
+- **Folder trust:** Claude Code asks "Is this a project you created or one you trust?" the first
+  time it runs in a folder, and nothing happens (hooks included) until someone answers, so a
+  session started with `new` in a fresh folder would just sit there. Before it launches, ClaudeDeck
+  marks the folder trusted the way that answer does: `projects[<folder>].hasTrustDialogAccepted`
+  in Claude Code's config (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`). Only for
+  sessions started with `new`, with the setting on, and only for a folder `--create` could make:
+  absolute, below the home folder (not the home itself), not `~/Library`, no dot folder in it,
+  never a system folder. Claude Code's own processes rewrite that file, so the change is made the
+  way they make theirs: under their lock (`~/.claude.json.lock`, waited for up to 3 s; only
+  one untouched for 30 s, left by a process that's gone, is removed), from a fresh read, inserted into the text so every other byte stays, checked (the
+  result must be the old config plus that key), written to a temporary file and renamed over the
+  original only if the file is unchanged since the read (inode, size, modification time),
+  otherwise read and done again. Nothing is written when the file isn't a JSON object. It's in
+  the Activity Log and the notification ("… and trusted its folder"); when it can't be done, the
+  notification says Claude Code is asking. A folder outside those rules is left to Claude Code
+  (Activity Log only; it may already be trusted). Sessions the owner starts keep asking as before. The
+  demo uses its own `~/.claude.json` (in its home), never the real one, and its stand-in `claude`
+  shows the question in folders that aren't trusted.
+- **Guardrails:** per calling session at most 5 `new` in 10 minutes and 10 new projects an hour;
+  at most 8 sessions started this way running at once (all callers). Over a limit: `429`, exit 4.
+  Every action is in the agent Activity Log, and the owner gets a notification "started Y in Z"
+  (what one session does within 3 s is one notification). Terminals a session opened with
+  `claudedeck open` don't have these scopes (`403 not_allowed`).
+
+### ServerPlan (`claudedeck server …`)
+
+They need **Sessions may use ServerPlan** (off by default) and ServerPlan set up in ClaudeDeck
+(else exit 4, `serverplan_off`). The command never gets the ServerPlan token: the app runs each
+command with `ServerPlanClient` and the token from the Keychain. `--json` passes the panel's JSON
+through (secret values removed); text output reads it tolerantly. The table of commands, the client
+calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCore/ServerPlanCLI.swift).
+
+| Command | Panel call | On a 428 |
+|---|---|---|
+| `server list` · `projects` · `deployments [--project P]` | `GET /servers` · `/projects` · `/deployments` | |
+| `server health SERVER` · `containers SERVER` | `GET /servers/:id/health` · `/containers` | |
+| `server logs SERVER CONTAINER [--tail N] [--follow]` | `GET …/logs`; `--follow` the log stream, 25 s per request | |
+| `server deploy PROJECT [--server S] [--force] [--wait]` | `POST /projects/:id/deploy` | confirmed automatically, logged |
+| `server deploy-status ID [--wait]` | `GET /deployments/:id` (long poll with `--wait`) | |
+| `server container SERVER CONTAINER start\|stop\|restart` | `POST …/containers/:name/:verb` | the owner's dialog |
+| `server features` | `GET /me` | |
+| `server dirs` · `scan DIR-ID\|PATH` | `GET /project-dirs` · `POST /project-dirs/:id/scan` | |
+| `server ports SERVER` | `GET /servers/:id/ports` | |
+| `server project show\|set PROJECT [--server S] [--port N] [--volume P] [--dockerfile P]` | `GET`/`PUT /projects/:id/settings` (set sends the current values merged with the new ones) | |
+| `server env get\|set PROJECT` | `GET /projects/:id/env` · `POST …/env/bulk` | |
+| `server dockerfile template\|write PROJECT` | `GET …/dockerfile/template` · `POST …/dockerfile` | |
+| `server db create PROJECT` | `POST /projects/:id/auto-create-db` | |
+| `server domain list [--server S]` · `domain add PROJECT SUB BASE [--server S] [--port N] [--websocket] [--target T]` | `GET`/`POST /domains` | the owner's dialog (replacing an A record) |
+| `server dns sync DOMAIN` | `POST /domains/:id/dns-sync` | the owner's dialog |
+| `server cloudflare` · `zone add NAME` | `GET /cloudflare/status` · `POST /cloudflare/zones` | |
+| `server ns set DOMAIN` | `POST /domains/:id/namecheap/nameservers` | the owner's dialog (custom nameservers) |
+
+- SERVER, PROJECT, DOMAIN: an id or a name (FQDN for domains). `scan PATH` scans the registered dir
+  the path is in and, for a project's own folder, prints that project.
+- **Deploys are autonomous:** if the panel asks for a confirmation (v1), the app sends it and logs
+  "confirmed automatically". `deploy --wait` prints the deployment id, then new log lines and status
+  changes, and exits 0 on success or 1 on failure (with the error). Every other 428 shows the
+  owner a dialog in the app (and a notification); refused, or no answer within 2 minutes: `403
+  owner_refused`, exit 4. The command waits up to 150 s for it.
+- **v1.1 commands** (`dirs`, `scan`, `ports`, `project`, `env`, `dockerfile`, `db`, `domain`,
+  `dns`, `cloudflare`, `zone`, `ns`): a panel whose `/me` lacks the command's scope
+  (`projects_write`, `databases`, `domains`, `dns`), or that answers 404 for a read-only one,
+  answers `501 not_available` ("not available: ServerPlan doesn't offer this yet"), exit 4.
+- `env set` takes `KEY=VALUE` lines from `--from-file FILE` or stdin (`-`) so secrets stay out of the
+  shell history; `--secret KEY` marks secrets. Values are never printed, only the keys.
+- Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
+  Activity Log.
 
 ## Agents signing themselves up
 

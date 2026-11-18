@@ -124,6 +124,19 @@ struct AgentsSettingsSection: View {
             ))
             Text("Sessions and terminals started from now on can run claudedeck: list sessions, open a terminal beside themselves, type into terminals they opened, read a screen, wait for a command, notify you. Restart running sessions to give them the command. Without “May type into Claude”, text for another Claude session becomes a note.")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Sessions may add projects and start Claude sessions", isOn: Binding(
+                get: { model.deck.settings.sessionsMayStartSessions },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayStartSessions = on } }
+            ))
+            Text("claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, 8 running at once. Each is in the activity log and a notification. Terminals a session opened can't.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Sessions may use ServerPlan", isOn: Binding(
+                get: { model.deck.settings.sessionsMayUseServerPlan },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayUseServerPlan = on } }
+            ))
+            .disabled(!ServerPlanController.shared.isConfigured && !model.deck.settings.sessionsMayUseServerPlan)
+            Text("claudedeck server: servers, containers, logs and deploys through ClaudeDeck (sessions never get the ServerPlan token). Deploys start without asking; stopping or restarting a container, and other actions ServerPlan asks to confirm, wait for your answer here.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

@@ -1,0 +1,1 @@
+{"user":{"id":1,"username":"medeni"},"role":"admin","scopes":["read","logs","deploy","containers","terminal","projects_write","databases","domains","dns"],"server_version":"1.1.0","features":["deploy_stream","log_stream","terminal","events"]}

@@ -63,6 +63,13 @@ public enum SessionCLI {
         case notify
         /// A question for the user (a note) or an agent (`claudedeck-ask`'s rules).
         case ask
+        /// The deck's projects (`claudedeck projects`).
+        case projects
+        /// Adding projects and starting Claude sessions (also needs Settings › "Sessions may add
+        /// projects and start Claude sessions").
+        case start
+        /// ServerPlan through the app (also needs "Sessions may use ServerPlan").
+        case server
     }
 
     /// Claude sessions and the user's own terminals.
@@ -82,6 +89,12 @@ public enum SessionCLI {
         case wait(String)
         case notify
         case ask
+        case projects
+        case addProject
+        /// `{ref}`: a project id, a unique prefix of one, its name, its path, or `self`.
+        case newSession(String)
+        /// `/v1/cli/server/{command}`: one of `ServerPlanCLI.commands` (any method; the table checks it).
+        case server(String)
 
         public var scope: Scope {
             switch self {
@@ -92,6 +105,9 @@ public enum SessionCLI {
             case .wait: .wait
             case .notify: .notify
             case .ask: .ask
+            case .projects: .projects
+            case .addProject, .newSession: .start
+            case .server: .server
             }
         }
     }
@@ -117,6 +133,9 @@ public enum SessionCLI {
         case 1 where rest[0] == "terminals": return expect("POST", .open)
         case 1 where rest[0] == "notify": return expect("POST", .notify)
         case 1 where rest[0] == "ask": return expect("POST", .ask)
+        case 1 where rest[0] == "projects": return method == "POST" ? .route(.addProject) : expect("GET", .projects)
+        case 3 where rest[0] == "projects" && rest[2] == "sessions": return expect("POST", .newSession(AgentHTTP.percentDecode(rest[1])))
+        case 2 where rest[0] == "server": return .route(.server(rest[1]))
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {
@@ -176,14 +195,15 @@ public enum SessionCLI {
     /// Its own terminals (ones it opened, or plain terminals in a pane beside it) take the text;
     /// another Claude session gets it only with the user's "May type into Claude", else as a note;
     /// anyone else's plain terminal, and the session itself, are refused.
+    /// A Claude session the caller started (`claudedeck new`, `targetStartedBy`) is its own too.
     public static func delivery(caller: UUID, target: UUID, targetKind: SessionKind, targetOpenedBy: UUID?,
-                                besideCaller: Bool, mayTypeIntoClaude: Bool) -> Delivery {
+                                besideCaller: Bool, mayTypeIntoClaude: Bool, targetStartedBy: UUID? = nil) -> Delivery {
         guard target != caller else { return .refuse("cannot_send_to_self") }
         switch targetKind {
         case .shell:
             return targetOpenedBy == caller || besideCaller ? .type : .refuse("not_yours")
         case .claude:
-            return mayTypeIntoClaude ? .type : .note
+            return mayTypeIntoClaude || targetStartedBy == caller ? .type : .note
         }
     }
 
@@ -461,6 +481,12 @@ public struct SessionCLIBook: Sendable {
     /// The command last typed text with Return into this session.
     public var sentAt: [UUID: Date] = [:]
     public var notices = SessionCLILimiter(max: 10, window: 10 * 60)
+    /// `claudedeck new`: at most 5 Claude sessions in 10 minutes per calling session.
+    public var starts = SessionCLILimiter(max: 5, window: 10 * 60)
+    /// `claudedeck project add`: at most 10 new projects an hour per calling session.
+    public var projectAdds = SessionCLILimiter(max: 10, window: 60 * 60)
+    /// "Session X started session Y" notices waiting to go out together (a burst is one notification).
+    public var startNotices: [UUID: [String]] = [:]
 
     public init() {}
 

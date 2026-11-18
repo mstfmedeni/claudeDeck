@@ -72,6 +72,14 @@ extension AppModel {
             return cliNotify(caller, form: form, json: json)
         case .ask:
             return cliAsk(caller, form: form, json: json)
+        case .projects:
+            return cliProjects(json: json)
+        case .addProject:
+            return cliAddProject(caller, form: form, json: json)
+        case .newSession(let ref):
+            return await cliNewSession(caller, project: ref, form: form, json: json)
+        case .server(let command):
+            return await cliServer(caller, command: command, method: request.method, form: form, json: json)
         }
     }
 
@@ -177,7 +185,7 @@ extension AppModel {
         let panes = deck.visiblePanes
         let delivery = SessionCLI.delivery(caller: caller, target: target.id, targetKind: target.kind, targetOpenedBy: target.openedBy,
                                            besideCaller: panes.contains(caller) && panes.contains(target.id),
-                                           mayTypeIntoClaude: deck.settings.sessionsMayTypeIntoClaude)
+                                           mayTypeIntoClaude: deck.settings.sessionsMayTypeIntoClaude, targetStartedBy: target.startedBy)
         switch delivery {
         case .refuse(let reason):
             return reason == "cannot_send_to_self"

@@ -486,4 +486,79 @@ import Testing
         // The heredoc that carries it must not end early.
         #expect(!skill.split(separator: "\n").contains("SKILL"))
     }
+
+    // MARK: Projects, sessions and ServerPlan in the script
+
+    @Test func projectAndNewArguments() throws {
+        let cwd = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        let add = try run(["project", "add", "./svc", "--name", "Svc", "--group", "Services", "--create"], answers: [("PID", "200 0")], cwd: cwd)
+        #expect(add.code == 0 && add.out == "PID\n")
+        let call = try #require(add.curlCalls.first)
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/projects" && !call.contains("-G"))
+        #expect(call.contains("create=1") && call.contains("name=Svc") && call.contains("group=Services"))
+        #expect(call.contains { $0.hasPrefix("path=/") && $0.hasSuffix("/svc") })
+        #expect(try run(["project", "add"]).code == 2)
+        #expect(try run(["project", "remove", "/x"]).code == 2)
+        #expect(try run(["projects", "--json"], answers: [("[]", "200 0")]).curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/projects")
+
+        let new = try run(["new", "--project", "web shop", "--prompt", "Fix the cart", "--worktree", "cart"], answers: [("SID", "200 0")])
+        #expect(new.code == 0 && new.out == "SID\n")
+        let started = try #require(new.curlCalls.first)
+        #expect(started.last == "http://127.0.0.1:47832/v1/cli/projects/web%20shop/sessions")
+        #expect(started.contains("prompt=Fix the cart") && started.contains("worktree=cart"))
+        #expect(try run(["new"], answers: [("SID", "200 0")]).curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/projects/self/sessions")
+        let path = try run(["new", "--project", "/Users/x/app"], answers: [("SID", "200 0")])
+        #expect(path.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/projects/%2FUsers%2Fx%2Fapp/sessions")
+        #expect(try run(["new", "--bogus"]).code == 2)
+        // Off, rate-limited or unknown: the API's codes, with a hint.
+        let off = try run(["new"], answers: [(#"{"error":"setting_off"}"#, "403 4")])
+        #expect(off.code == 4 && off.err.contains("Settings"))
+        #expect(try run(["new", "--project", "nope"], answers: [(#"{"error":"unknown_project"}"#, "404 5")]).code == 5)
+    }
+
+    @Test func serverArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        let list = try run(["server", "list"], answers: [("ID  NAME", "200 0")])
+        #expect(list.code == 0 && list.curlCalls.first?.last == base + "list" && list.curlCalls.first?.contains("-G") == true)
+        let logs = try run(["server", "logs", "prod", "api", "--tail", "50"], answers: [("line", "200 0")])
+        #expect(logs.curlCalls.first?.contains("tail=50") == true && logs.curlCalls.first?.contains("container=api") == true)
+        #expect(try run(["server", "logs", "prod"]).code == 2)
+        #expect(try run(["server", "logs", "prod", "api", "--tail", "lots"]).code == 2)
+        #expect(try run(["server", "container", "prod", "api", "delete"]).code == 2)
+        #expect(try run(["server", "deploy-status", "abc"]).code == 2)
+        #expect(try run(["server", "frobnicate"]).code == 2)
+        #expect(try run(["server", "list"]).curlCalls.count == 1)
+        #expect(try run(["server", "frobnicate"]).curlCalls.isEmpty)
+
+        // deploy --wait: the id, then the log until the end (124 = ask again).
+        let deploy = try run(["server", "deploy", "web", "--wait"], answers: [("301", "202 0"), ("building…", "200 124 1:building"),
+                                                                              ("done line\ndeploy #301: success", "200 0 2:success")])
+        #expect(deploy.code == 0 && deploy.out == "301\nbuilding…\ndone line\ndeploy #301: success\n")
+        #expect(deploy.curlCalls.count == 3 && deploy.curlCalls[0].last == base + "deploy" && deploy.curlCalls[0].contains("project=web"))
+        #expect(deploy.curlCalls[1].contains("id=301") && deploy.curlCalls[1].contains("since=0"))
+        #expect(deploy.curlCalls[2].contains("since=1") && deploy.curlCalls[2].contains("status=building"))
+        let failed = try run(["server", "deploy-status", "301", "--wait"], answers: [("deploy #301: failed\nerror: boom", "200 1 9:failed")])
+        #expect(failed.code == 1 && failed.out.contains("error: boom"))
+        // The owner said no.
+        let refused = try run(["server", "container", "prod", "api", "restart"], answers: [(#"{"error":"owner_refused","message":"no"}"#, "403 4")])
+        #expect(refused.code == 4 && refused.err.contains("owner"))
+        let missing = try run(["server", "scan", "/x"], answers: [(#"{"error":"not_available","message":"not available: ServerPlan doesn't offer this yet"}"#, "501 4")])
+        #expect(missing.code == 4 && missing.err.contains("doesn't offer this yet"))
+    }
+
+    @Test func envSetKeepsSecretsOffTheCommandLine() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "cli-env-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data("API_KEY=s3cret\n".utf8).write(to: dir.appending(path: ".env"))
+        let set = try run(["server", "env", "set", "web", "--from-file", dir.appending(path: ".env").path, "--secret", "API_KEY", "DEBUG=1"],
+                          answers: [("written: API_KEY (secret), DEBUG", "200 0")])
+        #expect(set.code == 0 && !set.out.contains("s3cret"))
+        let call = try #require(set.curlCalls.first)
+        #expect(call.contains { $0.hasPrefix("vars=") && $0.contains("API_KEY=s3cret") && $0.contains("DEBUG=1") })
+        #expect(call.contains("secret=API_KEY") && call.last == "http://127.0.0.1:47832/v1/cli/server/env-set")
+        #expect(try run(["server", "env", "set", "web"]).code == 2)
+        #expect(try run(["server", "env", "set", "web", "NOTANASSIGNMENT"]).code == 2)
+        #expect(try run(["server", "env", "get", "web"], answers: [("KEY", "200 0")]).curlCalls.first?.contains("-G") == true)
+    }
 }

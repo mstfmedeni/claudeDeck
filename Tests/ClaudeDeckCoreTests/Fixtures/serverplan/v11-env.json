@@ -1,0 +1,1 @@
+[{"id":1,"key":"DB_NAME","value":"new_api","is_secret":false,"source":"auto-db"},{"id":2,"key":"API_KEY","value":"leaked-if-shown","is_secret":true,"source":"manual"}]

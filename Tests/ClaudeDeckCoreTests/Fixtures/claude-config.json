@@ -1,0 +1,38 @@
+{
+  "numStartups": 412,
+  "installMethod": "global",
+  "autoUpdates": true,
+  "theme": "dark",
+  "tipsHistory": {
+    "new-user-warmup": 7,
+    "memory-command": 31
+  },
+  "firstStartTime": "2025-03-02T09:14:55.120Z",
+  "userID": "0c5f1e9a7d0b4b43a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718",
+  "oauthAccount": {
+    "accountUuid": "11111111-2222-3333-4444-555555555555",
+    "emailAddress": "someone@example.com",
+    "organizationRole": "admin"
+  },
+  "someFutureKey": {
+    "nested": [1, 2.5, "x", null, false, {"deep": "value with / slash"}],
+    "ratio": 0.1,
+    "big": 1763552095123
+  },
+  "projects": {
+    "/Users/someone/code/acme-storefront": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "hasTrustDialogAccepted": true,
+      "projectOnboardingSeenCount": 3,
+      "lastCost": 1.2345,
+      "lastSessionId": "a1b2c3d4-0000-4000-8000-000000000001"
+    },
+    "/Users/someone/code/payments-api": {
+      "allowedTools": ["Bash(npm test)"],
+      "hasTrustDialogAccepted": false,
+      "lastDuration": 523411
+    }
+  }
+}

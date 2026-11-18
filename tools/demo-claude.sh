@@ -6,6 +6,29 @@ ID="$CLAUDEDECK_TERMINAL_ID"
 SCENE="$DEMO/scenes/$ID"
 ESC=$(printf '\033')
 
+# Like Claude Code: a folder nobody trusted yet asks first, and nothing else (the hook included)
+# happens until it's answered. Trust lives in the demo's home ($DEMO/home/.claude.json,
+# projects[<folder>].hasTrustDialogAccepted; a folder above it counts too). Enter trusts it.
+CONFIG="$DEMO/home/.claude.json"
+trusted() {
+  [ -f "$CONFIG" ] || return 0
+  dir=$(pwd -P)
+  while :; do
+    jq -e --arg d "$dir" '.projects[$d].hasTrustDialogAccepted == true' "$CONFIG" >/dev/null 2>&1 && return 0
+    [ "$dir" = / ] && return 1
+    dir=$(dirname "$dir")
+  done
+}
+if ! trusted; then
+  printf '%s[1;33m Accessing workspace:%s[0m\n\n %s[1m%s%s[0m\n\n' "$ESC" "$ESC" "$ESC" "$(pwd -P)" "$ESC"
+  printf " Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.\n\n"
+  printf " Claude Code'll be able to read, edit, and execute files here.\n\n"
+  printf ' %s[36m❯ Yes, I trust this folder%s[0m\n   No, exit\n\n %s[2mEnter to confirm · Esc to cancel%s[0m\n' "$ESC" "$ESC" "$ESC" "$ESC"
+  read -r _ || exit 0
+  jq --arg d "$(pwd -P)" '.projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true})' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+  printf '%s[2J%s[H' "$ESC" "$ESC"
+fi
+
 [ -f "$SCENE.txt" ] && sed "s/\[\([0-9;]*m\)/$ESC[\1/g" "$SCENE.txt"
 
 TRANSCRIPT=""; [ -f "$SCENE.jsonl" ] && TRANSCRIPT="$SCENE.jsonl"

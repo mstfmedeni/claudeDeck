@@ -192,6 +192,15 @@ astro.config.mjs|export default {}
 src/posts/hello-world.md|# Hello
 EOF
 
+# --- Folder trust: the demo's own ~/.claude.json, never the real one. The projects above are
+# trusted; a folder added later (claudedeck project add --create) makes the stand-in claude ask
+# "Is this a project you created or one you trust?" unless ClaudeDeck trusted it first.
+mkdir -p "$ROOT/home"
+REAL_PROJECTS=$(cd "$ROOT/projects" && pwd -P)
+for dir in "$REAL_PROJECTS"/*/; do printf '%s\n' "${dir%/}"; done \
+  | jq -R . | jq -s '{numStartups: 3, projects: (map({key: ., value: {hasTrustDialogAccepted: true}}) | from_entries)}' \
+  > "$ROOT/home/.claude.json"
+
 # --- GitHub: a stand-in `gh` that answers from fixtures (made-up repositories and people) ----------
 mkdir -p "$ROOT/github"
 cat > "$ROOT/bin/gh" <<'EOF'
@@ -305,6 +314,9 @@ NOW=$(date +%s)
 P="$ROOT/projects"
 DEFAULTS=false; [ "${CLAUDEDECK_DEMO_DEFAULTS:-}" = 1 ] && DEFAULTS=true
 CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && [ "$DEFAULTS" = false ] && CLI=true
+# CLAUDEDECK_DEMO_AUTONOMY=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may add projects, start Claude
+# sessions and use ServerPlan (claudedeck project add / new / server).
+AUTONOMY=false; [ "$CLI" = true ] && [ "${CLAUDEDECK_DEMO_AUTONOMY:-}" = 1 ] && AUTONOMY=true
 # Opt-in features, on unless CLAUDEDECK_DEMO_DEFAULTS=1.
 if [ "$DEFAULTS" = true ]; then SIMULATORS=false; PROGRAM_STATUS=""; else SIMULATORS=true; PROGRAM_STATUS=', "showProgramStatus": true'; fi
 EXTRA_SESSION=""
@@ -385,7 +397,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
-                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI,
+                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY,
                 "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS }
 }
 EOF

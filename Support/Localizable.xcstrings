@@ -17970,6 +17970,136 @@
           }
         }
       }
+    },
+    "Sessions may add projects and start Claude sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar proje ekleyip Claude oturumu başlatabilir"
+          }
+        }
+      }
+    },
+    "claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, 8 running at once. Each is in the activity log and a notification. Terminals a session opened can't.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck project add ve claudedeck new, her seferinde sormadan: oturum başına 10 dakikada en fazla 5 yeni oturum ve saatte 10 proje, aynı anda en fazla 8 çalışan oturum. Her biri etkinlik günlüğünde görünür ve bildirim gelir. Bir oturumun açtığı terminaller bunu yapamaz."
+          }
+        }
+      }
+    },
+    "Sessions may use ServerPlan": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar ServerPlan'ı kullanabilir"
+          }
+        }
+      }
+    },
+    "claudedeck server: servers, containers, logs and deploys through ClaudeDeck (sessions never get the ServerPlan token). Deploys start without asking; stopping or restarting a container, and other actions ServerPlan asks to confirm, wait for your answer here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck server: sunucular, container'lar, loglar ve deploy'lar ClaudeDeck üzerinden (oturumlar ServerPlan token'ını hiç almaz). Deploy'lar sormadan başlar; bir container'ı durdurmak veya yeniden başlatmak ve ServerPlan'ın onay istediği diğer işlemler burada yanıtını bekler."
+          }
+        }
+      }
+    },
+    "Added the project %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ projesi eklendi"
+          }
+        }
+      }
+    },
+    "Started %@ in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$@ başlatıldı"
+          }
+        }
+      }
+    },
+    "Started %@ in %@ and trusted its folder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$@ başlatıldı ve klasörüne güvenildi"
+          }
+        }
+      }
+    },
+    "Started %@ in %@; Claude Code asks whether to trust its folder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$@ başlatıldı; Claude Code klasörüne güvenilip güvenilmeyeceğini soruyor"
+          }
+        }
+      }
+    },
+    "Started %lld sessions: ": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld oturum başlatıldı: "
+          }
+        }
+      }
+    },
+    "Asks to run “%@” on %@ in ServerPlan. Answer in ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'da %2$@ üzerinde “%1$@” çalıştırmak istiyor. ClaudeDeck'te yanıtlayın."
+          }
+        }
+      }
+    },
+    "%@ wants to run “%@” on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %3$@ üzerinde “%2$@” çalıştırmak istiyor"
+          }
+        }
+      }
+    },
+    "A session asks through claudedeck server. Without an answer in 2 minutes it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturum claudedeck server üzerinden soruyor. 2 dakika içinde yanıt verilmezse reddedilir."
+          }
+        }
+      }
+    },
+    "Refuse": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reddet"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

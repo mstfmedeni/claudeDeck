@@ -774,6 +774,16 @@ Text for another Claude session becomes a note unless you allow sessions to type
 `claudedeck skill setup` installs a Claude Code skill that tells Claude when to use it. Commands,
 token scopes and exit codes: [docs/agents.md](docs/agents.md#command-line-tool-for-sessions).
 
+Two more settings there, both off by default, let sessions work on their own:
+
+- **Sessions may add projects and start Claude sessions:** `claudedeck projects`, `project add PATH
+  [--create]` and `new [--project P] [--prompt TEXT] [--worktree NAME]`. No prompt per action; at
+  most 5 new sessions in 10 minutes and 10 projects an hour per session, 8 started sessions
+  running at once, each in the activity log and a notification.
+- **Sessions may use ServerPlan:** `claudedeck server list`, `logs`, `deploy --wait`, … through
+  ClaudeDeck, which keeps the ServerPlan token. Deploys start without asking; container actions,
+  DNS record replacements and custom nameserver changes wait for your answer in a dialog.
+
 ## ServerPlan (optional)
 
 ServerPlan is a self-hosted server panel. Connect it in Settings › ServerPlan with the panel's
