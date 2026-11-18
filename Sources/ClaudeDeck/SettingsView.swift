@@ -108,6 +108,7 @@ struct SettingsView: View {
             AgentsSettingsSection()
             RemoteSettingsSection()
             PencilSettingsSection()
+            SimulatorSettingsSection()
             Section("Claude Code Hooks") {
                 LabeledContent("Status") {
                     (installed ? Text("Installed") : Text("Not Installed"))

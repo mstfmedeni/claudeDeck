@@ -15560,6 +15560,446 @@
           }
         }
       }
+    },
+    "Simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler"
+          }
+        }
+      }
+    },
+    "Simulators…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler…"
+          }
+        }
+      }
+    },
+    "Simulator": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatör"
+          }
+        }
+      }
+    },
+    "Erase": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sil"
+          }
+        }
+      }
+    },
+    "Erase…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sil…"
+          }
+        }
+      }
+    },
+    "Copy UDID": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UDID'yi Kopyala"
+          }
+        }
+      }
+    },
+    "Boot": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlat"
+          }
+        }
+      }
+    },
+    "Shut Down": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat"
+          }
+        }
+      }
+    },
+    "Open in Simulator": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simulator'da Aç"
+          }
+        }
+      }
+    },
+    "Last:": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son:"
+          }
+        }
+      }
+    },
+    "No session found": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum bulunamadı"
+          }
+        }
+      }
+    },
+    "Closed session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapatılmış oturum"
+          }
+        }
+      }
+    },
+    "Slim": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hafiflet"
+          }
+        }
+      }
+    },
+    "Restore": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geri Yükle"
+          }
+        }
+      }
+    },
+    "%lld running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld çalışıyor"
+          }
+        }
+      }
+    },
+    "%lld processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld süreç"
+          }
+        }
+      }
+    },
+    "Booting…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatılıyor…"
+          }
+        }
+      }
+    },
+    "Shutting down…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapatılıyor…"
+          }
+        }
+      }
+    },
+    "Erasing…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siliniyor…"
+          }
+        }
+      }
+    },
+    "Slimming…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hafifletiliyor…"
+          }
+        }
+      }
+    },
+    "Restoring…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geri yükleniyor…"
+          }
+        }
+      }
+    },
+    "The command failed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komut başarısız oldu."
+          }
+        }
+      }
+    },
+    "xcrun simctl failed. Is Xcode installed?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "xcrun simctl başarısız oldu. Xcode kurulu mu?"
+          }
+        }
+      }
+    },
+    "Erase “%@”?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” silinsin mi?"
+          }
+        }
+      }
+    },
+    "Slim “%@”?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” hafifletilsin mi?"
+          }
+        }
+      }
+    },
+    "Restore “%@” to stock?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” varsayılan hâline döndürülsün mü?"
+          }
+        }
+      }
+    },
+    "Used now by %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şu anda kullanan: %@"
+          }
+        }
+      }
+    },
+    "Seen %@ (%@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görüldü: %@ (%@)"
+          }
+        }
+      }
+    },
+    "All apps, data and settings on this simulator are deleted. This can’t be undone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu simülatördeki tüm uygulamalar, veriler ve ayarlar silinir. Bu işlem geri alınamaz."
+          }
+        }
+      }
+    },
+    "The simulator is shut down first. All apps, data and settings on it are deleted. This can’t be undone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatör önce kapatılır. Üzerindeki tüm uygulamalar, veriler ve ayarlar silinir. Bu işlem geri alınamaz."
+          }
+        }
+      }
+    },
+    "simslim turns off background services the simulator doesn’t need and reboots it. Push notifications, widgets and WatchConnectivity stay on.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "simslim, simülatörün ihtiyaç duymadığı arka plan servislerini kapatır ve onu yeniden başlatır. Anlık bildirimler, widget'lar ve WatchConnectivity açık kalır."
+          }
+        }
+      }
+    },
+    "simslim turns every service back on and reboots the simulator.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "simslim tüm servisleri yeniden açar ve simülatörü yeniden başlatır."
+          }
+        }
+      }
+    },
+    "Simulators are turned off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler kapalı"
+          }
+        }
+      }
+    },
+    "Turn them on in Settings › Simulators.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar › Simülatörler'den aç."
+          }
+        }
+      }
+    },
+    "Couldn’t list simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler listelenemedi"
+          }
+        }
+      }
+    },
+    "Memory of all running simulators (sum of their processes’ footprint)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan tüm simülatörlerin belleği (süreçlerinin bellek kullanımlarının toplamı)"
+          }
+        }
+      }
+    },
+    "Reload the simulator list": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatör listesini yenile"
+          }
+        }
+      }
+    },
+    "No simulator is running.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan simülatör yok."
+          }
+        }
+      }
+    },
+    "Memory is the footprint of every process the simulator runs, refreshed while this tab is visible. A session is linked when one of its processes (xcodebuild, simctl, axe, a test runner…) names the simulator by UDID, by an unambiguous name, or as the only booted one; commands that already finished, and apps outside ClaudeDeck, can’t be traced.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek, simülatörün çalıştırdığı tüm süreçlerin bellek kullanımıdır ve bu sekme görünürken yenilenir. Bir oturum, süreçlerinden biri (xcodebuild, simctl, axe, bir test çalıştırıcı…) simülatörü UDID'siyle, tek anlamlı bir adla ya da çalışan tek simülatör olarak andığında bağlanır; bitmiş komutlar ve ClaudeDeck dışındaki uygulamalar izlenemez."
+          }
+        }
+      }
+    },
+    "None of the sessions’ processes names this simulator right now. It may be used by Xcode, another app, or a command that already finished.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şu anda hiçbir oturumun süreci bu simülatörü anmıyor. Xcode, başka bir uygulama ya da bitmiş bir komut tarafından kullanılıyor olabilir."
+          }
+        }
+      }
+    },
+    "Slim (keep push, widgets, Watch)…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hafiflet (bildirim, widget ve Watch kalsın)…"
+          }
+        }
+      }
+    },
+    "Restore Stock Services…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsayılan Servisleri Geri Yükle…"
+          }
+        }
+      }
+    },
+    "Show the Simulators tab (File › Simulators…)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler sekmesini göster (Dosya › Simülatörler…)"
+          }
+        }
+      }
+    },
+    "Lists iOS, watchOS and visionOS simulators with their memory and the sessions using them, with Boot, Shut Down, Open and Erase. Nothing is read while the tab is closed or hidden.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS, watchOS ve visionOS simülatörlerini bellekleri ve onları kullanan oturumlarla listeler; Başlat, Kapat, Aç ve Sil işlemleri sunar. Sekme kapalıyken ya da gizliyken hiçbir şey okunmaz."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -201,6 +201,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// Plain terminals show their program's status (working, needs input, finished, failed) unless
     /// the terminal says otherwise (`DeckSession.showProgramStatus`). Off: terminals are just terminals.
     public var terminalProgramStatus = false
+    /// The Simulators tab (File › Simulators…): iOS, watchOS and visionOS simulators with their
+    /// memory and the sessions using them. Off by default.
+    public var simulators = false
 
     public init() {}
 
@@ -241,6 +244,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayTypeIntoClaude = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayTypeIntoClaude) ?? d.sessionsMayTypeIntoClaude
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
+        simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
     }
 }
 

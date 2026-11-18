@@ -349,7 +349,8 @@ cat > "$ROOT/data/deck.json" <<EOF
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
-                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI }
+                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI,
+                "simulators": true }
 }
 EOF
 
