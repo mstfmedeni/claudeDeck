@@ -27,6 +27,10 @@ if let ring = value("--ring-bytes").flatMap(Int.init), ring > 0 { options.ringBy
 if let version = value("--protocol-version").flatMap(Int.init) { options.protocolVersion = version }
 if let oldest = value("--oldest-client").flatMap(Int.init) { options.oldestCompatibleClient = oldest }
 
+// Under launchd (the app's launch agent) stderr goes nowhere: log next to the socket instead.
+if let job = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"], job.hasSuffix(".ptyd") {
+    freopen(paths.log.path, "a", stderr)
+}
 setvbuf(stderr, nil, _IOLBF, 0)
 nonisolated(unsafe) let formatter = ISO8601DateFormatter()
 let server = PtydServer(options: options) { line in

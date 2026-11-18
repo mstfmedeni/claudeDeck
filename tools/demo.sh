@@ -5,6 +5,8 @@
 #   tools/demo.sh -AppleLanguages '(tr)'     # same, with the Turkish UI
 #
 # Everything lives in $CLAUDEDECK_DEMO_ROOT (default /tmp/ClaudeDeckDemo) and is recreated on every run.
+# CLAUDEDECK_DEMO_KEEP=1 relaunches on the existing demo data instead (sessions kept running by
+# the demo's session helper reattach), e.g. after quitting the demo with the setting on.
 # Demo mode never touches ~/.claude/settings.json, your deck.json or iCloud: sessions run
 # tools/demo-claude.sh (a stand-in that prints a canned conversation and reports a fixed state)
 # instead of the real `claude`.
@@ -15,7 +17,26 @@ ROOT="${CLAUDEDECK_DEMO_ROOT:-/tmp/ClaudeDeckDemo}"
 APP=build/ClaudeDeck.app
 [ -d "$APP" ] || { echo "❌ $APP not found; run ./build.sh first" >&2; exit 1; }
 
+launch() {
+  echo "Demo data: $ROOT"
+  CLAUDEDECK_DEMO=1 \
+  CLAUDEDECK_DATA_DIR="$ROOT/data" \
+  CLAUDEDECK_STATE_DIR="$ROOT/sessions" \
+  CLAUDEDECK_CLAUDE_PATH="$ROOT/bin/claude" \
+  CLAUDEDECK_GH_PATH="$ROOT/bin/gh" \
+  CLAUDEDECK_CLAUDE_HOME="$ROOT/home" \
+    "$APP/Contents/MacOS/ClaudeDeck" "$@" >/dev/null 2>&1 &
+  echo "ClaudeDeck demo started (pid $!). Quit it with ⌘Q; run this script again for a fresh copy."
+}
+
+if [ -n "${CLAUDEDECK_DEMO_KEEP:-}" ] && [ -f "$ROOT/data/deck.json" ]; then
+  launch "$@"
+  exit 0
+fi
+
 pkill -f "$ROOT/bin/claude" 2>/dev/null || true
+# The demo's session helper (if the setting was on) and its sessions go with the old data.
+pkill -f "claudedeck-ptyd --dir $ROOT/data" 2>/dev/null || true
 rm -rf "$ROOT"
 mkdir -p "$ROOT/bin" "$ROOT/scenes" "$ROOT/sessions" "$ROOT/data" "$ROOT/projects"
 cp tools/demo-claude.sh "$ROOT/bin/claude"
@@ -249,6 +270,8 @@ S6=C0000000-0000-0000-0000-000000000006
 S7=C0000000-0000-0000-0000-000000000007
 NOW=$(date +%s)
 P="$ROOT/projects"
+# CLAUDEDECK_DEMO_PERSIST=1: start with "Keep sessions running when ClaudeDeck quits" on.
+KEEP_SESSIONS=false; [ -n "${CLAUDEDECK_DEMO_PERSIST:-}" ] && KEEP_SESSIONS=true
 A1=D0000000-0000-0000-0000-000000000001
 A2=D0000000-0000-0000-0000-000000000002
 A3=D0000000-0000-0000-0000-000000000003
@@ -313,7 +336,7 @@ cat > "$ROOT/data/deck.json" <<EOF
       "startedAt": $(at -2d 10 0), "completedAt": $(at -2d 10 8), "status": "succeeded" }
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
-                "pencilMCP": false, "terminalFontSize": 11 }
+                "pencilMCP": false, "terminalFontSize": 11, "keepSessionsRunning": $KEEP_SESSIONS }
 }
 EOF
 
@@ -487,12 +510,4 @@ printf '{"agentType":"Explore","toolUseId":"t1"}' > "$SUB/agent-ademo1.meta.json
 } > "$SUB/agent-ademo2.jsonl"
 printf '{"agentType":"general-purpose","toolUseId":"t2"}' > "$SUB/agent-ademo2.meta.json"
 
-echo "Demo data: $ROOT"
-CLAUDEDECK_DEMO=1 \
-CLAUDEDECK_DATA_DIR="$ROOT/data" \
-CLAUDEDECK_STATE_DIR="$ROOT/sessions" \
-CLAUDEDECK_CLAUDE_PATH="$ROOT/bin/claude" \
-CLAUDEDECK_GH_PATH="$ROOT/bin/gh" \
-CLAUDEDECK_CLAUDE_HOME="$ROOT/home" \
-  "$APP/Contents/MacOS/ClaudeDeck" "$@" >/dev/null 2>&1 &
-echo "ClaudeDeck demo started (pid $!). Quit it with ⌘Q; run this script again for a fresh copy."
+launch "$@"

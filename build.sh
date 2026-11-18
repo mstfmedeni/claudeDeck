@@ -35,11 +35,14 @@ if command -v xcodegen >/dev/null 2>&1; then
 else
 echo "xcodegen not found — SwiftPM build without the widget (brew install xcodegen)"
 swift build -c "$CONFIG" --product ClaudeDeck
+swift build -c "$CONFIG" --product claudedeck-ptyd
 BIN="$(swift build -c "$CONFIG" --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/ClaudeDeck" "$APP/Contents/MacOS/ClaudeDeck"
+# Session helper. No launch agent plist in this build: it runs as a child process (PtydController).
+cp "$BIN/claudedeck-ptyd" "$APP/Contents/MacOS/claudedeck-ptyd"
 cp Support/Info.plist "$APP/Contents/Info.plist"
 # Xcode expands these build settings; do it by hand here.
 BUNDLE_ID="$(setting DECK_BUNDLE_PREFIX).ClaudeDeck"

@@ -2,7 +2,10 @@ import AppKit
 import ClaudeDeckCore
 import Foundation
 import Observation
+import os
 import SwiftTerm
+
+let ptydLog = Logger(subsystem: "ClaudeDeck", category: "ptyd")
 
 /// The user's login shell and a clean environment for launching `claude` in it.
 enum ShellEnvironment {
@@ -286,8 +289,83 @@ final class DeckTerminalView: LocalProcessTerminalView {
     }
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        // Watching a session in a helper this app can't drive: no input.
+        if helperReadOnly { return }
         onInput?(data)
+        if let helperInput { helperInput(data); return }
         super.send(source: source, data: data)
+    }
+
+    // MARK: Session helper (claudedeck-ptyd)
+
+    /// Set while the process runs in the session helper: input goes there instead of a local pty.
+    var helperInput: ((ArraySlice<UInt8>) -> Void)?
+    /// Attached read-only to a helper this app can't drive.
+    var helperReadOnly = false
+    /// The grid changed. Only helper sessions need it: LocalProcessTerminalView resizes its own
+    /// pty, but reports nothing while it has no local process.
+    var onGridChange: ((Int, Int) -> Void)?
+    private var reportedGrid: (cols: Int, rows: Int)?
+
+    func reportGridIfChanged() {
+        guard onGridChange != nil else { return }
+        let terminal = getTerminal()
+        guard reportedGrid?.cols != terminal.cols || reportedGrid?.rows != terminal.rows else { return }
+        reportedGrid = (terminal.cols, terminal.rows)
+        onGridChange?(terminal.cols, terminal.rows)
+    }
+
+    /// Output that arrived while the scrollback was still being replayed (appended after it).
+    private var replayToken: UUID?
+    private var pendingLive: [UInt8] = []
+
+    /// Live output from the helper.
+    func helperOutput(_ bytes: [UInt8]) {
+        if replayToken != nil { pendingLive += bytes; return }
+        dataReceived(slice: bytes[...])
+    }
+
+    /// Replays the helper's scrollback a chunk at a time (a few MB per session at launch would
+    /// otherwise hold up the main thread), then whatever came in meanwhile. The replay isn't
+    /// streamed to remote viewers (`onOutput`): they get the finished screen.
+    func replay(_ bytes: [UInt8], cols: Int, rows: Int, done: @escaping @MainActor () -> Void) {
+        let token = UUID()
+        replayToken = token
+        pendingLive = []
+        let terminal = getTerminal()
+        terminal.resetToInitialState()
+        // The output was drawn for the helper's grid; replay it at that size.
+        if cols > 0, rows > 0, terminal.cols != cols || terminal.rows != rows { terminal.resize(cols: cols, rows: rows) }
+        reportedGrid = (terminal.cols, terminal.rows)
+        Task { @MainActor [weak self] in
+            var offset = 0
+            while offset < bytes.count {
+                guard let self, self.replayToken == token else { return }
+                let end = min(offset + 256 * 1024, bytes.count)
+                self.feed(byteArray: bytes[offset..<end])
+                offset = end
+                await Task.yield()
+            }
+            guard let self, self.replayToken == token else { return }
+            self.replayToken = nil
+            let live = self.pendingLive
+            self.pendingLive = []
+            if !live.isEmpty { self.dataReceived(slice: live[...]) }
+            // Back to the window's grid (a SIGWINCH redraws the TUI at that size).
+            if self.window != nil { self.setFrameSize(self.frame.size) }
+            self.needsDisplay = true
+            done()
+        }
+    }
+
+    /// Detaches from the helper (the process ended, or the helper went away).
+    func clearHelper() {
+        helperInput = nil
+        helperReadOnly = false
+        onGridChange = nil
+        reportedGrid = nil
+        replayToken = nil
+        pendingLive = []
     }
 
     /// Grid imposed by a remote viewer (a phone fits the terminal to its screen); nil = the frame decides.
@@ -298,6 +376,7 @@ final class DeckTerminalView: LocalProcessTerminalView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         if forcedGrid != nil { applyForcedGrid(release: false) }
+        reportGridIfChanged()
     }
 
     private func applyForcedGrid(release: Bool) {
@@ -311,6 +390,7 @@ final class DeckTerminalView: LocalProcessTerminalView {
         guard terminal.cols != grid.cols || terminal.rows != grid.rows else { return }
         terminal.resize(cols: grid.cols, rows: grid.rows)
         sizeChanged(source: terminal)  // tells the pty (SIGWINCH) and our delegate
+        reportGridIfChanged()          // the same for a session in the helper
         needsDisplay = true
     }
 
@@ -389,24 +469,20 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         didSet {
             guard fontSize != oldValue else { return }
             let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            for view in views.values { view.font = font }
+            for view in views.values {
+                view.font = font
+                view.reportGridIfChanged()
+            }
         }
     }
 
     func view(for id: UUID) -> DeckTerminalView? { views[id] }
 
-    func start(id: UUID, cwd: String, claudePath: String?, args: [String], environment: [String: String] = [:]) {
-        let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
-        view.drawingPaused = !AppVisibility.shared.windowsVisible
-        view.processDelegate = self
-        view.onInput = { [weak self] data in self?.onUserInput?(id, data) }
-        view.onOutput = { [weak self] data in self?.onOutput?(id, data) }
-        view.onFocus = { [weak self] in self?.onFocus?(id) }
-        view.onMagnify = { [weak self] step in self?.onZoom?(step) }
-        view.onOpenFile = { [weak self] url in self?.onOpenFile?(url) }
-        view.transcriptPath = { [weak self] in self?.transcriptPath?(id) }
-        view.workingDirectory = cwd
-        views[id] = view
+    /// Starts `claude` for a session. With `helper`, the process runs in the session helper
+    /// (claudedeck-ptyd) and outlives the app; the argv and environment are the same either way.
+    func start(id: UUID, cwd: String, claudePath: String?, args: [String], environment: [String: String] = [:],
+               helper: PtydClient? = nil, helperMeta: [String: String] = [:]) {
+        let view = prepareView(id: id, cwd: cwd, isClaude: true)
         if running.contains(id) { return }
 
         let shell = ShellEnvironment.loginShell
@@ -415,21 +491,12 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         let script = #"exec "$0" "$@""#
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
         view.getTerminal().resetToInitialState()
-        view.startProcess(
-            executable: shell,
-            args: ["-l", "-c", script, claude] + args,
-            environment: ShellEnvironment.environment(terminalID: id, extra: environment),
-            execName: "-" + (shell as NSString).lastPathComponent,
-            currentDirectory: dir
-        )
-        running.insert(id)
+        launchProcess(id: id, view: view, executable: shell, args: ["-l", "-c", script, claude] + args,
+                      environment: ShellEnvironment.environment(terminalID: id, extra: environment),
+                      execName: "-" + (shell as NSString).lastPathComponent, directory: dir, helper: helper, meta: helperMeta)
     }
 
-    /// Types text like a user would. A trailing "\r" is sent separately after a short pause,
-    /// otherwise Claude's TUI treats text+Enter as a paste and inserts a newline instead of submitting.
-    /// A plain interactive login shell in `cwd` (no ClaudeDeck terminal id: claude started
-    /// inside it is not tracked as this session).
-    func startShell(id: UUID, cwd: String) {
+    private func prepareView(id: UUID, cwd: String, isClaude: Bool) -> DeckTerminalView {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
         view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
@@ -440,8 +507,146 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         view.onOpenFile = { [weak self] url in self?.onOpenFile?(url) }
         view.transcriptPath = { [weak self] in self?.transcriptPath?(id) }
         view.workingDirectory = cwd
-        view.isClaude = false
+        view.isClaude = isClaude
         views[id] = view
+        return view
+    }
+
+    private func launchProcess(id: UUID, view: DeckTerminalView, executable: String, args: [String], environment: [String],
+                               execName: String, directory: String, helper: PtydClient?, meta: [String: String] = [:]) {
+        running.insert(id)
+        guard let helper else {
+            view.clearHelper()
+            view.startProcess(executable: executable, args: args, environment: environment, execName: execName,
+                              currentDirectory: directory)
+            return
+        }
+        let terminal = view.getTerminal()
+        let spawn = PtydSpawn(id: id.uuidString, executable: executable, argv: [execName] + args, env: environment,
+                              cwd: directory, cols: terminal.cols, rows: terminal.rows, meta: meta)
+        connectHelper(id, view: view, client: helper, readOnly: false)
+        helper.spawn(spawn) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self, self.helperClients[id] === helper else { return }
+                switch result {
+                case .success(let info):
+                    self.helperPIDs[id] = info.pid
+                    self.onHelperStarted?(id, info, helper.welcome.instance)
+                case .failure(.refused(PtydErrorCode.exists, let info?)):
+                    // Already running there (e.g. started by another copy of the app): attach,
+                    // never a second process.
+                    self.attachHelper(id, client: helper, readOnly: false, known: info)
+                case .failure(let error):
+                    // No helper after all: run it here, as with the setting off.
+                    ptydLog.error("helper spawn failed for \(id, privacy: .public): \(String(describing: error), privacy: .public)")
+                    self.helperClients[id] = nil
+                    view.clearHelper()
+                    view.startProcess(executable: executable, args: args, environment: environment, execName: execName,
+                                      currentDirectory: directory)
+                }
+            }
+        }
+    }
+
+    /// Routes a view's input and grid to the helper.
+    private func connectHelper(_ id: UUID, view: DeckTerminalView, client: PtydClient, readOnly: Bool) {
+        helperClients[id] = client
+        view.helperReadOnly = readOnly
+        if readOnly { readOnlySessions.insert(id) } else { readOnlySessions.remove(id) }
+        view.helperInput = readOnly ? nil : { [weak client] data in client?.write(id.uuidString, Array(data)) }
+        view.onGridChange = { [weak self, weak client] cols, rows in
+            if !readOnly { client?.resize(id.uuidString, cols: cols, rows: rows) }
+            self?.onResize?(id)
+        }
+    }
+
+    /// Shows a session that runs in the helper: replays its scrollback, then streams it live.
+    /// Never starts a process.
+    func attachHelper(_ id: UUID, cwd: String? = nil, isClaude: Bool? = nil, client: PtydClient, readOnly: Bool,
+                      known: PtydSessionInfo? = nil) {
+        let view = prepareView(id: id, cwd: cwd ?? views[id]?.workingDirectory ?? NSHomeDirectory(),
+                               isClaude: isClaude ?? views[id]?.isClaude ?? true)
+        running.insert(id)
+        connectHelper(id, view: view, client: client, readOnly: readOnly)
+        if let known { helperPIDs[id] = known.pid }
+        client.attach(id.uuidString) { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self, self.helperClients[id] === client else { return }
+                switch result {
+                case .success(let (info, replay)):
+                    self.helperPIDs[id] = info.pid
+                    self.onHelperStarted?(id, info, client.welcome.instance)
+                    view.replay(replay, cols: info.cols, rows: info.rows) { [weak self] in
+                        self?.onResize?(id) // remote viewers get the replayed screen
+                    }
+                case .failure:
+                    // Gone in the meantime: it ended.
+                    self.helperEnded(id, exitCode: nil)
+                }
+            }
+        }
+    }
+
+    /// Live output of a helper session.
+    func helperOutput(_ id: UUID, _ bytes: [UInt8]) {
+        guard helperClients[id] != nil else { return }
+        views[id]?.helperOutput(bytes)
+    }
+
+    /// A helper session's process ended.
+    func helperExited(_ info: PtydSessionInfo, from client: PtydClient) {
+        guard let id = UUID(uuidString: info.id) else { return }
+        if client.isFull { client.forget(info.id) }
+        guard helperClients[id] === client else { return }
+        helperEnded(id, exitCode: info.exitCode)
+    }
+
+    private func helperEnded(_ id: UUID, exitCode: Int32?) {
+        helperClients[id] = nil
+        helperPIDs[id] = nil
+        readOnlySessions.remove(id)
+        views[id]?.clearHelper()
+        guard running.remove(id) != nil else { return }
+        onExit?(id, exitCode)
+    }
+
+    /// The helper connection dropped (it quit or crashed). Its sessions stop running here
+    /// without counting as ended (`onExit` isn't called): the caller decides what comes next.
+    func helperLost(_ client: PtydClient) -> [UUID] {
+        var lost: [UUID] = []
+        for (id, owner) in helperClients where owner === client {
+            lost.append(id)
+            helperClients[id] = nil
+            helperPIDs[id] = nil
+            readOnlySessions.remove(id)
+            views[id]?.clearHelper()
+            running.remove(id)
+        }
+        return lost
+    }
+
+    /// Whether the session's process runs in the helper.
+    func isInHelper(_ id: UUID) -> Bool { helperClients[id] != nil }
+
+    var helperSessionIDs: [UUID] { Array(helperClients.keys) }
+
+    /// Pid of the session's process (claude itself, or the shell), local or in the helper.
+    func pid(for id: UUID) -> pid_t {
+        if helperClients[id] != nil { return helperPIDs[id] ?? 0 }
+        return views[id]?.process.shellPid ?? 0
+    }
+
+    /// Sessions watched read-only (a helper this app can't drive).
+    private(set) var readOnlySessions: Set<UUID> = []
+    @ObservationIgnored private var helperClients: [UUID: PtydClient] = [:]
+    @ObservationIgnored private var helperPIDs: [UUID: pid_t] = [:]
+    /// A session started in (or attached to) the helper: its info and the helper's instance.
+    @ObservationIgnored var onHelperStarted: ((UUID, PtydSessionInfo, String) -> Void)?
+
+    /// A plain interactive login shell in `cwd` (no ClaudeDeck terminal id: claude started
+    /// inside it is not tracked as this session).
+    func startShell(id: UUID, cwd: String, helper: PtydClient? = nil) {
+        let view = prepareView(id: id, cwd: cwd, isClaude: false)
         if running.contains(id) { return }
         let shell = ShellEnvironment.loginShell
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
@@ -451,18 +656,14 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         env["TERM_PROGRAM"] = "ClaudeDeck"
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
         view.getTerminal().resetToInitialState()
-        view.startProcess(
-            executable: shell,
-            args: ["-l"],
-            environment: env.map { "\($0.key)=\($0.value)" },
-            execName: "-" + (shell as NSString).lastPathComponent,
-            currentDirectory: dir
-        )
-        running.insert(id)
+        launchProcess(id: id, view: view, executable: shell, args: ["-l"], environment: env.map { "\($0.key)=\($0.value)" },
+                      execName: "-" + (shell as NSString).lastPathComponent, directory: dir, helper: helper)
         latestTitles[id] = nil
         titles[id] = nil
     }
 
+    /// Types text like a user would. A trailing "\r" is sent separately after a short pause,
+    /// otherwise Claude's TUI treats text+Enter as a paste and inserts a newline instead of submitting.
     /// Types `text`; a trailing `\r` is sent separately so it lands as Enter. Text containing
     /// newlines goes in as a bracketed paste, since a raw newline in the pty would submit early.
     func type(_ text: String, into id: UUID) {
@@ -523,6 +724,18 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// exit is reported here and the child is reaped in the background (SIGKILL after 5 s).
     func terminate(_ id: UUID) {
         guard let view = views[id], running.contains(id) else { return }
+        if let client = helperClients[id] {
+            // Like closing the pty (SIGHUP) plus SIGTERM, SIGKILL after 5 s — done by the helper.
+            // Its exit notice is then only forgotten: the exit is reported here and now.
+            client.signal(id.uuidString, SIGHUP)
+            client.signal(id.uuidString, SIGTERM, killAfter: 5)
+            helperClients[id] = nil
+            readOnlySessions.remove(id)
+            view.clearHelper()
+            running.remove(id)
+            onExit?(id, nil)
+            return
+        }
         let pid = view.process.shellPid
         view.terminate()
         running.remove(id)
@@ -560,8 +773,9 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     }
 
     /// On quit: signal every process without reporting exits (quit keeps `isOpen` for auto-resume).
+    /// Sessions in the session helper keep running (the app only disconnects from it).
     func terminateAll() {
-        for id in running {
+        for id in running where helperClients[id] == nil {
             guard let view = views[id] else { continue }
             let pid = view.process.shellPid
             view.terminate()

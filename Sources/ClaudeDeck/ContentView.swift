@@ -27,6 +27,7 @@ struct ContentView: View {
             }
         } detail: {
             WorkspaceView()
+                .safeAreaInset(edge: .top, spacing: 0) { PtydBanner() }
                 .inspector(isPresented: $showFiles) {
                     InspectorPanel(tab: $inspectorTab)
                         .inspectorColumnWidth(min: 220, ideal: 290, max: 720)

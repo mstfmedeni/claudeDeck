@@ -154,7 +154,7 @@ extension AppModel {
             }
         }
         guard terminals.isRunning(id) else { return }
-        let pid = terminals.view(for: id)?.process.shellPid ?? 0
+        let pid = terminals.pid(for: id)
         terminals.terminate(id)
         guard pid > 0 else { return }
         // `reap` collects the child (kill -0 fails once it's gone); give up after the SIGKILL.

@@ -163,7 +163,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = String(localized: "Quit ClaudeDeck?")
         var detail = String(localized: "Open terminals: \(running.count)")
         if working > 0 { detail += String(localized: ", Claude sessions working right now: \(working)") }
-        detail += String(localized: ". Quitting closes them all (Claude sessions resume where they left off next launch). Keep running in the background to close the window while everything keeps working.")
+        // Settings › Sessions › "Keep sessions running when ClaudeDeck quits": those in the helper stay.
+        let kept = running.filter { model.terminals.isInHelper($0.id) }.count
+        if kept == running.count {
+            detail += String(localized: ". They keep running in the background helper while ClaudeDeck is closed, and come back with their output when you open it again.")
+        } else if kept > 0 {
+            detail += String(localized: ". \(kept) of them keep running in the background helper; the others close (Claude sessions resume where they left off next launch).")
+        } else {
+            detail += String(localized: ". Quitting closes them all (Claude sessions resume where they left off next launch). Keep running in the background to close the window while everything keeps working.")
+        }
         alert.informativeText = detail
         alert.addButton(withTitle: String(localized: "Keep Running in Background"))
         alert.addButton(withTitle: String(localized: "Quit"))
