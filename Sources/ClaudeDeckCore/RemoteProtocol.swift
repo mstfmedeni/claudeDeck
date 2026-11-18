@@ -46,20 +46,26 @@ public struct RemoteFrameDecoder: Sendable {
     public enum DecodeError: Error, Equatable { case frameTooLarge(Int) }
 
     private var buffer = Data()
+    /// Frames announcing more than this are a protocol error (a host lowers it until the peer has
+    /// proved the key, see `RemoteChannel.maxPayloadBeforeHandshake`).
+    public var maxPayload = RemoteFrame.maxPayload
 
     public init() {}
 
     public mutating func append(_ bytes: Data) throws -> [RemoteFrame] {
         buffer.append(bytes)
         var frames: [RemoteFrame] = []
-        while buffer.count >= RemoteFrame.headerSize {
-            let start = buffer.startIndex
+        // Walk the buffer and drop what was read once at the end: copying the rest after every
+        // frame made a read full of small frames (terminal output) quadratic.
+        var start = buffer.startIndex
+        defer { buffer = start == buffer.endIndex ? Data() : Data(buffer[start...]) }
+        while buffer.endIndex - start >= RemoteFrame.headerSize {
             let length = buffer[(start + 1)..<(start + 5)].reduce(0) { $0 << 8 | Int($1) }
-            guard length <= RemoteFrame.maxPayload else { throw DecodeError.frameTooLarge(length) }
-            guard buffer.count >= RemoteFrame.headerSize + length else { break }
+            guard length <= maxPayload else { throw DecodeError.frameTooLarge(length) }
+            guard buffer.endIndex - start >= RemoteFrame.headerSize + length else { break }
             let payloadStart = start + RemoteFrame.headerSize
             frames.append(RemoteFrame(kind: buffer[start], payload: Data(buffer[payloadStart..<(payloadStart + length)])))
-            buffer = Data(buffer[(payloadStart + length)...])
+            start = payloadStart + length
         }
         return frames
     }
