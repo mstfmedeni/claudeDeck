@@ -140,12 +140,15 @@ final class UsageMonitor {
 
     private final class DataBox: @unchecked Sendable { var data: Data? }
 
-    /// Fixture for tools/demo.sh (no Keychain, no network).
+    /// Fixture for tools/demo.sh (no Keychain, no network): 62 % at launch, climbing about
+    /// 24 % an hour (the dashboard's burn-down has a slope to project).
+    private static let demoLaunch = Date()
     private static func demoUsage() -> ClaudeUsage {
         let now = Date()
+        let minutes = now.timeIntervalSince(demoLaunch) / 60
         return ClaudeUsage(
-            fiveHour: UsageWindow(usedPercent: 62, resetsAt: now.addingTimeInterval(80 * 60)),
-            sevenDay: UsageWindow(usedPercent: 18, resetsAt: now.addingTimeInterval(4 * 86400 + 6 * 3600)),
+            fiveHour: UsageWindow(usedPercent: min(99, 62 + minutes * 0.4), resetsAt: demoLaunch.addingTimeInterval(130 * 60)),
+            sevenDay: UsageWindow(usedPercent: 18 + minutes * 0.002, resetsAt: demoLaunch.addingTimeInterval(4 * 86400 + 6 * 3600)),
             fetchedAt: now
         )
     }

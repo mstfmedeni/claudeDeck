@@ -17,6 +17,8 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     case search
     /// The Skills browser.
     case skills
+    /// The live dashboard: every session's activity, usage, edits, automations and CI.
+    case dashboard
     /// Live terminal of a session on the paired Mac (remote mode).
     case remoteTerminal(UUID)
     /// The Simulators page (Settings › Simulators). Not restored at launch: an older version
@@ -117,13 +119,13 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
 
     // MARK: Persistence
 
-    /// What is restored on launch: file, automations, search and skills tabs (diffs are transient). The selection
+    /// What is restored on launch: file, automations, search, skills and dashboard tabs (diffs are transient). The selection
     /// survives if it is one of them.
     public var persistable: WorkspaceTabList {
         var copy = self
         copy.tabs = tabs.filter {
             switch $0 {
-            case .sessions, .file, .automations, .inbox, .search, .skills: true
+            case .sessions, .file, .automations, .inbox, .search, .skills, .dashboard: true
             case .diff, .repository, .remoteTerminal, .simulators: false
             }
         }

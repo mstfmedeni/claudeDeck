@@ -524,6 +524,76 @@ printf '{"agentType":"Explore","toolUseId":"t1"}' > "$SUB/agent-ademo1.meta.json
 } > "$SUB/agent-ademo2.jsonl"
 printf '{"agentType":"general-purpose","toolUseId":"t2"}' > "$SUB/agent-ademo2.meta.json"
 
+# --- Dashboard: a week of made-up transcript activity and today's state history ---------------------
+# Transcripts (<id>.jsonl, reported by the stand-in claude): replies, prompts, tool calls with
+# token counts and edits with patches, during working hours over the last seven days.
+week() { # session id, seed, busyness 0-100, project dir, files…
+  sid=$1 seed=$2 busy=$3 dir=$4; shift 4
+  files=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+  jq -nc --argjson now "$NOW" --argjson seed "$seed" --argjson busy "$busy" --arg dir "$dir" --arg sid "$sid" --argjson files "$files" '
+    def rnd($n): (($n * 1103515245 + 12345) % 2147483648);
+    def ts($t): $t | strftime("%Y-%m-%dT%H:%M:%S.000Z");
+    def tools: ["Read","Read","Grep","Edit","Edit","Bash","Bash","Read","Glob","Edit","Write","TodoWrite","Agent","WebFetch","mcp__github__get_pull_request"];
+    range(0; 7 * 24 * 12) as $slot
+    | ($now - 7 * 86400 + $slot * 300) as $t
+    | ($t | localtime) as $lt | ($lt[3]) as $hour | ($lt[6]) as $wday
+    | (rnd($slot * 7 + $seed * 7919) % 100) as $r
+    | (rnd($slot * 13 + $seed * 31) % 1000) as $q
+    | select($t < $now - 90)
+    | select(($hour >= 9 and $hour < 12) or ($hour >= 13 and $hour < 18) or ($hour >= 20 and $hour < 23 and $r < 35) or ($t > $now - 7200))
+    | select(($wday != 0 and $wday != 6) or $r < 20)
+    | select($r < $busy)
+    | (if $q % 7 == 0 then {type: "user", timestamp: ts($t), message: {role: "user", content: "Keep going with the next step."}} else empty end),
+      {type: "assistant", timestamp: ts($t + 5), message: {id: "msg_\($sid)_\($slot)", role: "assistant", model: "claude-opus-demo",
+        content: [{type: "text", text: "Working on it."}], usage: {output_tokens: (200 + $q * 3)}}},
+      (range(0; 1 + $q % 4) as $k
+       | (tools[(rnd($slot * 17 + $k * 101 + $seed) % (tools | length))]) as $tool
+       | (if $tool == "Edit" or $tool == "Write" then "\($dir)/\($files[rnd($slot + $k * 3 + $seed) % ($files | length)])" else null end) as $path
+       | {type: "assistant", timestamp: ts($t + 10 + $k * 20), message: {id: "msg_\($sid)_\($slot)_\($k)", role: "assistant", model: "claude-opus-demo",
+           content: [{type: "tool_use", id: "tu_\($sid)_\($slot)_\($k)", name: $tool, input: (if $path then {file_path: $path} else {} end)}],
+           usage: {output_tokens: (80 + rnd($slot + $k) % 900)}}},
+         (if $path then
+            (1 + rnd($slot * 3 + $k) % 14) as $plus | (rnd($slot * 5 + $k) % 6) as $minus
+            | {type: "user", timestamp: ts($t + 12 + $k * 20), message: {role: "user", content: [{type: "tool_result", tool_use_id: "tu_\($sid)_\($slot)_\($k)", content: "ok"}]},
+               toolUseResult: {type: "update", filePath: $path, userModified: false,
+                 structuredPatch: [{oldStart: 10, oldLines: ($minus + 1), newStart: 10, newLines: ($plus + 1),
+                   lines: ([" // context"] + [range(0; $minus) | "-  old line \(.)"] + [range(0; $plus) | "+  new line \(.)"])}]}}
+          else empty end))
+  ' > "$ROOT/scenes/$sid.jsonl"
+}
+week $S2 2 70 "$P/acme-storefront" src/checkout/Checkout.tsx src/app/page.tsx src/cart/useCart.ts tests/checkout.test.ts
+week $S3 3 45 "$P/payments-api" internal/webhooks/worker.go internal/webhooks/retry.go main.go
+week $S5 5 55 "$P/mobile-app" Sources/Feed/FeedView.swift Sources/Feed/FeedModel.swift Tests/FeedTests/FeedTests.swift
+week $S6 6 35 "$P/swift-markdown-kit" Sources/MarkdownKit/Table.swift Sources/MarkdownKit/Parser.swift
+# The ledger (dashboard.json): each session's working / waiting / idle stretches over the last
+# 14 hours, and the plan's usage readings in the current 5-hour window, rising faster lately.
+jq -n --argjson now "$NOW" \
+  --arg s1 $S1 --arg s2 $S2 --arg s3 $S3 --arg s5 $S5 --arg s6 $S6 --arg s7 $S7 \
+  --arg p1 $P1 --arg p2 $P2 --arg p3 $P3 --arg p4 $P4 --arg p5 $P5 '
+  def rnd($n): (($n * 1103515245 + 12345) % 2147483648);
+  def lane($s; $p; $k; $t; $i):
+    if $t >= $now - 240 or $i > 80 then [] else
+      (rnd($i * 31 + $k * 977)) as $r
+      | ($t + (5 + $r % 22) * 60) as $worked
+      | (($r / 7 | floor) % 6) as $mode
+      | (if $mode == 0 then [{s: $s, p: $p, a: "permission", t: $worked}, {s: $s, p: $p, a: "running", t: ($worked + (1 + $r % 6) * 60)}]
+         elif $mode == 1 then [{s: $s, p: $p, a: "question", t: $worked}] else [] end) as $wait
+      | (if $mode == 0 then $worked + (4 + $r % 6) * 60 elif $mode == 1 then $worked + (2 + $r % 8) * 60 else $worked end) as $done
+      | (if $i % 9 == 8 then "off" else "idle" end) as $rest
+      | [{s: $s, p: $p, a: "running", t: $t}] + $wait + [{s: $s, p: $p, a: $rest, t: $done}]
+        + lane($s; $p; $k; $done + (if $rest == "off" then 2400 else (2 + ($r / 13 | floor) % 25) * 60 end); $i + 1)
+    end;
+  def lanes: lane($s1; $p1; 1; $now - 50100; 0) + lane($s2; $p1; 2; $now - 46000; 0) + lane($s3; $p2; 3; $now - 40000; 0)
+    + lane($s5; $p3; 5; $now - 30000; 0) + lane($s6; $p4; 6; $now - 21000; 0) + (lane($s7; $p5; 7; $now - 50000; 0) | map(select(.t < $now - 36000))) + [{s: $s7, p: $p5, a: "off", t: ($now - 36000)}];
+  {
+    events: [lanes[] | select(.t < $now - 30)],
+    usage: [range(0; 17) as $i | ($now - 10200 + $i * 600) as $t | ($i / 17) as $x
+            | {t: $t, h: (62 * pow($x; 1.6)), hr: ($now + 7800), w: (17.6 + 0.4 * $x), wr: ($now + 4 * 86400 + 6 * 3600)}],
+    savedAt: $now
+  }' > "$ROOT/data/dashboard.json"
+# Opt-in: CLAUDEDECK_DEMO_LIVE=1 makes the stand-in sessions change state every so often.
+if [ -n "${CLAUDEDECK_DEMO_LIVE:-}" ]; then touch "$ROOT/live"; fi
+
 echo "Demo data: $ROOT"
 CLAUDEDECK_DEMO=1 \
 CLAUDEDECK_DATA_DIR="$ROOT/data" \

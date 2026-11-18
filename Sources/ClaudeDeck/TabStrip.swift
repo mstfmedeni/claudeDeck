@@ -65,7 +65,7 @@ struct WorkspaceView: View {
         case .automations: ""
         case .repository(let repo, _): (repo as NSString).abbreviatingWithTildeInPath
         case .inbox: ""
-        case .search, .skills, .remoteTerminal, .simulators: ""
+        case .search, .skills, .dashboard, .remoteTerminal, .simulators: ""
         }
     }
 }
@@ -98,6 +98,8 @@ private struct TabContent: View {
             HistorySearchView()
         case .skills:
             SkillsView()
+        case .dashboard:
+            if isSelected { DashboardView() }   // reads and ticks only while shown
         case .remoteTerminal(let id):
             // Streams only while shown; coming back fetches a fresh screen.
             if isSelected { RemoteTerminalTab(sessionID: id) }
@@ -257,6 +259,7 @@ private struct TabItem: View {
         case .inbox: Image(systemName: "tray")
         case .search: Image(systemName: "text.magnifyingglass")
         case .skills: Image(systemName: "wand.and.stars")
+        case .dashboard: Image(systemName: "gauge.with.dots.needle.67percent")
         case .remoteTerminal: Image(systemName: "desktopcomputer")
         case .simulators: Image(systemName: "iphone.gen3")
         }
@@ -509,6 +512,7 @@ extension WorkspaceTab {
         case .inbox: "inbox"
         case .search: "search"
         case .skills: "skills"
+        case .dashboard: "dashboard"
         case .remoteTerminal(let id): "remote:\(id.uuidString)"
         case .simulators: "simulators"
         }
@@ -526,6 +530,7 @@ extension WorkspaceTab {
         case .inbox: String(localized: "Inbox")
         case .search: String(localized: "Search")
         case .skills: String(localized: "Skills")
+        case .dashboard: String(localized: "Dashboard")
         case .remoteTerminal(let id):
             MainActor.assumeIsolated { RemoteController.tabTitle(id) }
         case .simulators: String(localized: "Simulators")
@@ -550,6 +555,7 @@ extension WorkspaceTab {
         case .search: String(localized: "Search conversation history (⇧⌘H)")
         case .skills: String(localized: "Skills")
         case .simulators: String(localized: "Simulators")
+        case .dashboard: String(localized: "Live dashboard (⇧⌘B)")
         default: url.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }
