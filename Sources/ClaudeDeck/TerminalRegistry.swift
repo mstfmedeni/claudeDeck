@@ -603,6 +603,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         let pid = view.process.shellPid
         view.terminate()
         running.remove(id)
+        setProgramStatus(nil, for: id)
         onExit?(id, nil)
         if pid > 0 { Self.reap(pid) }
     }
@@ -689,8 +690,10 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         MainActor.assumeIsolated {
             guard let view = source as? DeckTerminalView else { return }
             let id = view.sessionID
-            // Working / blocked end with the process (the next start begins afresh).
-            if view.programMonitor?.processExited(now: Date()) == true { setProgramStatus(view.programMonitor?.status, for: id) }
+            // A stopped terminal shows nothing (the next start begins afresh); publishing what the
+            // tracker falls back to would announce an old result as new.
+            view.programMonitor?.processExited(now: Date())
+            setProgramStatus(nil, for: id)
             running.remove(id)
             onExit?(id, exitCode)
         }

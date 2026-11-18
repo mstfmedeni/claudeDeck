@@ -252,6 +252,54 @@ import Testing
         #expect(!r.changed)
     }
 
+    // MARK: Wire format
+
+    @Test func remoteSessionsDecodeWithAndWithoutProgram() throws {
+        let base = #""id":"C0000000-0000-0000-0000-000000000001","name":"t","project":"p","state":"shell","unseen":false"#
+        // From an older host: no `program`.
+        let old = try JSONDecoder().decode(RemoteSession.self, from: Data("{\(base)}".utf8))
+        #expect(old.program == nil)
+        #expect(!old.needsAttention)
+        // A state this version doesn't know still decodes and asks for nothing.
+        let future = try JSONDecoder().decode(RemoteSession.self, from: Data(#"{\#(base),"program":{"state":"paused"}}"#.utf8))
+        #expect(future.program?.state == "paused")
+        #expect(!future.needsAttention)
+        // What an older remote sees of a new one: still a terminal, extra key ignored by its decoder.
+        var session = RemoteSession(id: UUID(), name: "t", project: "p", state: .shell)
+        session.program = RemoteProgramStatus(state: "failed", exitCode: 1)
+        let json = try JSONEncoder().encode(session)
+        #expect(try JSONDecoder().decode(RemoteSession.self, from: json) == session)
+    }
+
+    @Test func remoteTerminalsNeedAttentionWhenBlockedOrUnseenResult() {
+        var session = RemoteSession(id: UUID(), name: "t", project: "p", state: .shell)
+        session.program = RemoteProgramStatus(state: "blocked", kind: "question")
+        #expect(session.needsAttention)
+        session.program = RemoteProgramStatus(state: "finished", exitCode: 0)
+        #expect(!session.needsAttention)
+        session.unseen = true
+        #expect(session.needsAttention)
+        session.program = RemoteProgramStatus(state: "working")
+        #expect(!session.needsAttention)
+        session.program = nil
+        #expect(!session.needsAttention) // a plain terminal, as before
+    }
+
+    @Test func programStatusFollowsTheTerminalOrTheDefault() {
+        var deck = DeckData()
+        let project = Project(path: "/tmp/p")
+        deck.projects = [project]
+        let shell = DeckSession(projectID: project.id, name: "t", kind: .shell)
+        let claude = DeckSession(projectID: project.id, name: "c")
+        deck.sessions = [shell, claude]
+        #expect(!deck.showsProgramStatus(shell.id)) // off by default
+        deck.settings.terminalProgramStatus = true
+        #expect(deck.showsProgramStatus(shell.id))
+        #expect(!deck.showsProgramStatus(claude.id)) // never for Claude sessions
+        deck.sessions[0].showProgramStatus = false
+        #expect(!deck.showsProgramStatus(shell.id))
+    }
+
     // MARK: Shell integration
 
     /// Runs an interactive shell with the integration on `input`, in a scratch HOME.

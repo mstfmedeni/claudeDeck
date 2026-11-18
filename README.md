@@ -165,7 +165,7 @@ ClaudeDeck doesn't wrap, imitate or screen-scrape Claude. Every session runs **y
 | ClaudeDeck **is** | ClaudeDeck **is not** |
 |---|---|
 | A **session manager** that runs your installed `claude` CLI in real terminals | A chat client or API client that replaces Claude Code |
-| A dashboard that learns session state from Claude Code's official **hooks** | A tool that reads the screen, parses terminal output or logs keystrokes |
+| A dashboard that learns session state from Claude Code's official **hooks** | A tool that reads the screen, parses terminal output or logs keystrokes (the optional Program Status for plain terminals only picks up the status escape sequences programs send) |
 | A local macOS app that gathers many projects and parallel sessions in one window | A cloud service, an account system or telemetry. Nothing leaves your Mac unless you turn it on: remote access to your own devices (encrypted), iCloud sync, and agents you add (they get the session context you send them; see [Agents](docs/agents.md)) |
 | A shell around your own settings, `CLAUDE.md` files, MCP servers and skills | A plugin that changes Claude Code's behavior, permission rules or model |
 | A shortcut that sends the key *you* would press to a permission prompt | An automation that approves permissions on its own |
