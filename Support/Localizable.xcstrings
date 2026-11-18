@@ -18031,6 +18031,26 @@
         }
       }
     },
+    "Started %@ in %@ and trusted its folder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$@ başlatıldı ve klasörüne güvenildi"
+          }
+        }
+      }
+    },
+    "Started %@ in %@; Claude Code asks whether to trust its folder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$@ başlatıldı; Claude Code klasörüne güvenilip güvenilmeyeceğini soruyor"
+          }
+        }
+      }
+    },
     "Started %lld sessions: ": {
       "localizations": {
         "tr": {

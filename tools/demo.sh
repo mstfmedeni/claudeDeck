@@ -192,6 +192,15 @@ astro.config.mjs|export default {}
 src/posts/hello-world.md|# Hello
 EOF
 
+# --- Folder trust: the demo's own ~/.claude.json, never the real one. The projects above are
+# trusted; a folder added later (claudedeck project add --create) makes the stand-in claude ask
+# "Is this a project you created or one you trust?" unless ClaudeDeck trusted it first.
+mkdir -p "$ROOT/home"
+REAL_PROJECTS=$(cd "$ROOT/projects" && pwd -P)
+for dir in "$REAL_PROJECTS"/*/; do printf '%s\n' "${dir%/}"; done \
+  | jq -R . | jq -s '{numStartups: 3, projects: (map({key: ., value: {hasTrustDialogAccepted: true}}) | from_entries)}' \
+  > "$ROOT/home/.claude.json"
+
 # --- GitHub: a stand-in `gh` that answers from fixtures (made-up repositories and people) ----------
 mkdir -p "$ROOT/github"
 cat > "$ROOT/bin/gh" <<'EOF'

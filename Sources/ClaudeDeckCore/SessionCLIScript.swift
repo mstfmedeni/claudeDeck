@@ -687,6 +687,10 @@ extension SessionCLI {
     - `--create` makes the folder, only under the user's home folder.
     - `new` types `--prompt` once Claude is up. You may `send` to sessions you started, and
       `wait`/`capture` them like terminals.
+    - Sessions you start don't stop at Claude Code's "do you trust this folder" question:
+      ClaudeDeck trusts the folder first, if it's under the user's home (not a dot folder or
+      ~/Library). Elsewhere the
+      session waits for the user at that question: `capture` shows it; tell the user.
     - Limits: 5 new sessions per 10 minutes and 10 new projects per hour per session, 8
       started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it.
     - The user gets a notification for each and can see them in the activity log. Start

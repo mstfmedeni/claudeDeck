@@ -70,7 +70,7 @@ extension AppModel {
 
     // MARK: New Claude sessions
 
-    func cliNewSession(_ caller: UUID, project ref: String, form: [String: String], json: Bool) -> AgentHTTPResponse {
+    func cliNewSession(_ caller: UUID, project ref: String, form: [String: String], json: Bool) async -> AgentHTTPResponse {
         guard deck.settings.sessionsMayStartSessions else { return SessionCLI.failure(403, "setting_off", exit: .refused) }
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         let projectID: UUID
@@ -92,6 +92,8 @@ extension AppModel {
             logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (rate limit or cap)", ok: false)
             return refusal
         }
+        // Claude Code's folder-trust question would stop the session before it starts.
+        let trust = await trustFolderForStartedSession(project.path)
         let given = (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // The owner's selection stays where it was, as with `claudedeck open`.
         let focused = selectedSessionID
@@ -113,10 +115,46 @@ extension AppModel {
         typeWhenClaudeIsUp(prompt, into: id)
         let name = deck.session(id)?.name ?? project.name
         logAgent(callerName, inbound: true, "claudedeck new · \(name) in \(project.name)" + (prompt.isEmpty ? "" : " (with a prompt)"))
-        queueStartNotice(caller, String(localized: "Started \(name) in \(project.name)"))
+        switch trust {
+        case .trusted(let folder):
+            logAgent(callerName, inbound: true, "claudedeck new · \(name): trusted the folder \(folder) for Claude Code")
+            queueStartNotice(caller, String(localized: "Started \(name) in \(project.name) and trusted its folder"))
+        case .failed(let reason):
+            logAgent(callerName, inbound: true, "claudedeck new · \(name): couldn't trust the folder (\(reason)); Claude Code will ask", ok: false)
+            queueStartNotice(caller, String(localized: "Started \(name) in \(project.name); Claude Code asks whether to trust its folder"))
+        case .alreadyTrusted:
+            queueStartNotice(caller, String(localized: "Started \(name) in \(project.name)"))
+        }
         onCountsChanged?()
         let info = SessionCLIStarted(id: id, name: name, projectId: projectID, project: project.name, worktree: worktree.isEmpty ? nil : worktree)
         return SessionCLI.answer(200, info, text: id.uuidString, exit: .ok, json: json)
+    }
+
+    enum StartedSessionTrust: Equatable {
+        case alreadyTrusted
+        case trusted(String)
+        case failed(String)
+    }
+
+    /// Marks the folder trusted in Claude Code's config before a session another session started
+    /// launches there (ClaudeTrust.swift), when the setting is on and the folder passes the
+    /// `project add` path rules. Sessions the owner starts never come here.
+    func trustFolderForStartedSession(_ path: String) async -> StartedSessionTrust {
+        let folder: String
+        switch ClaudeTrust.decide(startedByCLI: true, settingOn: deck.settings.sessionsMayStartSessions, path: path, roots: cliCreateRoots) {
+        case .failure(let refusal): return .failed(refusal.rawValue)
+        case .success(let resolved): folder = resolved
+        }
+        guard let file = ClaudeTrust.configFile(environment: ProcessInfo.processInfo.environment,
+                                                home: FileManager.default.homeDirectoryForCurrentUser.path, demo: Self.isDemo) else {
+            return .failed("no_config_file")
+        }
+        let outcome = await Task.detached { ClaudeTrust.trust(folder, in: file) }.value
+        switch outcome {
+        case .trusted: return .trusted(folder)
+        case .alreadyTrusted: return .alreadyTrusted
+        case .failed(let reason): return .failed(reason)
+        }
     }
 
     /// One notification per burst: what a caller did in the next 3 seconds goes out together.

@@ -77,7 +77,7 @@ extension AppModel {
         case .addProject:
             return cliAddProject(caller, form: form, json: json)
         case .newSession(let ref):
-            return cliNewSession(caller, project: ref, form: form, json: json)
+            return await cliNewSession(caller, project: ref, form: form, json: json)
         case .server(let command):
             return await cliServer(caller, command: command, method: request.method, form: form, json: json)
         }
