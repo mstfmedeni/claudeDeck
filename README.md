@@ -697,6 +697,30 @@ ClaudeDeck port (replace `100.101.102.103` with your Mac's Tailscale IP):
 This grant covers only the remote connection. Mac Screen (macOS Screen Sharing) is separate and
 isn't covered by it.
 
+### Dashboard, servers and simulators (iPhone and iPad app)
+
+With a Mac on this version the phone shows more of it; an older Mac doesn't send these and the app
+looks as before.
+
+- **Program Status:** terminals show the Mac's badges (Running, Needs input, Finished, Failed (exit N))
+  in the list and the session header. A blocked terminal, or one whose command finished or failed while
+  you weren't looking, is in "Waiting for you"; opening it marks it seen.
+- **Dashboard card** at the top of the session list: working, waiting on you, your turn, lines today,
+  and the 5-hour and weekly usage with the time the limit hits at the current pace. Tap it for the full
+  card with who is waiting and for how long (tap one to open it). On iPad it opens in the detail column.
+- **Servers** (with ServerPlan set up on the Mac): each server's health, its projects with their last
+  deploy, deploys in progress and failed ones. **Fix with Claude** on a failed deploy asks the Mac to
+  start it (the same flow as on the Mac); the session opens on the phone. Deploy and restart stay on
+  the Mac.
+- **Simulators** (with Settings › Simulators on, on the Mac): running simulators and ones a session used,
+  with memory and the sessions using them. Read-only.
+- The Mac builds these only while a phone (or another Mac) is connected: the dashboard at most every
+  5 s, today's line counts every 30 s, simulators every 10 s and ServerPlan's lists every 60 s. With
+  nothing connected none of it runs.
+- **Settings › Connection Log:** the last 50 connection attempts with the address, the way
+  (local network, Tailscale, in-app Tailscale), the result and reason, how long each took, and the waits
+  before the next try. Kept in memory only; **Copy** puts it on the clipboard for a support report.
+
 ## Agents (optional)
 
 Ask other models about a session: a bot on this Mac behind a webhook (for example a Grok Bot
