@@ -335,6 +335,8 @@ final class InAppTailnet {
     /// Opens connections through the node (RemoteHostConnection's in-app route).
     final class Dialer: RemoteDialer, @unchecked Sendable {
         @MainActor weak var owner: InAppTailnet?
+        /// Concurrent: the addresses of one attempt are raced, each dial waits on its own.
+        private static let dialQueue = DispatchQueue(label: "ClaudeDeck.tailscale-dial", qos: .userInitiated, attributes: .concurrent)
 
         func dial(host: String, port: UInt16, completion: @escaping @Sendable (Result<Int32, Error>) -> Void) {
             Task { @MainActor [weak self] in
@@ -344,8 +346,9 @@ final class InAppTailnet {
                 }
                 // IPv6 literals need brackets in host:port.
                 let address = host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
-                // tailscale_dial blocks until connected.
-                Task.detached {
+                // tailscale_dial blocks until connected: on threads of its own, not the shared
+                // pool Swift concurrency runs on (a few slow dials would starve it).
+                Self.dialQueue.async {
                     var connection: Int32 = 0
                     if tailscale_dial(handle, "tcp", address, &connection) == 0 {
                         completion(.success(connection))

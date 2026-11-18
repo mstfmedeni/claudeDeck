@@ -149,6 +149,10 @@ final class RemoteStore {
     @ObservationIgnored private var startingScene: UUID?
 
     static let deviceName = UIDevice.current.name
+    /// Poll intervals (s) with a Mac that pushes conversation changes (`Feature.conversationPush`):
+    /// long, to save battery; 4 s without.
+    static let pushedConversationPoll: Double = 20
+    static let pushedEditsPoll: Double = 15
 
     var connectedVia: String? { hostConnection?.connectedAddress }
     /// Through the in-app Tailscale node rather than the system's network.
@@ -159,7 +163,7 @@ final class RemoteStore {
     /// Per tailnet address, the way that worked on the current network (system or in-app).
     /// Forgotten when the network changes.
     @ObservationIgnored private var rememberedRoutes: [String: RemoteRoute] = [:]
-    /// Runs only while the in-app node is on (nothing changes for anyone else).
+    /// Watches for network changes (routes to forget, a retry to bring forward).
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private var networkSignature: String?
 
@@ -188,8 +192,9 @@ final class RemoteStore {
         watchNetwork()
     }
 
+    /// Always on (cheap): a network change while waiting to retry tries again at once.
     private func watchNetwork() {
-        guard tailnet.enabled, pathMonitor == nil else { return }
+        guard pathMonitor == nil else { return }
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
             // Which interfaces are up, and how: a new Wi-Fi, cellular, a VPN coming or going.
@@ -202,20 +207,19 @@ final class RemoteStore {
 
     private func networkChanged(_ signature: String) {
         guard signature != networkSignature else { return }
+        let first = networkSignature == nil
         networkSignature = signature
         rememberedRoutes = [:]
+        // Wi-Fi back, a VPN up, cellular instead: don't wait out the backoff (up to 30 s). Not on
+        // the monitor's first report, which is just the network as it is.
+        guard !first, isActive, pairing != nil, case .retrying = connection else { return }
+        retryDelay = 2
+        reconnect()
     }
 
     /// The in-app node came up or the setting changed: try again if we aren't connected.
     private func tailnetChanged() {
         rememberedRoutes = [:]
-        if tailnet.enabled {
-            watchNetwork()
-        } else {
-            pathMonitor?.cancel()
-            pathMonitor = nil
-            networkSignature = nil
-        }
         guard isActive, pairing != nil, !isRefused, connection != .connected else { return }
         retryDelay = 2
         reconnect()
@@ -428,8 +432,10 @@ final class RemoteStore {
         }
         next.onConversationChanged = { [weak self] id in
             MainActor.assumeIsolated {
-                guard let self, self.openConversations[id] != nil else { return }
-                self.requestNewer(id)
+                guard let self else { return }
+                if self.openConversations[id] != nil { self.requestNewer(id) }
+                // New lines may be edits: the Edits view polls slowly with such a Mac.
+                if self.openEdits[id] != nil { self.requestEdits(id) }
             }
         }
         next.onEdits = { [weak self] id, page in
@@ -472,8 +478,14 @@ final class RemoteStore {
         hostConnection?.close()
         hostConnection = nil
         answering = []
-        for waiter in answerWaiters.values { waiter.resume(returning: false) }
+        failAnswerWaiters()
+    }
+
+    /// Notification answers waiting for a result that won't come over this connection: not applied.
+    private func failAnswerWaiters() {
+        let waiters = answerWaiters
         answerWaiters = [:]
+        for waiter in waiters.values { waiter.resume(returning: false) }
     }
 
     private func connectionChanged(_ state: RemoteHostConnection.State) {
@@ -502,6 +514,7 @@ final class RemoteStore {
         case .disconnected(let reason):
             hostConnection = nil
             answering = []
+            failAnswerWaiters()
             announcedConversations = []
             transfers.connectionLost()
             guard isActive else { connection = .paused; return }
@@ -512,6 +525,7 @@ final class RemoteStore {
         case .refused(let reason):
             hostConnection = nil
             answering = []
+            failAnswerWaiters()
             connection = .refused(reason)
         }
     }
@@ -785,14 +799,14 @@ final class RemoteStore {
         _ = send(.markSeen(sessionID: id))
         requestLatest(id)
         announceConversations()
-        // Tool results and long answers grow without a state change: check every few seconds
-        // (less often when the Mac says when the transcript changes; not much less: it can only
-        // say so once a hook has come since it started).
+        // Tool results and long answers grow without a state change: check every few seconds,
+        // or only now and then when the Mac says when the transcript changes (the poll is the
+        // safety net for a notice it couldn't send yet: before a session's first hook).
         if conversationPoll == nil {
             conversationPoll = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     let pushed = self?.snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true
-                    try? await Task.sleep(for: .seconds(pushed ? 6 : 4))
+                    try? await Task.sleep(for: .seconds(pushed ? RemoteStore.pushedConversationPoll : 4))
                     guard let self, !Task.isCancelled else { return }
                     for id in self.openConversations.keys { self.requestNewer(id) }
                 }
@@ -810,13 +824,15 @@ final class RemoteStore {
         announceConversations()
     }
 
-    /// Tells a Mac with `Feature.conversationPush` which conversations are open here.
+    /// Tells a Mac with `Feature.conversationPush` which conversations are open here (their
+    /// edits too: the notice brings those as well).
     private func announceConversations() {
         guard hostConnection != nil, snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true else { return }
-        for id in openConversations.keys where !announcedConversations.contains(id) {
+        let open = Set(openConversations.keys).union(openEdits.keys)
+        for id in open where !announcedConversations.contains(id) {
             if send(.conversationOpen(sessionID: id)) { announcedConversations.insert(id) }
         }
-        for id in announcedConversations where openConversations[id] == nil {
+        for id in announcedConversations where !open.contains(id) {
             _ = send(.conversationClose(sessionID: id))
             announcedConversations.remove(id)
         }
@@ -922,11 +938,14 @@ final class RemoteStore {
     func openEdits(_ id: UUID) {
         openEdits[id, default: 0] += 1
         requestEdits(id)
+        announceConversations()
         // Like the conversation: new edits come without a state change.
         if editsPoll == nil {
             editsPoll = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(4))
+                    // A Mac that says when the transcript changes brings new edits with that notice.
+                    let pushed = self?.snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true
+                    try? await Task.sleep(for: .seconds(pushed ? RemoteStore.pushedEditsPoll : 4))
                     guard let self, !Task.isCancelled else { return }
                     for id in self.openEdits.keys { self.requestEdits(id) }
                 }
@@ -941,6 +960,7 @@ final class RemoteStore {
             editsPoll?.cancel()
             editsPoll = nil
         }
+        announceConversations()
     }
 
     /// The changes after the last one here (only from a Mac that has them).

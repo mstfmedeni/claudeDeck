@@ -3,7 +3,10 @@ import ClaudeDeckCore
 import Foundation
 import Network
 import Observation
+import os
 import SystemConfiguration
+
+private let peerLog = Logger(subsystem: "co.codemagnet.ClaudeDeck", category: "remote")
 
 /// Remote mode (RemoteProtocol.swift). Host side: listens on Tailscale, sends the sessions'
 /// state and answers permission prompts with the same keystrokes as the local buttons. Remote
@@ -103,7 +106,7 @@ final class RemoteController {
     private static let env = ProcessInfo.processInfo.environment
     /// Demo testing: two demo copies talk over 127.0.0.1.
     private static let allowLoopback = env["CLAUDEDECK_REMOTE_ALLOW_LOOPBACK"] != nil
-    static let port: UInt16 = env["CLAUDEDECK_REMOTE_PORT"].flatMap(UInt16.init) ?? RemotePairing.defaultPort
+    static let port: UInt16 = RemotePairing.listenPort(environment: env)
     /// Port of a host found with the password (demo testing: the other copy's port).
     static let connectPort: UInt16 = env["CLAUDEDECK_REMOTE_CONNECT_PORT"].flatMap(UInt16.init) ?? RemotePairing.defaultPort
     /// Id of the host found through Tailscale with the password (one at a time).
@@ -120,9 +123,17 @@ final class RemoteController {
         (SCDynamicStoreCopyComputerName(nil, nil) as String?) ?? Host.current().localizedName ?? "Mac"
     }
 
+    /// The host key, password key and APNs key at rest (remote.json keeps the rest). Demo copies
+    /// keep theirs in a file next to their data, never in the Keychain.
+    @ObservationIgnored private let secretStore: RemoteSecretStore
+    @ObservationIgnored private var secretsRetry: Task<Void, Never>?
+
     init() {
         localURL = DeckDataStore.default().url.deletingLastPathComponent().appending(path: "remote.json")
-        local = RemoteLocalState.load(from: localURL)
+        secretStore = AppModel.isDemo
+            ? FileSecretStore(url: localURL.deletingLastPathComponent().appending(path: "remote-secrets.json"))
+            : KeychainSecretStore(service: "co.codemagnet.ClaudeDeck.remote")
+        local = RemoteLocalStore.load(from: localURL, secrets: secretStore)
         hostTransfers.send = { [weak self] message in self?.hostConnection?.send(message) ?? false }
         hostTransfers.onDownloaded = { file in RemoteController.saveToDownloads(file) }
         hostTransfers.onUploaded = { [weak self] projectID, folder, _ in self?.listHostDirectory(projectID, path: folder) }
@@ -204,6 +215,7 @@ final class RemoteController {
     /// Matches both sides to the settings.
     func refresh() {
         guard let settings = model?.deck.settings else { return }
+        retryUnreadSecrets()
         // Local-network access changes what the listener accepts and advertises: start it over.
         if server != nil, hostingLAN != settings.remoteLAN { restartServer() }
         settings.remoteHost ? startHosting() : stopHosting()
@@ -212,8 +224,32 @@ final class RemoteController {
     }
 
     private func saveLocal() {
-        try? local.save(to: localURL)
+        try? RemoteLocalStore.save(&local, to: localURL, secrets: secretStore)
     }
+
+    /// Keys the Keychain didn't give back (locked, access denied): asked for again after 30 s,
+    /// then less and less often (up to every 10 min: a denied access prompt mustn't come back
+    /// every 30 s). Meanwhile nothing replaces them, and this Mac doesn't host without its key.
+    private func retryUnreadSecrets() {
+        guard !local.unreadSecrets.isEmpty, secretsRetry == nil else { return }
+        secretsRetry = Task { @MainActor [weak self] in
+            var delay: TimeInterval = 30
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(delay))
+                delay = min(delay * 2, 600)
+                guard let self else { return }
+                if RemoteLocalStore.readSecrets(&self.local, secrets: self.secretStore) {
+                    self.apnsToken = nil
+                    self.refresh()
+                    self.refreshAddresses()
+                }
+                if self.local.unreadSecrets.isEmpty { break }
+            }
+            self?.secretsRetry = nil
+        }
+    }
+
+    private static let keychainKeyError = String(localized: "The pairing key couldn't be read from the Keychain. ClaudeDeck keeps trying; New Key replaces it (paired devices then pair again).")
 
     // MARK: Host
 
@@ -240,6 +276,12 @@ final class RemoteController {
     }
 
     private func startHosting() {
+        // Without its key (still in a locked Keychain) this Mac doesn't listen: a phone then
+        // retries as if the Mac were away, instead of being refused and stopping.
+        guard local.hasHostKey else {
+            hostError = Self.keychainKeyError
+            return
+        }
         if hostingActivity == nil {
             hostingActivity = ProcessInfo.processInfo.beginActivity(
                 options: .userInitiatedAllowingIdleSystemSleep, reason: "Hosting sessions for paired devices")
@@ -248,10 +290,22 @@ final class RemoteController {
             let lan = model?.deck.settings.remoteLAN == true
             hostingLAN = lan
             let server = RemoteServer(port: Self.port, key: { [weak self] in
-                MainActor.assumeIsolated { self?.model?.deck.settings.remoteHost == true ? self?.local.hostKey : nil }
+                MainActor.assumeIsolated {
+                    guard let self, self.model?.deck.settings.remoteHost == true, self.local.hasHostKey else { return nil }
+                    return self.local.hostKey
+                }
             }, acceptsPeer: { ip in
-                Tailscale.isTailscaleIP(ip) || (lan && Tailscale.isPrivateLAN(ip)) || (Self.allowLoopback && Tailscale.isLoopback(ip))
+                RemotePeerPolicy.acceptsSource(ip, lan: lan, loopback: Self.allowLoopback)
             })
+            // A Tailscale address must also have arrived on the Mac's Tailscale interface.
+            server.acceptsPath = { ip, localIP in
+                let decision = RemotePeerPolicy.decide(remoteIP: ip, localIP: localIP, interfaces: Tailscale.allInterfaceAddresses(),
+                                                       lan: lan, loopback: Self.allowLoopback)
+                if decision.fellBack {
+                    peerLog.notice("Couldn't tell where \(ip, privacy: .public) arrived (local \(localIP ?? "unknown", privacy: .public)); accepted by its address")
+                }
+                return decision.accept
+            }
             if lan { server.bonjour = (Self.hostName, local.hostID) }
             server.onStateChange = { [weak self] state in
                 MainActor.assumeIsolated { self?.hostState = state }
@@ -576,7 +630,8 @@ final class RemoteController {
             guard let self, !Task.isCancelled else { return }
             self.foundAddresses = found.tailscale + found.lan
             self.applyAddressOrder()
-            self.hostError = found.tailscale.isEmpty && found.lan.isEmpty
+            self.hostError = !self.local.hasHostKey ? Self.keychainKeyError
+                : found.tailscale.isEmpty && found.lan.isEmpty
                 ? String(localized: "Tailscale isn't running on this Mac. Install it and sign in, then try again.")
                 : nil
         }
@@ -592,7 +647,7 @@ final class RemoteController {
     }
 
     var hostPairing: RemotePairing? {
-        guard !hostAddresses.isEmpty else { return nil }
+        guard !hostAddresses.isEmpty, local.hasHostKey else { return nil }
         return RemotePairing(id: local.hostID, hostName: Self.hostName, addresses: hostAddresses, port: Self.port, key: local.hostKey, updatedAt: Date())
     }
 
@@ -618,6 +673,8 @@ final class RemoteController {
         saveLocal()
         if changed { server?.disconnectAll(reason: String(localized: "The pairing key changed on the other Mac.")) }
         publishPairing()
+        // Not hosting for want of a key until now.
+        if server == nil { refresh() }
         reconnect(force: true)
     }
 
@@ -635,6 +692,7 @@ final class RemoteController {
         saveLocal()
         server?.disconnectAll(reason: String(localized: "The pairing key changed on the other Mac."))
         publishPairing()
+        if server == nil { refresh() }
     }
 
     private func publishSnapshot() {
@@ -768,7 +826,8 @@ final class RemoteController {
 
     /// Parsed transcripts by session: reused while the file doesn't change, and only what was
     /// added is read when it grows (a phone polls an open conversation every few seconds).
-    @ObservationIgnored private var historyCache: [UUID: (path: String, size: Int, reader: ConversationLog.Reader, tokens: Int?)] = [:]
+    /// The sessions read most recently only: a long-running host would otherwise keep them all.
+    @ObservationIgnored private var historyCache = RecentCache<UUID, (path: String, size: Int, reader: ConversationLog.Reader, tokens: Int?)>(limit: 8)
     /// Requests waiting for a read already under way, by session.
     @ObservationIgnored private var historyWaiting: [UUID: [(before: String?, after: String?, limit: Int, reply: @Sendable (ChatPage?) -> Void)]] = [:]
 
@@ -1035,23 +1094,19 @@ final class RemoteController {
     }
 
     private func registerPush(_ device: PushDevice) {
-        if let index = local.pushDevices.firstIndex(where: { $0.token == device.token }) {
-            guard local.pushDevices[index].environment != device.environment || local.pushDevices[index].name != device.name
-                    || local.pushDevices[index].topic != device.topic else { return }
-            local.pushDevices[index] = device
-        } else {
-            // A phone gets a new token after a reinstall: keep one entry per name and app.
-            local.pushDevices.removeAll { $0.name == device.name && $0.topic == device.topic }
-            local.pushDevices.append(device)
-        }
+        guard let devices = local.pushDevices.registering(device) else { return }
+        local.pushDevices = devices
         saveLocal()
     }
 
     /// A session needs the user: tell the phones that aren't connected (a connected phone shows
     /// its own alert). Unlike the Mac's banner, this isn't skipped when the session is on screen here.
+    /// A phone silent for longer than its pings allow has gone without closing: it gets the push
+    /// too (same collapse id as its own alert, so one replaces the other if both arrive).
     private func push(_ event: AttentionEvent) {
-        guard model?.deck.settings.remoteHost == true, let credentials = local.apns, !local.pushDevices.isEmpty else { return }
-        let connected = server?.connectedPushTokens ?? []
+        guard model?.deck.settings.remoteHost == true, let credentials = local.apns, !local.unreadSecrets.contains(.apnsKey),
+              !local.pushDevices.isEmpty else { return }
+        let connected = server?.pushTokensHeard(within: RemoteServer.pushSilence) ?? []
         let devices = local.pushDevices.filter { !connected.contains($0.token) }
         guard !devices.isEmpty else { return }
         let stamp = event.activity == .needsPermission ? model?.pendingPermissionStamp(event.sessionID)?.timeIntervalSince1970 : nil
@@ -1069,7 +1124,7 @@ final class RemoteController {
     }
 
     func sendTestPush() {
-        guard let credentials = local.apns else { return }
+        guard let credentials = local.apns, !local.unreadSecrets.contains(.apnsKey) else { return }
         let payload = APNs.payload(title: "ClaudeDeck", subtitle: Self.hostName, body: String(localized: "Notifications from this Mac work."),
                                    sessionID: UUID(), permissionStamp: nil, blocked: false)
         send(payload, to: local.pushDevices, credentials: credentials, collapseID: "test")

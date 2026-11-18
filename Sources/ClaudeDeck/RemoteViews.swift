@@ -286,8 +286,13 @@ struct PairingCodeView: View {
                 Text("On the other Mac: Settings › Remote › paste this link. Or scan the code with a phone and send the link over.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button(copied ? "Copied" : "Copy Pairing Link") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(link, forType: .string)
+                    // Marked concealed: clipboard managers and Universal Clipboard history skip it
+                    // (the link holds the key).
+                    let pasteboard = NSPasteboard.general
+                    let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+                    pasteboard.declareTypes([.string, concealed], owner: nil)
+                    pasteboard.setString(link, forType: .string)
+                    pasteboard.setString(link, forType: concealed)
                     copied = true
                 }
                 Text("The link contains the key: share it only with your own Macs.")

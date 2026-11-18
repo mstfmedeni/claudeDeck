@@ -49,7 +49,11 @@ public final class RemoteDiscovery: @unchecked Sendable {
         self.queue = queue
     }
 
+    /// Between `start()` and `stop()`: a restart after a failure only happens meanwhile.
+    public private(set) var isRunning = false
+
     public func start() {
+        isRunning = true
         guard browser == nil else { return }
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: RemoteBonjour.serviceType, domain: nil), using: .tcp)
         browser.browseResultsChangedHandler = { [weak self] results, _ in
@@ -65,11 +69,13 @@ public final class RemoteDiscovery: @unchecked Sendable {
             self.hosts = hosts
             self.onChange?(hosts)
         }
-        browser.stateUpdateHandler = { [weak self] state in
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
             guard let self else { return }
             var denied = false
             switch state {
-            case .failed: self.restart()
+            case .failed:
+                // A browser stopped and replaced meanwhile is no reason to restart the new one.
+                if browser != nil, browser === self.browser { self.restart() }
             case .waiting(let error):
                 // kDNSServiceErr_PolicyDenied: the user said no to Local Network access.
                 if case .dns(let code) = error, code == -65570 { denied = true }
@@ -85,6 +91,9 @@ public final class RemoteDiscovery: @unchecked Sendable {
     }
 
     public func stop() {
+        isRunning = false
+        restartItem?.cancel()
+        restartItem = nil
         browser?.cancel()
         browser = nil
         if !hosts.isEmpty {
@@ -93,9 +102,22 @@ public final class RemoteDiscovery: @unchecked Sendable {
         }
     }
 
-    private func restart() {
+    private var restartItem: DispatchWorkItem?
+
+    /// The browser failed: again in a moment, unless stopped meanwhile.
+    func restart(after delay: TimeInterval = 5) {
         browser?.cancel()
         browser = nil
-        queue.asyncAfter(deadline: .now() + 5) { [weak self] in self?.start() }
+        restartItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.restartItem = nil
+            self.start()
+        }
+        restartItem = item
+        queue.asyncAfter(deadline: .now() + delay, execute: item)
     }
+
+    /// Whether a browser is up (tests).
+    var isBrowsing: Bool { browser != nil }
 }

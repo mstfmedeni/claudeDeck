@@ -169,6 +169,70 @@ public enum Tailscale {
         let bare = ip.split(separator: "%").first.map(String.init) ?? ip
         return bare == "::1" || bare.hasPrefix("127.") || bare == "::ffff:127.0.0.1"
     }
+
+    /// An address as `getifaddrs` lists it: no `%scope`, IPv4-mapped IPv6 as plain IPv4.
+    public static func normalized(_ ip: String) -> String {
+        let bare = ip.split(separator: "%").first.map(String.init) ?? ip
+        let lower = bare.lowercased()
+        if lower.hasPrefix("::ffff:"), lower.dropFirst(7).contains(".") { return String(bare.dropFirst(7)) }
+        return bare
+    }
+
+    /// Every address on this machine's interfaces, with the interface's name.
+    public static func allInterfaceAddresses() -> [(name: String, ip: String)] {
+        var result: [(name: String, ip: String)] = []
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return [] }
+        defer { freeifaddrs(list) }
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            guard let addr = pointer.pointee.ifa_addr else { continue }
+            let family = Int32(addr.pointee.sa_family)
+            guard family == AF_INET || family == AF_INET6 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let length = socklen_t(family == AF_INET ? MemoryLayout<sockaddr_in>.size : MemoryLayout<sockaddr_in6>.size)
+            guard getnameinfo(addr, length, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            result.append((String(cString: pointer.pointee.ifa_name), normalized(String(cString: host))))
+        }
+        return result
+    }
+}
+
+/// Which incoming connections the host takes, by where they come from and where they arrived.
+/// A 100.64.0.0/10 source alone isn't Tailscale: carrier-grade NAT and phone hotspots hand out
+/// the same range. Tailscale traffic arrives on the Mac's Tailscale interface (a utun with the
+/// Mac's own tailnet address), from a phone's system VPN and its in-app node alike.
+public enum RemotePeerPolicy {
+    public struct Decision: Equatable, Sendable {
+        public var accept: Bool
+        /// Where it arrived couldn't be told: accepted by the source address alone, as before
+        /// (never lock the owner out over a lookup).
+        public var fellBack: Bool
+
+        public init(accept: Bool, fellBack: Bool = false) {
+            self.accept = accept
+            self.fellBack = fellBack
+        }
+    }
+
+    /// The source address alone (before the connection's path is looked at).
+    public static func acceptsSource(_ remoteIP: String, lan: Bool, loopback: Bool) -> Bool {
+        Tailscale.isTailscaleIP(remoteIP) || (lan && Tailscale.isPrivateLAN(remoteIP)) || (loopback && Tailscale.isLoopback(remoteIP))
+    }
+
+    /// `localIP`: the address the peer connected to; `interfaces`: this Mac's addresses by
+    /// interface (`Tailscale.allInterfaceAddresses()`).
+    public static func decide(remoteIP: String, localIP: String?, interfaces: [(name: String, ip: String)], lan: Bool, loopback: Bool) -> Decision {
+        // The local network and loopback (demo copies) as before.
+        if lan, Tailscale.isPrivateLAN(remoteIP) { return Decision(accept: true) }
+        if loopback, Tailscale.isLoopback(remoteIP) { return Decision(accept: true) }
+        guard Tailscale.isTailscaleIP(remoteIP) else { return Decision(accept: false) }
+        guard let localIP else { return Decision(accept: true, fellBack: true) }
+        let local = Tailscale.normalized(localIP)
+        let owners = interfaces.filter { Tailscale.normalized($0.ip) == local }.map(\.name)
+        // The address isn't on any interface (it went away meanwhile): can't tell.
+        guard !owners.isEmpty else { return Decision(accept: true, fellBack: true) }
+        return Decision(accept: Tailscale.isTailscaleIP(local) && owners.contains { $0.hasPrefix("utun") })
+    }
 }
 
 #if os(macOS)

@@ -22,6 +22,10 @@ protocol RemoteByteStream: AnyObject {
     func cancel()
     /// The peer's address (incoming connections).
     var remoteEndpoint: NWEndpoint? { get }
+    /// This side's address and the interface the connection uses (incoming connections; nil
+    /// when unknown).
+    var localEndpoint: NWEndpoint? { get }
+    var interfaceName: String? { get }
 }
 
 /// The system's network: an NWConnection, used exactly as before the abstraction.
@@ -61,6 +65,9 @@ final class NWConnectionStream: RemoteByteStream, @unchecked Sendable {
     }
 
     var remoteEndpoint: NWEndpoint? { connection.endpoint }
+    // An accepted connection has its path before it starts.
+    var localEndpoint: NWEndpoint? { connection.currentPath?.localEndpoint }
+    var interfaceName: String? { connection.currentPath?.availableInterfaces.first?.name }
 }
 
 /// Opens connections some other way than the system's network: the iPhone/iPad app's in-app
@@ -193,4 +200,6 @@ final class DialedStream: RemoteByteStream, @unchecked Sendable {
     }
 
     var remoteEndpoint: NWEndpoint? { nil }
+    var localEndpoint: NWEndpoint? { nil }
+    var interfaceName: String? { nil }
 }

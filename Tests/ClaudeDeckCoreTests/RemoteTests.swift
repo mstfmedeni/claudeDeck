@@ -499,7 +499,7 @@ import Testing
             return Data(base64Encoded: b)!
         }
         #expect(String(decoding: decode(parts[0]), as: UTF8.self) == #"{"alg":"ES256","kid":"ABC123DEFG"}"#)
-        #expect(String(decoding: decode(parts[1]), as: UTF8.self) == #"{"iss":"V6G4B5T63L","iat":1700000000}"#)
+        #expect(String(decoding: decode(parts[1]), as: UTF8.self) == #"{"iat":1700000000,"iss":"V6G4B5T63L"}"#)
         let signature = try P256.Signing.ECDSASignature(rawRepresentation: decode(parts[2]))
         #expect(key.publicKey.isValidSignature(signature, for: Data("\(parts[0]).\(parts[1])".utf8)))
         #expect(!APNsCredentials(keyID: "x", teamID: "y", keyPEM: "not a key").isValid)

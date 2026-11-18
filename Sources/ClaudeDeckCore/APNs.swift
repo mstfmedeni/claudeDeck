@@ -28,6 +28,23 @@ public struct PushDevice: Codable, Sendable, Equatable, Identifiable {
     public var tokenHex: String { token.map { String(format: "%02x", $0) }.joined() }
 }
 
+extension Array where Element == PushDevice {
+    /// The list with a phone's registration: one entry per device token, updated in place. Not
+    /// by name: iOS calls every iPhone "iPhone", so two phones would push each other out. A
+    /// token left behind by a reinstall goes when APNs says it's unregistered. nil: no change.
+    public func registering(_ device: PushDevice) -> [PushDevice]? {
+        var list = self
+        if let index = list.firstIndex(where: { $0.token == device.token }) {
+            let old = list[index]
+            guard old.environment != device.environment || old.name != device.name || old.topic != device.topic else { return nil }
+            list[index] = device
+        } else {
+            list.append(device)
+        }
+        return list
+    }
+}
+
 /// The APNs auth key from the Apple Developer account.
 public struct APNsCredentials: Codable, Sendable, Equatable {
     public var keyID: String
@@ -48,9 +65,14 @@ public enum APNs {
     /// ES256 provider token (header.claims.signature, base64url).
     public static func token(_ credentials: APNsCredentials, issuedAt: Date) throws -> String {
         let key = try P256.Signing.PrivateKey(pemRepresentation: credentials.keyPEM)
-        let header = #"{"alg":"ES256","kid":"\#(credentials.keyID)"}"#
-        let claims = #"{"iss":"\#(credentials.teamID)","iat":\#(Int(issuedAt.timeIntervalSince1970))}"#
-        let signingInput = base64url(Data(header.utf8)) + "." + base64url(Data(claims.utf8))
+        // Encoded, not interpolated: a quote or backslash in an id can't change the JSON.
+        struct Header: Encodable { let alg = "ES256"; let kid: String }
+        struct Claims: Encodable { let iss: String; let iat: Int }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let header = try encoder.encode(Header(kid: credentials.keyID))
+        let claims = try encoder.encode(Claims(iss: credentials.teamID, iat: Int(issuedAt.timeIntervalSince1970)))
+        let signingInput = base64url(header) + "." + base64url(claims)
         let signature = try key.signature(for: Data(signingInput.utf8))
         return signingInput + "." + base64url(signature.rawRepresentation)
     }

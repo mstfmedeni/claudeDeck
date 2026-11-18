@@ -330,6 +330,16 @@ struct ConversationView: View {
             for url in urls {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                // Too large is told from the size, before reading it all into memory (a picked
+                // video can be gigabytes). Photos may be larger: they're made smaller first.
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                let type = UTType(filenameExtension: url.pathExtension)
+                let photo = type.map { $0.conforms(to: .image) && !$0.conforms(to: .gif) } ?? false
+                let used = attachments.reduce(0) { $0 + $1.upload.data.count }
+                guard size <= (photo ? Attachment.maxPhotoFileBytes : RemoteUpload.maxTotalBytes - used) else {
+                    attachError = String(localized: "Too large: up to 5 MB of files per message.")
+                    continue
+                }
                 guard let data = try? Data(contentsOf: url) else {
                     attachError = String(localized: "Couldn't read \(url.lastPathComponent).")
                     continue
@@ -450,6 +460,8 @@ struct Attachment: Identifiable {
 
     /// Longest side in pixels: plenty for Claude, a few hundred KB as JPEG.
     static let maxPixels: CGFloat = 2000
+    /// A picked image file is read (to be made smaller) up to this size.
+    static let maxPhotoFileBytes = 60 << 20
 
     /// A photo, resized and made JPEG (HEIC isn't one Claude reads).
     static func photo(_ data: Data, number: Int, name: String? = nil) -> Attachment? {
