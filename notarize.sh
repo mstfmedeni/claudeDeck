@@ -84,6 +84,9 @@ trap 'rm -f "$ENT"' EXIT
 sign() {
   if codesign -d --entitlements - --xml "$1" > "$ENT" 2>/dev/null && [ -s "$ENT" ]; then
     /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "$ENT" >/dev/null 2>&1 || true
+    # A bare executable has no provisioning profile to back an application identifier (Xcode adds
+    # one to command-line tools signed for development).
+    [ "${2:-}" = tool ] && { /usr/libexec/PlistBuddy -c "Delete :com.apple.application-identifier" "$ENT" >/dev/null 2>&1 || true; }
     codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$IDENTITY" "$1"
   else
     codesign --force --options runtime --timestamp --sign "$IDENTITY" "$1"
@@ -97,6 +100,12 @@ for fw in "$APP"/Contents/Frameworks/*.framework; do
 done
 for nested in "$APP"/Contents/PlugIns/*.appex "$APP"/Contents/Frameworks/* "$APP"/Contents/Library/LoginItems/*.app; do
   if [ -e "$nested" ]; then sign "$nested"; fi
+done
+# Executables next to the app's own in Contents/MacOS: the session helper (claudedeck-ptyd), which
+# its launch agent (Contents/Library/LaunchAgents) starts. `codesign` on the app doesn't re-sign them.
+MAIN_EXE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Contents/Info.plist")
+for exe in "$APP"/Contents/MacOS/*; do
+  if [ -f "$exe" ] && [ "$(basename "$exe")" != "$MAIN_EXE" ]; then sign "$exe" tool; fi
 done
 sign "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
