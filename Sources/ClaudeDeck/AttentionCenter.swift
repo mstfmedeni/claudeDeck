@@ -46,6 +46,23 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         }
         model.onCountsChanged = { [weak self] in self?.updateBadge() }
         model.onAgentRegistered = { [weak self] record in self?.agentRegistered(record) }
+        ServerPlanController.shared.onNotice = { [weak self, weak model] notice in
+            self?.serverPlanNotice(notice)
+            model?.remote.pushNotice(title: notice.title, body: notice.body, collapseID: notice.id)
+        }
+    }
+
+    /// A ServerPlan deploy failed or a server went away (clicking shows the deploy log).
+    private func serverPlanNotice(_ notice: ServerPlanNotice) {
+        if model.deck.settings.bounceDock, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        guard model.deck.settings.notifications, let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        content.sound = notice.isFailure ? .default : nil
+        if let id = notice.deploymentID { content.userInfo = ["serverPlanDeployment": id] }
+        content.threadIdentifier = "serverplan"
+        center.add(UNNotificationRequest(identifier: notice.id, content: content, trigger: nil))
     }
 
     /// An agent signed itself up: it waits for approval (shown whatever the notification setting,
@@ -142,6 +159,14 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                     NSApp.activate()
                     self.model.agentSheet = .approve(id)
                 }
+            }
+            return
+        }
+        if let deployment = userInfo["serverPlanDeployment"] as? Int {
+            await MainActor.run {
+                self.model.openMainWindow?()
+                NSApp.activate()
+                ServerPlanController.shared.showDeploy(deployment)
             }
             return
         }

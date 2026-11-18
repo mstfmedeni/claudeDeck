@@ -148,21 +148,29 @@ public struct ServerPlanHealth: Decodable, Sendable, Equatable {
     public var memory: String?
     public var disk: String?
     public var uptime: String?
+    public var loadAverage: String?
     public var reachable: Bool?
     public var dockerOK: Bool?
+    /// Why the server couldn't be measured (with `reachable: false`).
+    public var error: String?
+    public var checkedAt: Date?
 
-    public init(cpu: String? = nil, memory: String? = nil, disk: String? = nil, uptime: String? = nil, reachable: Bool? = nil, dockerOK: Bool? = nil) {
+    public init(cpu: String? = nil, memory: String? = nil, disk: String? = nil, uptime: String? = nil, loadAverage: String? = nil,
+                reachable: Bool? = nil, dockerOK: Bool? = nil, error: String? = nil, checkedAt: Date? = nil) {
         self.cpu = cpu
         self.memory = memory
         self.disk = disk
         self.uptime = uptime
+        self.loadAverage = loadAverage
         self.reachable = reachable
         self.dockerOK = dockerOK
+        self.error = error
+        self.checkedAt = checkedAt
     }
 
     enum CodingKeys: String, CodingKey {
         case cpu, cpuUsage = "cpu_usage", mem, memory, memoryUsage = "memory_usage", disk, diskUsage = "disk_usage", uptime
-        case reachable, dockerOK = "docker_ok"
+        case loadAvg = "load_avg", reachable, dockerOK = "docker_ok", error, checkedAt = "checked_at"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -174,8 +182,11 @@ public struct ServerPlanHealth: Decodable, Sendable, Equatable {
         memory = text(.mem, .memory, .memoryUsage)
         disk = text(.disk, .diskUsage)
         uptime = text(.uptime)
+        loadAverage = text(.loadAvg)
         reachable = try? c.decodeIfPresent(Bool.self, forKey: .reachable)
         dockerOK = try? c.decodeIfPresent(Bool.self, forKey: .dockerOK)
+        error = text(.error)
+        checkedAt = (try? c.decodeIfPresent(FlexibleDate.self, forKey: .checkedAt))?.value
     }
 }
 
@@ -249,7 +260,8 @@ public struct ServerPlanProject: Decodable, Sendable, Equatable, Identifiable {
         let display = try? c.decodeIfPresent(String.self, forKey: .displayName)
         let plain = try? c.decodeIfPresent(String.self, forKey: .name)
         name = [display, plain].compactMap { $0 }.first { !$0.isEmpty } ?? "#\(id)"
-        branch = (try? c.decodeIfPresent(String.self, forKey: .branch)) ?? (try? c.decodeIfPresent(String.self, forKey: .gitBranch))
+        branch = [try? c.decodeIfPresent(String.self, forKey: .branch), try? c.decodeIfPresent(String.self, forKey: .gitBranch)]
+            .compactMap { $0 }.compactMap { $0 }.first { !$0.isEmpty }
         defaultServerID = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .defaultServerID))?.value
         domain = try? c.decodeIfPresent(String.self, forKey: .domain)
         lastDeploy = try? c.decodeIfPresent(ServerPlanDeploySummary.self, forKey: .lastDeploy)
@@ -339,8 +351,9 @@ public struct ServerPlanDeployment: Decodable, Sendable, Equatable, Identifiable
         log = try? c.decodeIfPresent(String.self, forKey: .log)
         startedAt = (try? c.decodeIfPresent(FlexibleDate.self, forKey: .startedAt))?.value
         finishedAt = (try? c.decodeIfPresent(FlexibleDate.self, forKey: .finishedAt))?.value
-        commit = try? c.decodeIfPresent(String.self, forKey: .commit)
-        branch = try? c.decodeIfPresent(String.self, forKey: .branch)
+        // "" means unknown.
+        commit = (try? c.decodeIfPresent(String.self, forKey: .commit)).flatMap { $0?.isEmpty == false ? $0 : nil }
+        branch = (try? c.decodeIfPresent(String.self, forKey: .branch)).flatMap { $0?.isEmpty == false ? $0 : nil }
     }
 }
 
@@ -378,6 +391,13 @@ public struct ServerPlanLogLine: Decodable, Sendable, Equatable {
     public init?(_ event: ServerSentEvent) {
         guard event.event == "log" else { return nil }
         self = (try? ServerPlanClient.decoder.decode(ServerPlanLogLine.self, from: Data(event.data.utf8))) ?? ServerPlanLogLine(line: event.data)
+    }
+
+    /// `event: end` (`{"reason"}`): the container's log ended (docker logs exited); don't reconnect.
+    public static func endReason(_ event: ServerSentEvent) -> String? {
+        guard event.event == "end" else { return nil }
+        struct End: Decodable { var reason: String? }
+        return (try? ServerPlanClient.decoder.decode(End.self, from: Data(event.data.utf8)).reason) ?? ""
     }
 }
 

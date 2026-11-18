@@ -484,6 +484,10 @@ final class AppModel {
     func launch(_ id: UUID, resume: Bool, automatic: Bool = false, resumeID: String? = nil, continueLatest: Bool = false) {
         guard let session = deck.session(id), let project = deck.project(session.projectID) else { return }
         if terminals.isRunning(id) { return }
+        if session.kind == .shell, let target = session.serverPlanTerminal {
+            launchServerPlanTerminal(id, target: target, cwd: project.path)
+            return
+        }
         if session.kind == .shell {
             terminals.startShell(id: id, cwd: project.path)
             if let command = session.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty {

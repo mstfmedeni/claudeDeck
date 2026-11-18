@@ -15450,6 +15450,666 @@
           }
         }
       }
+    },
+    "%@ · deploy #%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · dağıtım #%2$lld"
+          }
+        }
+      }
+    },
+    "API token": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API token"
+          }
+        }
+      }
+    },
+    "Connected as %@ (%@) · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ olarak bağlı (%2$@) · %3$@"
+          }
+        }
+      }
+    },
+    "Connection to ServerPlan closed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan bağlantısı kapandı."
+          }
+        }
+      }
+    },
+    "Couldn't open the server's terminal: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucunun terminali açılamadı: %@"
+          }
+        }
+      }
+    },
+    "Deploy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıt"
+          }
+        }
+      }
+    },
+    "Deploy (Rebuild Image)…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıt (İmajı Yeniden Derle)…"
+          }
+        }
+      }
+    },
+    "Deploy %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ dağıtılsın mı?"
+          }
+        }
+      }
+    },
+    "Deploy cancelled": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım iptal edildi"
+          }
+        }
+      }
+    },
+    "Deploy failed: %@ → %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım başarısız: %1$@ → %2$@"
+          }
+        }
+      }
+    },
+    "Deploy failed: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım başarısız: %@"
+          }
+        }
+      }
+    },
+    "Deploy failed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım başarısız"
+          }
+        }
+      }
+    },
+    "Deploy queued": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım sırada"
+          }
+        }
+      }
+    },
+    "Deploy…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıt…"
+          }
+        }
+      }
+    },
+    "Deployed: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtıldı: %@"
+          }
+        }
+      }
+    },
+    "Deployed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtıldı"
+          }
+        }
+      }
+    },
+    "Deploying": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtılıyor"
+          }
+        }
+      }
+    },
+    "disk %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "disk %@"
+          }
+        }
+      }
+    },
+    "Docker isn't answering on this server": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu sunucuda Docker yanıt vermiyor"
+          }
+        }
+      }
+    },
+    "Failed: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başarısız: %@"
+          }
+        }
+      }
+    },
+    "Fix with Claude: start a Claude session in this project with the deploy log": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude ile Düzelt: bu projede dağıtım günlüğüyle bir Claude oturumu başlat"
+          }
+        }
+      }
+    },
+    "Follow": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takip et"
+          }
+        }
+      }
+    },
+    "load %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yük %@"
+          }
+        }
+      }
+    },
+    "Loading containers…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteynerler yükleniyor…"
+          }
+        }
+      }
+    },
+    "log ended": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "günlük bitti"
+          }
+        }
+      }
+    },
+    "Logs": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Günlükler"
+          }
+        }
+      }
+    },
+    "No ClaudeDeck project has this project's folder; add it first.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu projenin klasörünü kullanan bir ClaudeDeck projesi yok; önce onu ekle."
+          }
+        }
+      }
+    },
+    "No ServerPlan terminal address was given.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan terminal adresi verilmedi."
+          }
+        }
+      }
+    },
+    "No servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu yok"
+          }
+        }
+      }
+    },
+    "Open the deploy log in ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım günlüğünü ClaudeDeck'te aç."
+          }
+        }
+      }
+    },
+    "Panel address": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panel adresi"
+          }
+        }
+      }
+    },
+    "Reconnect": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Bağlan"
+          }
+        }
+      }
+    },
+    "Refresh from ServerPlan": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'dan yenile"
+          }
+        }
+      }
+    },
+    "Restart %@ on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ üzerinde %1$@ yeniden başlatılsın mı?"
+          }
+        }
+      }
+    },
+    "Restart…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Başlat…"
+          }
+        }
+      }
+    },
+    "Running on %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ üzerinde çalışıyor."
+          }
+        }
+      }
+    },
+    "Saved in the keychain": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar zincirinde kayıtlı"
+          }
+        }
+      }
+    },
+    "Server unreachable: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuya ulaşılamıyor: %@"
+          }
+        }
+      }
+    },
+    "ServerPlan": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan"
+          }
+        }
+      }
+    },
+    "ServerPlan builds the image, transfers it and replaces the running container.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan imajı derler, sunucuya aktarır ve çalışan konteyneri yenisiyle değiştirir."
+          }
+        }
+      }
+    },
+    "ServerPlan can't reach this server.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan bu sunucuya ulaşamıyor."
+          }
+        }
+      }
+    },
+    "ServerPlan didn't ask for a confirmation.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan onay istemedi."
+          }
+        }
+      }
+    },
+    "ServerPlan doesn't know this item.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan bu öğeyi tanımıyor."
+          }
+        }
+      }
+    },
+    "ServerPlan isn't set up (Settings › ServerPlan).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan ayarlanmamış (Ayarlar › ServerPlan)."
+          }
+        }
+      }
+    },
+    "ServerPlan isn't set up.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan ayarlanmamış."
+          }
+        }
+      }
+    },
+    "ServerPlan rejected the token.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan token'ı reddetti."
+          }
+        }
+      }
+    },
+    "ServerPlan terminal: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan terminali: %@"
+          }
+        }
+      }
+    },
+    "ServerPlan wants a confirmation for this.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan bunun için onay istiyor."
+          }
+        }
+      }
+    },
+    "Servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucular"
+          }
+        }
+      }
+    },
+    "Show Deploy Log": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım Günlüğünü Göster"
+          }
+        }
+      }
+    },
+    "Show Project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projeyi Göster"
+          }
+        }
+      }
+    },
+    "Start %@ on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ üzerinde %1$@ başlatılsın mı?"
+          }
+        }
+      }
+    },
+    "Start Claude Code on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ üzerinde Claude Code'u başlat"
+          }
+        }
+      }
+    },
+    "Start…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlat…"
+          }
+        }
+      }
+    },
+    "Stop %@ on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ üzerinde %1$@ durdurulsun mu?"
+          }
+        }
+      }
+    },
+    "Stop…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durdur…"
+          }
+        }
+      }
+    },
+    "The deploy finished.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dağıtım tamamlandı."
+          }
+        }
+      }
+    },
+    "The ServerPlan address isn't valid.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan adresi geçerli değil."
+          }
+        }
+      }
+    },
+    "The token isn't allowed to do this.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token'ın buna yetkisi yok."
+          }
+        }
+      }
+    },
+    "This changes a running server.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu, çalışan bir sunucuyu değiştirir."
+          }
+        }
+      }
+    },
+    "This needs a confirmation first.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bunun için önce onay gerekiyor."
+          }
+        }
+      }
+    },
+    "Too many requests to ServerPlan; try again shortly.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'a çok fazla istek gönderildi; birazdan yeniden dene."
+          }
+        }
+      }
+    },
+    "Unexpected answer from ServerPlan: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'dan beklenmedik yanıt: %@"
+          }
+        }
+      }
+    },
+    "Unreachable": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ulaşılamıyor"
+          }
+        }
+      }
+    },
+    "Your servers, projects and deploys from a ServerPlan panel, in the sidebar: health, deploy status and notifications when a deploy fails, terminals on the servers (the panel does the SSH; no SSH key is stored here), and Fix with Claude for a failed deploy. Create the token in ServerPlan › Settings › API tokens.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan panelindeki sunucuların, projelerin ve dağıtımların kenar çubuğunda: sağlık durumu, dağıtım durumu ve bir dağıtım başarısız olunca bildirim, sunucularda terminal (SSH'ı panel yapar; burada SSH anahtarı saklanmaz) ve başarısız bir dağıtım için Claude ile Düzelt. Token'ı ServerPlan › Ayarlar › API token'ları bölümünde oluştur."
+          }
+        }
+      }
+    },
+    "No containers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner yok"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

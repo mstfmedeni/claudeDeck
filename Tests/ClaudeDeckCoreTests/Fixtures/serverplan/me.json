@@ -1,7 +1,1 @@
-{
-  "user": { "id": 1, "username": "demo" },
-  "role": "admin",
-  "scopes": ["read", "logs", "deploy", "containers", "terminal"],
-  "server_version": "1.4.0-demo",
-  "features": ["deploy_stream", "log_stream", "terminal", "terminal_claude", "events"]
-}
+{"features":["deploy_stream","log_stream","events","terminal","terminal_claude"],"role":"admin","scopes":["containers","deploy","logs","read","terminal"],"server_version":"1","user":{"id":1,"username":"demo"}}

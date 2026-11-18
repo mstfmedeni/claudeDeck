@@ -78,6 +78,16 @@ public enum APNs {
         return (try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])) ?? Data()
     }
 
+    /// An alert that isn't about a session (e.g. a failed ServerPlan deploy): no `sessionID`, so a
+    /// tap only opens the app.
+    public static func noticePayload(title: String, subtitle: String?, body: String, threadID: String, sound: Bool) -> Data {
+        var alert: [String: Any] = ["title": title, "body": body]
+        if let subtitle { alert["subtitle"] = subtitle }
+        var aps: [String: Any] = ["alert": alert, "thread-id": threadID]
+        if sound { aps["sound"] = "default" }
+        return (try? JSONSerialization.data(withJSONObject: ["aps": aps], options: [.sortedKeys])) ?? Data()
+    }
+
     public static func host(for environment: String) -> String {
         environment == "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com"
     }

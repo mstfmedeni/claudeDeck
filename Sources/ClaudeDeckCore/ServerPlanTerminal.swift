@@ -43,8 +43,13 @@ public enum ServerPlanTerminalMessage: Equatable, Sendable {
 public enum ServerPlanTerminalBridge {
     public static let argument = "--serverplan-terminal"
     public static let urlVariable = "CLAUDEDECK_SERVERPLAN_WS"
+    /// Why there is no URL (no ticket): printed, then the process ends.
+    public static let errorVariable = "CLAUDEDECK_SERVERPLAN_ERROR"
 
     public static func run() -> Never {
+        if let error = getenv(errorVariable).map({ String(cString: $0) }) {
+            fail(String(localized: "Couldn't open the server's terminal: \(error)"))
+        }
         guard let raw = getenv(urlVariable).map({ String(cString: $0) }), let url = URL(string: raw) else {
             fail(String(localized: "No ServerPlan terminal address was given."))
         }

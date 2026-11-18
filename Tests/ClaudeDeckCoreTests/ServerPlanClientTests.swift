@@ -106,6 +106,7 @@ private func json(_ request: URLRequest) -> [String: Any] {
         #expect(servers[0].checkedAt != nil)  // nanosecond fractions and a +03:00 offset
         #expect(servers[2].effectiveStatus == .offline)
         #expect(servers[2].checkedAt == nil)
+        #expect(servers[0].host == "203.0.113.10")
     }
 
     @Test func decodesProjectsAndDeployments() throws {
@@ -132,9 +133,25 @@ private func json(_ request: URLRequest) -> [String: Any] {
         let containers = try ServerPlanClient.decode([ServerPlanContainer].self, from: try fixture("containers-1.json"))
         #expect(containers.filter(\.isRunning).count == 3)
         let health = try ServerPlanClient.decode(ServerPlanHealth.self, from: try fixture("health-1.json"))
-        #expect(health.cpu == "12%" && health.memory == "1.9G/4.0G" && health.dockerOK == true)
+        #expect(health.cpu == "4.2%" && health.memory == "4.7Gi/61Gi" && health.disk == "120G/437G (29%)")
+        #expect(health.dockerOK == true && health.loadAverage == "0.91 0.74 0.66" && health.checkedAt != nil)
+        let down = try ServerPlanClient.decode(ServerPlanHealth.self, from: try fixture("health-unreachable.json"))
+        #expect(down.reachable == false && down.error?.contains("i/o timeout") == true && down.cpu == nil)
         let numeric = try ServerPlanClient.decode(ServerPlanHealth.self, from: Data(#"{"cpu":12.5,"mem":40,"disk":"9%"}"#.utf8))
         #expect(numeric.cpu == "12.5" && numeric.memory == "40")
+    }
+
+    @Test func emptyBranchAndNullsAreNil() throws {
+        let deployment = try ServerPlanClient.decode(ServerPlanDeployment.self, from: Data(#"{"id":3,"branch":"","commit":null,"error":null,"status":"success"}"#.utf8))
+        #expect(deployment.branch == nil && deployment.commit == nil && deployment.errorSummary == nil)
+        let servers = try ServerPlanClient.decode([ServerPlanServer].self, from: try fixture("servers.json"))
+        #expect(servers[2].reachable == nil && servers[2].effectiveStatus == .offline)
+    }
+
+    @Test func logStreamEnd() {
+        #expect(ServerPlanLogLine(ServerSentEvent(event: "log", data: #"{"line":"boom","stream":"stderr"}"#)) == ServerPlanLogLine(line: "boom", stream: "stderr"))
+        #expect(ServerPlanLogLine.endReason(ServerSentEvent(event: "end", data: #"{"reason":"log stream ended"}"#)) == "log stream ended")
+        #expect(ServerPlanLogLine.endReason(ServerSentEvent(event: "log", data: "x")) == nil)
     }
 
     @Test func toleratesUnknownValues() throws {

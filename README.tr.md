@@ -584,6 +584,34 @@ API kullanabilir (127.0.0.1, bearer token). Bir bot bu API üzerinden kendini de
 ekranında sen yapıştırırsın. İzin verdiğin ajanlara Claude oturumu kendisi de sorabilir (`claudedeck-ask`); cevaplar
 yine sana not olarak gelir. Kurulum, payload ve uçlar: [docs/agents.md](docs/agents.md).
 
+## ServerPlan (isteğe bağlı)
+
+ServerPlan kendi sunucunda barındırdığın bir sunucu panelidir. Ayarlar › ServerPlan'a panelin
+adresini ve bir API token'ını gir (token'ı ServerPlan › Ayarlar › API token'ları bölümünde
+oluşturursun). ClaudeDeck token'ı Anahtar Zinciri'nde saklar. İkisi de girilene kadar özellik kapalıdır.
+
+- **Kenar çubuğu › Sunucular:**
+  - Her sunucunun bir sağlık noktası ve canlı CPU, bellek ve disk bilgisi vardır.
+  - Her sunucunun altında oraya dağıtılan projeler ve son dağıtımları, ayrıca sunucunun konteynerleri görünür.
+  - Bölüm kapalıyken ya da hiçbir pencere görünmezken hiçbir şey çekilmez.
+- **Sunucuda terminal:** sunucuya sağ tıkla › **Terminali Aç**.
+  - Normal bir terminal oturumu olarak açılır.
+  - SSH'ı ServerPlan yapar, bu yüzden ClaudeDeck hiçbir SSH anahtarını ya da parolasını saklamaz.
+    Yalnızca tek kullanımlık, 60 saniye geçerli bir bilet kullanır.
+  - **… üzerinde Claude Code'u başlat** seçeneği yalnızca panel o sunucuda `claude` olduğunu
+    bildirdiğinde görünür.
+- **Dağıtma, yeniden başlatma, başlatma ve durdurma:** bunlar önce her zaman bir onay ister ve
+  panelin ne olacağına dair kendi özetini gösterir. Dağıtım günlüğü canlı akar.
+- **Bildirimler:** başarısız bir dağıtım Mac'te ve eşlenmiş telefonun push bildirimiyle telefonda
+  bildirilir. ServerPlan ayarlıyken ClaudeDeck tek bir sessiz olay akışını açık tutar.
+- **Başarısız dağıtımda Claude ile Düzelt:** başarısız CI kontrolünde olduğu gibi, o projede dağıtım
+  günlüğüyle bir Claude oturumu başlatır.
+
+İstemci, ClaudeDeckCore içindeki `ServerPlanClient`'tır (`Sources/ClaudeDeckCore/ServerPlan*.swift`).
+
+Yerelde denemek için `CLAUDEDECK_SERVERPLAN_DEMO=1 tools/demo.sh` komutu `tools/serverplan-mock.py`'yi
+:5099 portunda çalıştırır. Sunucular uydurmadır ve terminalleri yerel bir kabuktur.
+
 ## iCloud eşitleme (isteğe bağlı)
 
 Ayarlar › iCloud (varsayılan kapalı). Entitlement gerekmez; düz dosya:

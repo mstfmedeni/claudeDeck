@@ -99,6 +99,7 @@ struct SettingsView: View {
             }
             AgentsSettingsSection()
             RemoteSettingsSection()
+            ServerPlanSettingsSection()
             PencilSettingsSection()
             Section("Claude Code Hooks") {
                 LabeledContent("Status") {
