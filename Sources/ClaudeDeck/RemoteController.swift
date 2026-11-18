@@ -227,13 +227,16 @@ final class RemoteController {
         try? RemoteLocalStore.save(&local, to: localURL, secrets: secretStore)
     }
 
-    /// Keys the Keychain didn't give back (locked, access denied): asked for again every 30 s.
-    /// Meanwhile nothing replaces them, and this Mac doesn't host without its key.
+    /// Keys the Keychain didn't give back (locked, access denied): asked for again after 30 s,
+    /// then less and less often (up to every 10 min: a denied access prompt mustn't come back
+    /// every 30 s). Meanwhile nothing replaces them, and this Mac doesn't host without its key.
     private func retryUnreadSecrets() {
         guard !local.unreadSecrets.isEmpty, secretsRetry == nil else { return }
         secretsRetry = Task { @MainActor [weak self] in
+            var delay: TimeInterval = 30
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
+                try? await Task.sleep(for: .seconds(delay))
+                delay = min(delay * 2, 600)
                 guard let self else { return }
                 if RemoteLocalStore.readSecrets(&self.local, secrets: self.secretStore) {
                     self.apnsToken = nil
