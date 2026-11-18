@@ -517,6 +517,22 @@ ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same v
 - Open in Editor, Reveal in Finder, **New Skill…** (a folder with a `SKILL.md` template) and Move to Trash.
   The list follows changes on disk.
 
+### Simulators (optional)
+- Off by default: turn it on in Settings › Simulators, then File › Simulators… opens the Simulators tab.
+- Lists the iOS, watchOS and visionOS simulators from `xcrun simctl list -j`, running ones first, with
+  Boot, Shut Down, Open in Simulator and Erase (asks first; a running simulator is shut down before).
+- Memory of a running simulator is the sum of `phys_footprint` over its `launchd_sim` and every process
+  below it (the measure simslim's `measure` uses), read with `proc_pid_rusage`, no shelling out.
+- The session using a simulator is inferred from the processes: a session's process tree (xcodebuild,
+  simctl, axe, test runners, MCP servers…) is scanned for a known device UDID in the arguments or
+  environment, an xcodebuild `-destination name=…` that matches exactly one device, or simctl's `booted`
+  when only one simulator runs. The link opens the session; the last one seen is kept. Commands that
+  already finished, and Xcode or other apps, can't be traced; the row then says so.
+- With [simslim](https://github.com/MobAI-App/simslim) installed, the row's menu also offers Slim (keeping
+  the categories push notifications, widgets and WatchConnectivity need) and Restore Stock Services.
+- Nothing runs while the tab is closed or no window is visible; while shown it samples every 3 s and
+  re-reads the device list when the set of running simulators changes (at most every 30 s otherwise).
+
 ### Pencil (pen.dev)
 - If the Pencil desktop app is installed, new and resumed Claude sessions started by ClaudeDeck get its MCP
   server (via `--mcp-config`), so Claude can work with your designs. Your global Claude configuration is not
@@ -758,7 +774,7 @@ Recording permission:
   - `<session>.select`, `<session>.beside`, `<session>.paste`, `<session>.approve` / `.deny`,
     and `<project>.shell` trigger the matching actions.
   - `<name>.tab` opens a tab: `file<TAB><path><TAB><preview 0|1>`, `diff<TAB><repo><TAB><path><TAB><staged 0|1>`,
-    `automations`, `sessions`, or `close-all`.
+    `automations`, `sessions`, `simulators`, or `close-all`.
   - `<name>.inspector` (`files`, `changes`, `hide`), `<name>.quickopen` (the query), `<session>.github`
     (fetch its link) and `<session>.popover` (open the link popover).
   - `<name>.frame` (`x y w h`, screen points) sizes the main window, `<name>.scroll` (`x y` in the window)

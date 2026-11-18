@@ -313,7 +313,7 @@ cat > "$ROOT/data/deck.json" <<EOF
       "startedAt": $(at -2d 10 0), "completedAt": $(at -2d 10 8), "status": "succeeded" }
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
-                "pencilMCP": false, "terminalFontSize": 11 }
+                "pencilMCP": false, "terminalFontSize": 11, "simulators": true }
 }
 EOF
 
