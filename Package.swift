@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "ClaudeDeck", targets: ["ClaudeDeck"]),
+        .executable(name: "claudedeck-ptyd", targets: ["claudedeck-ptyd"]),
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", .upToNextMinor(from: "1.20.0")),
@@ -21,9 +22,12 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ]
         ),
+        // Session helper: keeps ptys alive while the app is closed (PtydServer).
+        .executableTarget(name: "claudedeck-ptyd", dependencies: ["ClaudeDeckCore"]),
         .testTarget(
             name: "ClaudeDeckCoreTests",
-            dependencies: ["ClaudeDeckCore"],
+            // The helper is built too: the integration tests run it as a child process.
+            dependencies: ["ClaudeDeckCore", "claudedeck-ptyd"],
             exclude: ["Fixtures"]
         ),
     ]
