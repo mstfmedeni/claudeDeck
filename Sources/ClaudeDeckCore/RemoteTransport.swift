@@ -341,6 +341,8 @@ public final class RemoteServer: @unchecked Sendable {
     public var onAddProject: ((_ path: String) -> Void)?
     /// The session menu's actions.
     public var onSessionAction: ((_ sessionID: UUID, _ action: RemoteSessionAction) -> Void)?
+    /// Fix with Claude for a failed ServerPlan deploy; reply with the session it went to, or why not.
+    public var onServerPlanRepair: ((_ deploymentID: Int, _ reply: @escaping @Sendable (UUID?, String?) -> Void) -> Void)?
     /// Pin / rename one of the host's projects.
     /// `reply` answers a `renameFolder` (nil: done, else why not).
     public var onProjectAction: ((_ projectID: UUID, _ action: RemoteProjectAction, _ reply: @escaping (String?) -> Void) -> Void)?
@@ -620,6 +622,11 @@ public final class RemoteServer: @unchecked Sendable {
                 }
             case .sessionAction(let sessionID, let action):
                 onSessionAction?(sessionID, action)
+            case .serverPlanRepair(let deploymentID):
+                let channel = peer.channel
+                onServerPlanRepair?(deploymentID) { [queue] sessionID, error in
+                    queue.async { channel.send(.serverPlanRepairResult(deploymentID: deploymentID, sessionID: sessionID, error: error)) }
+                }
             case .browseFolder(let path):
                 let channel = peer.channel
                 onBrowseFolder?(path) { [queue] answer in queue.async { channel.send(answer) } }
@@ -755,6 +762,9 @@ public final class RemoteHostConnection: @unchecked Sendable {
     public var onPastConversations: ((UUID, [RemotePastConversation]) -> Void)?
     /// `.directory` / `.file` / `.fileChunk` / `.uploadAck` answers.
     public var onFileReply: ((RemoteMessage) -> Void)?
+    public var onServerPlanRepairResult: ((_ deploymentID: Int, _ sessionID: UUID?, _ error: String?) -> Void)?
+    /// Each address tried, once it's decided (the phone's Connection Log). Doesn't change what happens.
+    public var onAttemptEnded: ((_ address: String, _ route: RemoteRoute, _ startedAt: Date, _ outcome: RemoteConnectionLog.Outcome) -> Void)?
 
     /// Per address: pairing must finish within this once it has connected.
     public var handshakeTimeout: TimeInterval = 10
@@ -790,6 +800,7 @@ public final class RemoteHostConnection: @unchecked Sendable {
         launchItem = nil
         ping?.cancel()
         ping = nil
+        for attempt in attempts where !attempt.authenticated { report(attempt, .cancelled) }
         for attempt in attempts { attempt.channel.close() }
         attempts = []
         winner = nil
@@ -836,6 +847,9 @@ public final class RemoteHostConnection: @unchecked Sendable {
         var authenticated = false
         /// A ClaudeDeck answered and said no: another way to the same Mac won't help.
         var refused = false
+        let startedAt = Date()
+        /// Already in the connection log.
+        var reported = false
         init(address: String, route: RemoteRoute, fallback: [RemoteRoute], channel: RemoteChannel) {
             self.address = address
             self.route = route
@@ -919,6 +933,9 @@ public final class RemoteHostConnection: @unchecked Sendable {
             guard let self, let attempt, !self.finished, self.attempts.contains(where: { $0 === attempt }) else { return }
             self.attempts.removeAll { $0 === attempt }
             if let reason { self.lastError = reason }
+            if !attempt.authenticated {
+                self.report(attempt, attempt.refused ? .refused(self.refusal ?? reason ?? "") : .failed(reason ?? self.lastError))
+            }
             // This way didn't get through: the next way to the same address goes next.
             if !attempt.authenticated, !attempt.refused, !attempt.fallback.isEmpty {
                 self.remaining.insert((attempt.address, attempt.fallback), at: 0)
@@ -967,11 +984,21 @@ public final class RemoteHostConnection: @unchecked Sendable {
     /// In: this address keeps the connection, the others close.
     private func won(_ attempt: Attempt) {
         attempt.authenticated = true
+        report(attempt, .connected)
         channel = attempt.channel
         let others = attempts.filter { $0 !== attempt }
         attempts = [attempt]
         remaining = []
-        for other in others { other.channel.close() }
+        for other in others {
+            report(other, .cancelled)
+            other.channel.close()
+        }
+    }
+
+    private func report(_ attempt: Attempt, _ outcome: RemoteConnectionLog.Outcome) {
+        guard !attempt.reported else { return }
+        attempt.reported = true
+        onAttemptEnded?(attempt.address, attempt.route, attempt.startedAt, outcome)
     }
 
     private func handle(_ message: RemoteMessage, from attempt: Attempt) {
@@ -1030,6 +1057,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
             self.onPastConversations?(projectID, items)
         case .directory, .file, .fileChunk, .uploadAck:
             if authenticated { self.onFileReply?(message) }
+        case .serverPlanRepairResult(let id, let sessionID, let error) where authenticated:
+            self.onServerPlanRepairResult?(id, sessionID, error)
         case .refused(let reason):
             if authenticated {
                 self.end(.refused(reason))

@@ -180,7 +180,9 @@ final class ServerPlanController {
         }
     }
 
-    func refresh(force: Bool = false) async {
+    /// `listsOnly`: servers, projects and deploys (a connected phone's refresh), without the live
+    /// health, containers and capabilities.
+    func refresh(force: Bool = false, listsOnly: Bool = false) async {
         guard let client, !refreshing else { return }
         refreshing = true
         defer { refreshing = false }
@@ -199,6 +201,7 @@ final class ServerPlanController {
             lastError = error.localizedDescription
             return
         }
+        if listsOnly { return }
         await refreshContainers()
         if force || Date().timeIntervalSince(healthAt) >= Self.healthInterval {
             healthAt = Date()
@@ -394,13 +397,19 @@ final class ServerPlanController {
     var remoteStatus: RemoteServerPlan? {
         guard isConfigured else { return nil }
         let recent = deployments.filter { $0.status.isRunning || $0.status == .failed }.prefix(10)
-        return RemoteServerPlan(
+        var status = RemoteServerPlan(
             servers: servers.map { RemoteServerPlan.Server(id: $0.id, name: $0.name, status: $0.effectiveStatus.rawValue) },
             deploys: recent.map {
                 RemoteServerPlan.Deploy(id: $0.id, project: $0.projectName ?? projectName($0.projectID) ?? "#\($0.id)", server: $0.serverName,
                                         status: $0.status.rawValue, error: $0.errorSummary, finishedAt: $0.finishedAt)
             }
         )
+        status.projects = projects.map { project in
+            let last = latestDeploy(of: project)
+            return RemoteServerPlan.Project(id: project.id, name: project.name, serverID: project.defaultServerID, lastDeployID: last?.id,
+                                            lastDeployStatus: last?.status.rawValue, lastDeployAt: last?.finishedAt)
+        }
+        return status
     }
 
     // MARK: Destructive actions
@@ -458,9 +467,17 @@ final class ServerPlanController {
     }
 
     /// "Fix with Claude" for a failed deploy: fetches its log and sends it with an instruction to a
-    /// Claude session in the project's ClaudeDeck project (added if its folder exists).
-    func fixWithClaude(_ deploymentID: Int) {
-        guard let client, let model, let key = repairKey(deploymentID), !repairing.contains(deploymentID) else { return }
+    /// Claude session in the project's ClaudeDeck project (added if its folder exists). `done` gets
+    /// the session, or why there's none (a phone's Fix with Claude).
+    func fixWithClaude(_ deploymentID: Int, done: ((UUID?, String?) -> Void)? = nil) {
+        guard let client, let model, let key = repairKey(deploymentID) else {
+            done?(nil, String(localized: "ServerPlan isn't set up (Settings › ServerPlan)."))
+            return
+        }
+        guard !repairing.contains(deploymentID) else {
+            done?(nil, String(localized: "Fix with Claude is already starting for this deploy."))
+            return
+        }
         repairing.insert(deploymentID)
         Task {
             defer { repairing.remove(deploymentID) }
@@ -469,6 +486,7 @@ final class ServerPlanController {
                 deployment = try await client.deployment(id: deploymentID)
             } catch {
                 actionError = error.localizedDescription
+                done?(nil, error.localizedDescription)
                 return
             }
             let spProject = projects.first { $0.id == deployment.projectID }
@@ -478,6 +496,7 @@ final class ServerPlanController {
             }
             guard let deckProject else {
                 actionError = String(localized: "No ClaudeDeck project has this project's folder; add it first.")
+                done?(nil, actionError)
                 NSSound.beep()
                 return
             }
@@ -488,12 +507,17 @@ final class ServerPlanController {
                 model.mutate { created = $0.addSession(to: deckProject.id, name: "\(deckProject.name) · deploy #\(deploymentID)") }
                 target = created?.id
             }
-            guard let target else { NSSound.beep(); return }
+            guard let target else {
+                done?(nil, String(localized: "The session couldn't be started."))
+                NSSound.beep()
+                return
+            }
             model.mutate { $0.recordDeployRepair(DeployRepairRequest(key: key, sessionID: target)) }
             sheet = nil
             model.openMainWindow?()
             model.tabs.selectSessions()
             model.sendPrompt(DeployRepair.prompt(project: projectName, server: deployment.serverName, deployment: deployment, log: deployment.log ?? ""), to: target)
+            done?(target, nil)
         }
     }
 

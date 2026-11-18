@@ -81,6 +81,7 @@ final class SimulatorsController {
 
     @ObservationIgnored private let sampler = SimulatorSampler()
     @ObservationIgnored private var listedAt: Date?
+    @ObservationIgnored private var sampledAt: Date = .distantPast
     static let sampleInterval: Duration = .seconds(3)
     /// The device list is re-read when the booted set changes, after an action, and at most this often otherwise.
     static let listInterval: TimeInterval = 30
@@ -118,7 +119,16 @@ final class SimulatorsController {
         }
     }
 
+    /// For a connected phone (RemotePhoneFeeds): the list and a sample, unless the tab sampled
+    /// less than `every` ago. Runs whether or not a window is visible (the phone is looking).
+    func sampleForRemote(model: AppModel, every: Duration) async {
+        if !loaded { await reloadList() }
+        guard Date().timeIntervalSince(sampledAt) >= Double(every.components.seconds) - 0.5 else { return }
+        await sample(model: model)
+    }
+
     private func sample(model: AppModel) async {
+        sampledAt = Date()
         let sample = await sampler.sample(roots: model.sessionProcessRoots(), devices: devices)
         memory = sample.memory
         uses = sample.uses

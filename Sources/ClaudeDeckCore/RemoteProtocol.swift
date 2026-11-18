@@ -209,6 +209,11 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case addProject(path: String)
     /// Remote → host: what the Mac's session menu does (rename, restart, close, start fresh, remove).
     case sessionAction(sessionID: UUID, action: RemoteSessionAction)
+    /// Remote → host: Fix with Claude for a failed ServerPlan deploy (the Mac's own repair flow).
+    /// Hosts with `Feature.serverPlanRepair`; answered with `serverPlanRepairResult`.
+    case serverPlanRepair(deploymentID: Int)
+    /// Host → remote: the session the repair went to, or why it didn't start.
+    case serverPlanRepairResult(deploymentID: Int, sessionID: UUID?, error: String?)
     /// Phone → host: send push notifications to this device (APNs.swift).
     case registerPush(token: Data, topic: String, environment: String, deviceName: String)
     case ping
@@ -324,6 +329,11 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// The host's ServerPlan servers and recent failed deploys (hosts with `Feature.serverPlan`,
     /// and only while ServerPlan is set up there). Older remotes ignore it.
     public var serverPlan: RemoteServerPlan?
+    /// The Dashboard in brief (hosts with `Feature.dashboard`; only while a remote is connected).
+    public var dashboard: RemoteDashboard?
+    /// Booted and recently used simulators (hosts with `Feature.simulators`; only while the Mac's
+    /// Simulators setting is on and a remote is connected).
+    public var simulators: [RemoteSimulator]?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -363,9 +373,16 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let programStatus = "programStatus"
         /// `serverPlan` in the snapshot (read-only; actions stay on the Mac).
         public static let serverPlan = "serverPlan"
+        /// `serverPlanRepair` (Fix with Claude for a failed deploy), `projects` in `serverPlan`.
+        public static let serverPlanRepair = "serverPlanRepair"
+        /// `dashboard` in the snapshot.
+        public static let dashboard = "dashboard"
+        /// `simulators` in the snapshot (read-only).
+        public static let simulators = "simulators"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
-                                              historyUpdates, conversationPush, programStatus, serverPlan]
+                                              historyUpdates, conversationPush, programStatus, serverPlan,
+                                              serverPlanRepair, dashboard, simulators]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -412,9 +429,31 @@ public struct RemoteServerPlan: Codable, Sendable, Equatable {
         }
     }
 
+    /// A ServerPlan project with its last deploy (hosts with `Feature.serverPlanRepair`).
+    public struct Project: Codable, Sendable, Equatable, Identifiable {
+        public var id: Int
+        public var name: String
+        /// The server it deploys to.
+        public var serverID: Int?
+        public var lastDeployID: Int?
+        /// As `Deploy.status`.
+        public var lastDeployStatus: String?
+        public var lastDeployAt: Date?
+        public init(id: Int, name: String, serverID: Int?, lastDeployID: Int?, lastDeployStatus: String?, lastDeployAt: Date?) {
+            self.id = id
+            self.name = name
+            self.serverID = serverID
+            self.lastDeployID = lastDeployID
+            self.lastDeployStatus = lastDeployStatus
+            self.lastDeployAt = lastDeployAt
+        }
+    }
+
     public var servers: [Server]
     /// Running and recently failed deploys, newest first.
     public var deploys: [Deploy]
+    /// nil from hosts without `Feature.serverPlanRepair`.
+    public var projects: [Project]?
 
     public init(servers: [Server], deploys: [Deploy]) {
         self.servers = servers

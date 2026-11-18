@@ -257,7 +257,14 @@ final class RemoteController {
                 MainActor.assumeIsolated { self?.hostState = state }
             }
             server.onPeersChanged = { [weak self] names in
-                MainActor.assumeIsolated { self?.connectedRemotes = names }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.connectedRemotes = names
+                    RemotePhoneFeeds.shared.setConnected(!names.isEmpty, model: self.model) { [weak self] in self?.publishSnapshot() }
+                }
+            }
+            server.onServerPlanRepair = { deploymentID, reply in
+                MainActor.assumeIsolated { ServerPlanController.shared.fixWithClaude(deploymentID) { reply($0, $1) } }
             }
             server.onPermission = { [weak self] id, stamp, approve in
                 MainActor.assumeIsolated {
@@ -545,6 +552,7 @@ final class RemoteController {
         snapshotTimer = nil
         hostState = .stopped
         connectedRemotes = []
+        RemotePhoneFeeds.shared.setConnected(false, model: nil) {}
         if let folder = Self.pairingFolder { RemotePairingFolder.remove(local.hostID, in: folder) }
     }
 
@@ -648,6 +656,7 @@ final class RemoteController {
         snapshot.addressesOrdered = model.deck.settings.remoteAddresses.isEmpty ? nil : true
         snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
+        RemotePhoneFeeds.shared.apply(to: &snapshot, model: model)
         server.snapshot = snapshot
     }
 
