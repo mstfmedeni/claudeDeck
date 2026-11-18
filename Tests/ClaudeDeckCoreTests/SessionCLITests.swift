@@ -1,0 +1,489 @@
+import Foundation
+import Testing
+@testable import ClaudeDeckCore
+
+/// `claudedeck`: the routes and scopes of a session's own token, the consent rule, waiting, and
+/// the script itself (run against a stand-in curl).
+@Suite struct SessionCLITests {
+    private func request(_ method: String, _ path: String, token: String? = nil, query: [String: String] = [:]) -> AgentHTTPRequest {
+        AgentHTTPRequest(method: method, path: path, query: query,
+                         headers: token.map { ["authorization": "Bearer \($0)"] } ?? [:], body: Data())
+    }
+
+    // MARK: Routes and scopes
+
+    @Test func routes() {
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions") == .route(.list))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/") == .route(.list))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/terminals") == .route(.open))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/self/send") == .route(.send("self")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/C0000000/screen") == .route(.capture("C0000000")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd/wait") == .route(.wait("abcd")))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/notify") == .route(.notify))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/ask") == .route(.ask))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions") == .methodNotAllowed)
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/x/send") == .methodNotAllowed)
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/x/kill") == .notFound)
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli") == .notFound)
+        #expect(SessionCLI.match(method: "GET", path: "/v1/projects") == .notFound)
+        #expect(SessionCLI.handles("/v1/cli/sessions") && SessionCLI.handles("/v1/cli"))
+        #expect(!SessionCLI.handles("/v1/client") && !SessionCLI.handles("/v1/projects") && !SessionCLI.handles(AgentAsk.path))
+    }
+
+    /// The routes agents (and the WhatsApp Reader daemon) use answer exactly as before, and the
+    /// old router knows nothing of `/v1/cli`.
+    @Test func existingRoutesAreUnchanged() throws {
+        let id = UUID()
+        #expect(AgentRoute.match(method: "GET", path: "/v1/projects") == .route(.projects))
+        #expect(AgentRoute.match(method: "POST", path: "/v1/sessions/\(id)/prompt") == .route(.prompt(session: id)))
+        #expect(AgentRoute.match(method: "GET", path: "/v1/sessions/\(id)/messages") == .route(.messages(session: id)))
+        #expect(AgentRoute.match(method: "POST", path: "/v1/notes") == .route(.notes))
+        #expect(AgentRoute.match(method: "POST", path: "/v1/projects/\(id)/sessions") == .route(.newSession(project: id)))
+        #expect(AgentRoute.match(method: "GET", path: "/v1/cli/sessions") == .notFound)
+        #expect(try AgentRoute.resolve(request("GET", "/v1/projects", token: "secret"), token: "secret").get() == .projects)
+        // A session's CLI token is no API token.
+        var book = SessionCLIBook()
+        let cliToken = book.token(for: id, scopes: SessionCLI.fullScopes)
+        #expect((try? AgentRoute.resolve(request("GET", "/v1/projects", token: cliToken), token: "secret").get()) == nil)
+        // And the API's token is no CLI token.
+        guard case .failure(let refusal) = SessionCLI.resolve(request("GET", "/v1/cli/sessions", token: "secret"), book: book) else {
+            Issue.record("API token passed"); return
+        }
+        #expect(refusal.response.status == 401)
+        // Old answers carry no extra header: the bytes on the wire are what they were.
+        let old = AgentHTTPResponse.error(404, "not_found").encoded()
+        #expect(String(decoding: old, as: UTF8.self) == "HTTP/1.1 404 Not Found\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 21\r\nConnection: close\r\n\r\n{\"error\":\"not_found\"}")
+    }
+
+    @Test func tokenScopes() throws {
+        var book = SessionCLIBook()
+        let claude = UUID(), opened = UUID()
+        let claudeToken = book.token(for: claude, scopes: SessionCLI.scopes(openedBy: nil))
+        let openedToken = book.token(for: opened, scopes: SessionCLI.scopes(openedBy: claude))
+        #expect(book.token(for: claude, scopes: SessionCLI.fullScopes) == claudeToken) // kept while the session lives
+        #expect(claudeToken != openedToken)
+
+        func status(_ method: String, _ path: String, _ token: String?) -> Int {
+            switch SessionCLI.resolve(request(method, path, token: token), book: book) {
+            case .failure(let refusal): refusal.response.status
+            case .success: 200
+            }
+        }
+        for (method, path) in [("GET", "/v1/cli/sessions"), ("POST", "/v1/cli/terminals"), ("POST", "/v1/cli/sessions/x/send"),
+                               ("GET", "/v1/cli/sessions/x/screen"), ("GET", "/v1/cli/sessions/x/wait"), ("POST", "/v1/cli/notify"),
+                               ("POST", "/v1/cli/ask")] {
+            #expect(status(method, path, claudeToken) == 200, "\(path)")
+        }
+        // A terminal a session opened may look and tell, not act.
+        #expect(status("GET", "/v1/cli/sessions", openedToken) == 200)
+        #expect(status("GET", "/v1/cli/sessions/x/screen", openedToken) == 200)
+        #expect(status("GET", "/v1/cli/sessions/x/wait", openedToken) == 200)
+        #expect(status("POST", "/v1/cli/notify", openedToken) == 200)
+        #expect(status("POST", "/v1/cli/terminals", openedToken) == 403)
+        #expect(status("POST", "/v1/cli/sessions/x/send", openedToken) == 403)
+        #expect(status("POST", "/v1/cli/ask", openedToken) == 403)
+        // No token or someone else's: 401 before anything else.
+        #expect(status("GET", "/v1/cli/nothing", nil) == 401)
+        #expect(status("GET", "/v1/cli/sessions", "made-up-token-0123456789") == 401)
+        #expect(status("GET", "/v1/cli/nothing", claudeToken) == 404)
+        #expect(status("DELETE", "/v1/cli/sessions", claudeToken) == 405)
+        // Every refusal tells the command its exit code.
+        if case .failure(let refusal) = SessionCLI.resolve(request("POST", "/v1/cli/terminals", token: openedToken), book: book) {
+            #expect(refusal.response.headers[SessionCLI.exitHeader] == "4")
+        }
+        // Restarting a terminal clears what `wait` knew, not the token.
+        book.exitFiles[opened] = URL(fileURLWithPath: "/tmp/x.exit")
+        book.sentAt[opened] = Date()
+        book.restarted(opened)
+        #expect(book.exitFiles[opened] == nil && book.sentAt[opened] == nil)
+        #expect(status("GET", "/v1/cli/sessions", openedToken) == 200)
+        book.forget(claude)
+        #expect(status("GET", "/v1/cli/sessions", claudeToken) == 401)
+    }
+
+    @Test func targets() {
+        let a = UUID(uuidString: "C0000000-0000-0000-0000-000000000001")!
+        let b = UUID(uuidString: "C0000000-0000-0000-0000-000000000002")!
+        let c = UUID(uuidString: "D1234567-0000-0000-0000-000000000003")!
+        let all = [a, b, c]
+        #expect(SessionCLI.target("self", caller: b, sessions: all) == .found(b))
+        #expect(SessionCLI.target(a.uuidString.lowercased(), caller: b, sessions: all) == .found(a))
+        #expect(SessionCLI.target("d1234567", caller: a, sessions: all) == .found(c))
+        #expect(SessionCLI.target("C0000000", caller: a, sessions: all) == .ambiguous)
+        #expect(SessionCLI.target("D12", caller: a, sessions: all) == .unknown) // too short
+        #expect(SessionCLI.target(UUID().uuidString, caller: a, sessions: all) == .unknown)
+        #expect(SessionCLI.target("acme", caller: a, sessions: all) == .unknown)
+    }
+
+    // MARK: Consent
+
+    @Test func consentRule() {
+        let me = UUID(), other = UUID(), target = UUID()
+        func delivery(_ kind: SessionKind, openedBy: UUID? = nil, beside: Bool = false, mayType: Bool = false, to: UUID? = nil) -> SessionCLI.Delivery {
+            SessionCLI.delivery(caller: me, target: to ?? target, targetKind: kind, targetOpenedBy: openedBy, besideCaller: beside, mayTypeIntoClaude: mayType)
+        }
+        // Its own terminals: ones it opened, or plain terminals in a pane beside it.
+        #expect(delivery(.shell, openedBy: me) == .type)
+        #expect(delivery(.shell, beside: true) == .type)
+        // Anyone else's terminal: no.
+        #expect(delivery(.shell, openedBy: other) == .refuse("not_yours"))
+        #expect(delivery(.shell) == .refuse("not_yours"))
+        #expect(delivery(.shell, mayType: true) == .refuse("not_yours"))
+        // Another Claude session: a note unless the user lets sessions type into Claude, even beside it.
+        #expect(delivery(.claude) == .note)
+        #expect(delivery(.claude, beside: true) == .note)
+        #expect(delivery(.claude, mayType: true) == .type)
+        #expect(delivery(.claude, mayType: true, to: me) == .refuse("cannot_send_to_self"))
+        #expect(delivery(.shell, openedBy: me, to: me) == .refuse("cannot_send_to_self"))
+    }
+
+    @Test func settingsAreOffByDefaultAndOldFilesDecode() throws {
+        #expect(!DeckSettings().sessionCLIEnabled && !DeckSettings().sessionsMayTypeIntoClaude)
+        let old = try JSONDecoder().decode(DeckSettings.self, from: Data(#"{"agentAPIEnabled":true,"agentAPIPort":47700}"#.utf8))
+        #expect(!old.sessionCLIEnabled && !old.sessionsMayTypeIntoClaude && old.agentAPIPort == 47700)
+        let opener = UUID()
+        let session = #"{"id":"\#(UUID().uuidString)","projectID":"\#(UUID().uuidString)","name":"t","kind":"shell","openedBy":"\#(opener.uuidString)"}"#
+        #expect(try JSONDecoder().decode(DeckSession.self, from: Data(session.utf8)).openedBy == opener)
+        let older = #"{"id":"\#(UUID().uuidString)","projectID":"\#(UUID().uuidString)","name":"t"}"#
+        #expect(try JSONDecoder().decode(DeckSession.self, from: Data(older.utf8)).openedBy == nil)
+    }
+
+    // MARK: Waiting
+
+    @Test func claudeProgress() {
+        let sent = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(SessionCLI.claudeProgress(state: "idle", updatedAt: sent.addingTimeInterval(-60), sentAt: nil) == .finished(0))
+        #expect(SessionCLI.claudeProgress(state: "running", updatedAt: nil, sentAt: nil) == .running)
+        #expect(SessionCLI.claudeProgress(state: "starting", updatedAt: nil, sentAt: nil) == .running)
+        #expect(SessionCLI.claudeProgress(state: "needsPermission", updatedAt: nil, sentAt: nil) == .blocked("needsPermission"))
+        #expect(SessionCLI.claudeProgress(state: "needsAnswer", updatedAt: nil, sentAt: nil) == .blocked("needsAnswer"))
+        #expect(SessionCLI.claudeProgress(state: "stopped", updatedAt: nil, sentAt: nil) == .stopped)
+        // Right after a send, the idle it was already in doesn't count…
+        #expect(SessionCLI.claudeProgress(state: "idle", updatedAt: sent.addingTimeInterval(-5), sentAt: sent, now: sent.addingTimeInterval(1)) == .running)
+        // …a hook update after it does…
+        #expect(SessionCLI.claudeProgress(state: "idle", updatedAt: sent.addingTimeInterval(3), sentAt: sent, now: sent.addingTimeInterval(4)) == .finished(0))
+        // …and without hooks it gives up waiting for one.
+        #expect(SessionCLI.claudeProgress(state: "idle", updatedAt: nil, sentAt: sent, now: sent.addingTimeInterval(SessionCLI.sendGrace + 1)) == .finished(0))
+    }
+
+    @Test func shellProgress() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func progress(running: Bool = true, pending: Bool = false, command: Int32? = nil, process: Int32? = nil, busy: Bool = false,
+                      sent: TimeInterval? = nil, editing: Bool = true, output: TimeInterval? = nil) -> SessionCLI.Progress {
+            SessionCLI.shellProgress(running: running, commandPending: pending, commandExit: command, processExit: process,
+                                     foregroundBusy: busy, sentAt: sent.map { now.addingTimeInterval(-$0) }, lineEditing: editing,
+                                     lastOutput: output.map { now.addingTimeInterval(-$0) }, now: now)
+        }
+        #expect(progress(pending: true) == .running)
+        #expect(progress(command: 0) == .finished(0))
+        #expect(progress(command: 2) == .failed(2))
+        #expect(progress(command: 130) == .failed(130))
+        #expect(progress(busy: true) == .running)
+        #expect(progress() == .finished(nil))
+        #expect(progress(sent: 0.5) == .running)
+        #expect(progress(sent: 10) == .finished(nil))
+        // After a send, output that hasn't settled yet (a shell still starting, a builtin printing).
+        #expect(progress(sent: 10, output: 0.5) == .running)
+        #expect(progress(sent: 10, output: 5) == .finished(nil))
+        #expect(progress(sent: 10, output: 11) == .finished(nil)) // printed before the send
+        // The shell hasn't reached its prompt yet (rc files): busy, but not forever (sh has no line editor).
+        #expect(progress(sent: 5, editing: false) == .running)
+        #expect(progress(sent: SessionCLI.shellReadyLimit + 1, editing: false) == .finished(nil))
+        #expect(progress(editing: false) == .finished(nil)) // nothing was sent
+        // The shell itself ended.
+        #expect(progress(running: false, process: 0) == .finished(0))
+        #expect(progress(running: false, pending: true, process: 1) == .failed(1))
+        #expect(progress(running: false, command: 3, process: 0) == .failed(3))
+        #expect(progress(running: false) == .stopped)
+        #expect(SessionCLI.exitCode(waitStatus: 0) == 0)
+        #expect(SessionCLI.exitCode(waitStatus: 3 << 8) == 3)
+        #expect(SessionCLI.exitCode(waitStatus: 9) == 137) // SIGKILL
+    }
+
+    @Test func exitCodes() {
+        #expect(SessionCLI.Progress.finished(0).exit == .ok)
+        #expect(SessionCLI.Progress.finished(nil).exit == .ok)
+        #expect(SessionCLI.Progress.stopped.exit == .ok)
+        #expect(SessionCLI.Progress.failed(2).exit == .failed)
+        #expect(SessionCLI.Progress.blocked("needsAnswer").exit == .blocked)
+        #expect(SessionCLI.Progress.running.exit == .timeout)
+        // Stable numbers: documented in docs/agents.md and the skill.
+        #expect(SessionCLI.Exit.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 124])
+        #expect(SessionCLI.exit(status: 200, header: "124") == .timeout)
+        #expect(SessionCLI.exit(status: 200, header: nil) == .ok)
+        #expect(SessionCLI.exit(status: 400, header: nil) == .usage)
+        #expect(SessionCLI.exit(status: 403, header: nil) == .refused)
+        #expect(SessionCLI.exit(status: 429, header: nil) == .refused)
+        #expect(SessionCLI.exit(status: 404, header: nil) == .unknown)
+        #expect(SessionCLI.exit(status: 409, header: nil) == .failed)
+        #expect(SessionCLI.exit(status: 409, header: "3") == .blocked)
+        let answer = SessionCLI.answer(200, ["a": "b"], text: "hello", exit: .blocked, json: false)
+        #expect(answer.body == Data("hello".utf8) && answer.contentType.hasPrefix("text/plain"))
+        #expect(String(decoding: answer.encoded(), as: UTF8.self).contains("\r\nX-ClaudeDeck-Exit: 3\r\n"))
+        let json = SessionCLI.answer(200, ["a": "b"], text: "hello", exit: .ok, json: true)
+        #expect(json.body == Data(#"{"a":"b"}"#.utf8))
+    }
+
+    @Test func waitedJSONKeepsEveryKey() throws {
+        let data = try AgentJSON.encode(SessionCLIWaited(.finished(nil), state: "idle", detail: nil))
+        #expect(String(decoding: data, as: UTF8.self) == #"{"detail":null,"exit_code":null,"result":"finished","state":"idle"}"#)
+        #expect(SessionCLI.waitText(.failed(2), detail: nil) == "failed (exit 2)")
+        #expect(SessionCLI.waitText(.blocked("needsPermission"), detail: "Bash") == "blocked: needs permission — Bash")
+    }
+
+    // MARK: Capture and list
+
+    @Test func captureText() {
+        func line(_ text: String) -> [TermCell] { text.map { TermCell(text: String($0)) } }
+        let wide = [TermCell(text: "界", width: 2), TermCell(text: "", width: 0), TermCell(text: "x")]
+        let lines = [line("   "), line("$ npm test   "), wide, line(""), line("ok    "), line("  "), line("")]
+        #expect(SessionCLI.text(of: lines, last: nil, trim: false) == "\n$ npm test\n界x\n\nok\n\n")
+        #expect(SessionCLI.text(of: lines, last: nil, trim: true) == "$ npm test\n界x\n\nok")
+        #expect(SessionCLI.text(of: lines, last: 2, trim: true) == "\nok")
+        #expect(SessionCLI.text(of: lines, last: 0, trim: true) == "")
+    }
+
+    @Test func listTextAndJSON() throws {
+        let me = UUID(uuidString: "C0000000-0000-0000-0000-000000000001")!
+        let dev = UUID(uuidString: "D0000000-0000-0000-0000-000000000002")!
+        let project = UUID()
+        let infos = [
+            SessionCLIInfo(id: me, name: "acme", kind: "claude", state: "running", detail: nil, projectId: project, project: "acme",
+                           pane: 1, isSelf: true, openedBySelf: false, openedBy: nil),
+            SessionCLIInfo(id: dev, name: "acme · npm run dev", kind: "terminal", state: "running", detail: nil, projectId: project,
+                           project: "acme", pane: nil, isSelf: false, openedBySelf: true, openedBy: me),
+        ]
+        #expect(SessionCLI.listText(infos) == """
+        ID        KIND      STATE    PANE  WHOSE  NAME
+        C0000000  claude    running  1     self   acme
+        D0000000  terminal  running  -     mine   acme · npm run dev
+        """)
+        let json = String(decoding: try AgentJSON.encode(infos[1]), as: UTF8.self)
+        #expect(json.contains(#""self":false"#) && json.contains(#""mine":true"#) && json.contains(#""pane":null"#))
+        #expect(json.contains(#""opened_by":"\#(me.uuidString)""#))
+    }
+
+    @Test func limiter() {
+        var limiter = SessionCLILimiter(max: 2, window: 60)
+        let session = UUID(), start = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = limiter.allow(session, now: start), second = limiter.allow(session, now: start)
+        let third = limiter.allow(session, now: start.addingTimeInterval(30))
+        let later = limiter.allow(session, now: start.addingTimeInterval(61))
+        #expect(first && second && !third && later)
+    }
+
+    // MARK: The script
+
+    /// Runs `claudedeck` with a stand-in `curl` that logs its arguments and answers
+    /// `body` with `status` ("<http> <exit header>"), one answer per call.
+    private struct Run {
+        var code: Int32
+        var out: String
+        var err: String
+        var curlCalls: [[String]]
+    }
+
+    private func run(_ args: [String], answers: [(body: String, status: String)] = [], session: Bool = true,
+                     home: URL? = nil, cwd: URL? = nil, slowFirstAnswer: Int? = nil) throws -> Run {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "claudedeck-cli-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let script = dir.appending(path: "claudedeck")
+        try Data(SessionCLI.script.utf8).write(to: script)
+        for (index, answer) in answers.enumerated() {
+            try Data(answer.body.utf8).write(to: dir.appending(path: "body\(index)"))
+            try Data(answer.status.utf8).write(to: dir.appending(path: "status\(index)"))
+        }
+        if let slowFirstAnswer { try Data("\(slowFirstAnswer)".utf8).write(to: dir.appending(path: "sleep0")) }
+        let curl = dir.appending(path: "curl")
+        try Data(#"""
+        #!/bin/sh
+        d=$(dirname "$0")
+        n=$(cat "$d/count" 2>/dev/null || echo 0)
+        echo $((n + 1)) > "$d/count"
+        for a in "$@"; do printf '%s\037' "$a"; done >> "$d/calls"
+        printf '\036' >> "$d/calls"
+        [ -f "$d/status$n" ] || { printf '\n000 '; exit 7; }
+        [ -f "$d/sleep$n" ] && sleep "$(cat "$d/sleep$n")"
+        cat "$d/body$n"; printf '\n'; cat "$d/status$n"
+        """#.utf8).write(to: curl)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: curl.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path] + args
+        var env = ["PATH": dir.path + ":/usr/bin:/bin", "HOME": (home ?? dir).path]
+        if session {
+            env["CLAUDEDECK_CLI_TOKEN"] = "tok-123"
+            env["CLAUDEDECK_CLI_URL"] = "http://127.0.0.1:47832/v1/cli"
+        }
+        process.environment = env
+        if let cwd { process.currentDirectoryURL = cwd }
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        process.standardInput = FileHandle.nullDevice
+        try process.run()
+        let outData = out.fileHandleForReading.readDataToEndOfFile()
+        let errData = err.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let raw = (try? String(contentsOf: dir.appending(path: "calls"), encoding: .utf8)) ?? ""
+        let calls = raw.split(separator: "\u{1E}").map { $0.split(separator: "\u{1F}", omittingEmptySubsequences: false).map(String.init).filter { !$0.isEmpty } }
+        return Run(code: process.terminationStatus, out: String(decoding: outData, as: UTF8.self),
+                   err: String(decoding: errData, as: UTF8.self), curlCalls: calls)
+    }
+
+    @Test func scriptSyntaxAndNoSecret() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "claudedeck-syntax-\(UUID().uuidString)")
+        try Data(SessionCLI.script.utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let check = Process()
+        check.executableURL = URL(fileURLWithPath: "/bin/sh")
+        check.arguments = ["-n", file.path]
+        try check.run()
+        check.waitUntilExit()
+        #expect(check.terminationStatus == 0)
+        #expect(SessionCLI.script.hasPrefix("#!/bin/sh\n"))
+        #expect(SessionCLI.script.contains("$CLAUDEDECK_CLI_TOKEN") && !SessionCLI.script.contains("47647"))
+    }
+
+    @Test func usageErrorsExitTwo() throws {
+        #expect(try run(["help"]).code == 0)
+        #expect(try run(["help"]).out.contains("claudedeck wait ID"))
+        #expect(try run(["frobnicate"]).code == 2)
+        #expect(try run(["list"], session: false).code == 2) // not in a ClaudeDeck session
+        #expect(try run(["open", "--split", "diagonal", "--", "ls"]).code == 2)
+        #expect(try run(["send"]).code == 2)
+        #expect(try run(["send", "abcd"]).code == 2) // nothing to send
+        #expect(try run(["send", "ab/../cd", "x"]).code == 2)
+        #expect(try run(["capture", "abcd", "--lines", "many"]).code == 2)
+        #expect(try run(["wait", "abcd", "--timeout", "-1"]).code == 2)
+        #expect(try run(["notify"]).code == 2)
+        #expect(try run(["ask"]).code == 2)
+        // None of these reached the API.
+        #expect(try run(["send", "abcd"]).curlCalls.isEmpty)
+    }
+
+    @Test func requestsAndExitCodes() throws {
+        let list = try run(["list", "--json"], answers: [("[]", "200 0")])
+        #expect(list.code == 0 && list.out == "[]\n")
+        let call = try #require(list.curlCalls.first)
+        #expect(call.contains("Authorization: Bearer tok-123") && call.contains("-G") && call.contains("format=json"))
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/sessions")
+
+        let send = try run(["send", "d1234567", "npm test", "--enter"], answers: [("terminal: typed into dev", "200 0")])
+        #expect(send.code == 0 && send.out == "terminal: typed into dev\n")
+        let sent = try #require(send.curlCalls.first)
+        #expect(sent.contains("text=npm test") && sent.contains("enter=1") && sent.last == "http://127.0.0.1:47832/v1/cli/sessions/d1234567/send")
+        // Text that starts with a dash, after --.
+        #expect(try run(["send", "self", "--", "-v"], answers: [("ok", "200 0")]).curlCalls.first?.contains("text=-v") == true)
+
+        // The API's exit code wins; errors go to stderr.
+        let blocked = try run(["send", "abcd", "x", "--enter"], answers: [(#"{"error":"blocked"}"#, "409 3")])
+        #expect(blocked.code == 3 && blocked.err.contains("blocked") && blocked.out.isEmpty)
+        let refused = try run(["send", "abcd", "x"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(refused.code == 4 && refused.err.contains("not_yours"))
+        #expect(try run(["capture", "abcd"], answers: [(#"{"error":"unknown_session"}"#, "404 5")]).code == 5)
+        // The routes are off: 404 without the header.
+        let off = try run(["list"], answers: [(#"{"error":"not_found"}"#, "404 ")])
+        #expect(off.code == 4 && off.err.contains("off"))
+        // Nothing listening.
+        let down = try run(["list"])
+        #expect(down.code == 1 && down.err.contains("isn't answering"))
+    }
+
+    @Test func openQuotesSeveralWordsAndKeepsOneLine() throws {
+        let several = try run(["open", "--name", "web", "--", "npm", "run", "it's"], answers: [("ID", "200 0")])
+        #expect(several.code == 0 && several.out == "ID\n")
+        let call = try #require(several.curlCalls.first)
+        #expect(call.contains("command=npm run 'it'\\''s'") && call.contains("name=web") && call.contains("split=right"))
+        #expect(try run(["open", "--", "sh", "-c", "echo a; sleep 1"], answers: [("ID", "200 0")]).curlCalls.first?
+            .contains("command=sh -c 'echo a; sleep 1'") == true)
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/terminals")
+        let one = try run(["open", "--split=down", "npm run dev && echo up"], answers: [("ID", "200 0")])
+        #expect(one.curlCalls.first?.contains("command=npm run dev && echo up") == true)
+        #expect(one.curlCalls.first?.contains("split=down") == true)
+    }
+
+    @Test func waitAsksAgainUntilItsOwnTimeout() throws {
+        // No limit: the 25-second windows repeat until an answer.
+        let done = try run(["wait", "abcd"], answers: [("timeout: still running", "200 124"), ("timeout: still running", "200 124"),
+                                                       ("failed (exit 2)", "200 1")])
+        #expect(done.code == 1 && done.out == "failed (exit 2)\n" && done.curlCalls.count == 3)
+        #expect(done.curlCalls[0].contains("timeout=25"))
+        // A short timeout is a window of that length; once it has passed, 124.
+        let short = try run(["wait", "abcd", "--timeout", "1"], answers: [("timeout: still running", "200 124"), ("x", "200 0")],
+                            slowFirstAnswer: 2)
+        #expect(short.code == 124 && short.curlCalls.count == 1 && short.curlCalls[0].contains("timeout=1"))
+        #expect(short.out == "timeout: still running\n")
+        // Time left: it asks again.
+        let again = try run(["wait", "abcd", "--timeout", "60"], answers: [("timeout: still running", "200 124"), ("finished (exit 0)", "200 0")])
+        #expect(again.code == 0 && again.curlCalls.count == 2 && again.curlCalls[0].contains("timeout=25"))
+        #expect(try run(["wait", "abcd"], answers: [("blocked: asking a question", "200 3")]).code == 3)
+    }
+
+    @Test func skillSetupKeepsTheUsersEdits() throws {
+        let home = FileManager.default.temporaryDirectory.appending(path: "claudedeck-home-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let file = home.appending(path: ".claude/skills/claudedeck/SKILL.md")
+
+        let first = try run(["skill", "setup"], session: false, home: home)
+        #expect(first.code == 0 && first.out.contains("installed"))
+        let written = try String(contentsOf: file, encoding: .utf8)
+        #expect(written.hasPrefix(SessionCLI.skill + "\n<!-- claudedeck-skill sha256:"))
+        #expect(written.contains("name: claudedeck") && written.contains("description: "))
+
+        #expect(try run(["skill", "setup"], session: false, home: home).out.contains("up to date"))
+
+        // Edited by hand: kept, unless --force.
+        try Data((written + "My own note.\n").utf8).write(to: file)
+        let kept = try run(["skill", "setup", "--user"], session: false, home: home)
+        #expect(kept.code == 4 && kept.err.contains("--force"))
+        #expect(try String(contentsOf: file, encoding: .utf8).hasSuffix("My own note.\n"))
+        let forced = try run(["skill", "setup", "--force"], session: false, home: home)
+        #expect(forced.code == 0)
+        #expect(try String(contentsOf: file, encoding: .utf8) == written)
+
+        // A file the user wrote without the hash line is theirs too.
+        try Data("---\nname: claudedeck\n---\nmine\n".utf8).write(to: file)
+        #expect(try run(["skill", "setup"], session: false, home: home).code == 4)
+
+        // An older ClaudeDeck version's skill (hash matches its own text) is replaced.
+        let older = "---\nname: claudedeck\n---\nolder text\n"
+        let hash = try shasum(older)
+        try Data((older + "<!-- claudedeck-skill sha256:\(hash) -->\n").utf8).write(to: file)
+        #expect(try run(["skill", "setup"], session: false, home: home).out.contains("installed"))
+        #expect(try String(contentsOf: file, encoding: .utf8) == written)
+
+        // --project: the repository's .claude/skills.
+        let project = home.appending(path: "repo")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let local = try run(["skill", "setup", "--project"], session: false, home: home, cwd: project)
+        #expect(local.code == 0)
+        #expect(FileManager.default.fileExists(atPath: project.appending(path: ".claude/skills/claudedeck/SKILL.md").path))
+    }
+
+    private func shasum(_ text: String) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/shasum")
+        process.arguments = ["-a", "256"]
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try input.fileHandleForWriting.close()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(String(decoding: data, as: UTF8.self).prefix(64))
+    }
+
+    @Test func skillIsEnglishWithFrontmatter() {
+        let skill = SessionCLI.skill
+        #expect(skill.hasPrefix("---\nname: claudedeck\ndescription: "))
+        #expect(skill.contains("CLAUDEDECK_SESSION") && skill.contains("| 124 |"))
+        // The heredoc that carries it must not end early.
+        #expect(!skill.split(separator: "\n").contains("SKILL"))
+    }
+}

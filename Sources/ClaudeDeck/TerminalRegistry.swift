@@ -352,6 +352,7 @@ final class DeckTerminalView: LocalProcessTerminalView {
         super.dataReceived(slice: slice)
         if programMonitor != nil { scanProgramStatus(slice) }
         onOutput?(slice)
+        if timesOutput { lastOutputAt = Date() }
     }
 
     private func scanProgramStatus(_ slice: ArraySlice<UInt8>) {
@@ -362,6 +363,11 @@ final class DeckTerminalView: LocalProcessTerminalView {
         if result?.replyToQuery == true { process.send(data: ArraySlice(ProgramStatusParser.queryReply.utf8)) }
         if result?.changed == true { onProgramStatus?() }
     }
+
+    /// When output last came, kept only once `claudedeck send` typed into this terminal (its
+    /// `wait` goes by the output settling, too).
+    var timesOutput = false
+    private(set) var lastOutputAt: Date?
 }
 
 /// Owns every terminal view + process for the app's lifetime. Views are re-parented when
@@ -444,8 +450,10 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// Types text like a user would. A trailing "\r" is sent separately after a short pause,
     /// otherwise Claude's TUI treats text+Enter as a paste and inserts a newline instead of submitting.
     /// A plain interactive login shell in `cwd` (no ClaudeDeck terminal id: claude started
-    /// inside it is not tracked as this session).
-    func startShell(id: UUID, cwd: String, programStatus: Bool = false) {
+    /// inside it is not tracked as this session). With a `command` (`claudedeck open`), the shell
+    /// runs it first and writes its exit code to `exitFile`, then stays as an interactive shell.
+    func startShell(id: UUID, cwd: String, programStatus: Bool = false, environment: [String: String] = [:],
+                    command: String? = nil, exitFile: URL? = nil) {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
         view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
@@ -461,7 +469,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         if running.contains(id) { return }
         let shell = ShellEnvironment.loginShell
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
-        var env = ShellEnvironment.cleanEnvironment
+        var env = ShellEnvironment.cleanEnvironment.merging(environment) { $1 }
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["TERM_PROGRAM"] = "ClaudeDeck"
@@ -480,6 +488,13 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         view.programMonitor = programStatus ? ProgramStatusMonitor() : nil
         view.onProgramStatus = { [weak self] in self?.programStatusChanged(id) }
         view.getTerminal().resetToInitialState()
+        if let command, let exitFile {
+            // An interactive login shell (the user's rc files, job control) runs the command as a
+            // job of its own, so Ctrl+C stops only the command and the terminal comes back to this
+            // shell, which records the code and becomes the user's shell (same pid).
+            let script = #"trap : INT; "$0" -c "$1"; code=$?; trap - INT; printf '%s\n' "$code" > "$2"; exec "$0" -l"#
+            args = ["-l", "-i", "-c", script, shell, command, exitFile.path]
+        }
         view.startProcess(
             executable: shell,
             args: args,
@@ -539,6 +554,30 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         programStatuses[id] = status
         onProgramStatus?(id)
     }
+
+    /// Whether something other than the shell has the terminal: a command is running in it
+    /// (the pty's foreground process group isn't the shell's own).
+    func foregroundBusy(_ id: UUID) -> Bool {
+        guard let view = views[id], running.contains(id) else { return false }
+        let fd = view.process.childfd, pid = view.process.shellPid
+        guard fd >= 0, pid > 0 else { return false }
+        let group = tcgetpgrp(fd)
+        return group > 0 && group != pid
+    }
+
+    /// Whether the shell's line editor has the terminal (zsh's and bash's turn canonical input off
+    /// while at their prompt): false while a command runs, and while a shell still reads its rc files.
+    func lineEditing(_ id: UUID) -> Bool {
+        guard let view = views[id], running.contains(id), view.process.childfd >= 0 else { return false }
+        var settings = termios()
+        guard tcgetattr(view.process.childfd, &settings) == 0 else { return false }
+        return settings.c_lflag & tcflag_t(ICANON) == 0
+    }
+
+    /// Starts noting when `id` last printed something (see `DeckTerminalView.timesOutput`).
+    func timeOutput(of id: UUID) { views[id]?.timesOutput = true }
+
+    func lastOutput(of id: UUID) -> Date? { views[id]?.lastOutputAt }
 
     /// Types `text`; a trailing `\r` is sent separately so it lands as Enter. Text containing
     /// newlines goes in as a bracketed paste, since a raw newline in the pty would submit early.

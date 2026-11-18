@@ -670,6 +670,21 @@ without a URL, and you paste the routine's webhook URL and header in the approva
 the agents you allow by itself (`claudedeck-ask`); their answers still come to you as notes.
 Setup, payload and endpoints: [docs/agents.md](docs/agents.md).
 
+**Command-line tool for sessions** (Settings › Agents, off by default): with it on, every session and
+terminal ClaudeDeck starts can run `claudedeck`, with a token of its own:
+
+```sh
+id=$(claudedeck open --name "web dev" -- npm run dev)   # a terminal beside this session
+claudedeck wait "$id" --timeout 600                     # until its command finishes
+claudedeck capture "$id" --lines 40 --trim              # its screen as text
+claudedeck send "$id" "npm test" --enter                # type into a terminal it opened
+claudedeck list · notify "…" · ask "…" · skill setup    # sessions, a notification, a question, the Claude Code skill
+```
+
+Text for another Claude session becomes a note unless you allow sessions to type into Claude.
+`claudedeck skill setup` installs a Claude Code skill that tells Claude when to use it. Commands,
+token scopes and exit codes: [docs/agents.md](docs/agents.md#command-line-tool-for-sessions).
+
 ## iCloud sync (optional)
 
 Turn it on in Settings › iCloud (off by default). No entitlement is needed; it is a plain file:

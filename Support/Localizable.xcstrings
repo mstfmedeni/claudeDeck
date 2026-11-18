@@ -15530,6 +15530,36 @@
           }
         }
       }
+    },
+    "Command-line tool for sessions (claudedeck)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar için komut satırı aracı (claudedeck)"
+          }
+        }
+      }
+    },
+    "May type into Claude: sessions may send text to other Claude sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude'a yazabilir: oturumlar diğer Claude oturumlarına metin gönderebilir"
+          }
+        }
+      }
+    },
+    "Sessions and terminals started from now on can run claudedeck: list sessions, open a terminal beside themselves, type into terminals they opened, read a screen, wait for a command, notify you. Restart running sessions to give them the command. Without “May type into Claude”, text for another Claude session becomes a note.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bundan sonra başlayan oturumlar ve terminaller claudedeck'i çalıştırabilir: oturumları listeler, yanına bir terminal açar, açtığı terminallere yazar, bir ekranı okur, bir komutu bekler, sana bildirim gönderir. Çalışan oturumlara komutu vermek için onları yeniden başlat. “Claude'a yazabilir” kapalıyken başka bir Claude oturumuna giden metin not olur."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

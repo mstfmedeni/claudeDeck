@@ -103,6 +103,27 @@ struct AgentsSettingsSection: View {
                     }
                 }
             }
+            cliRows
+        }
+    }
+
+    /// `claudedeck` in the terminals ClaudeDeck starts (SessionCLI): off by default.
+    @ViewBuilder
+    private var cliRows: some View {
+        Toggle("Command-line tool for sessions (claudedeck)", isOn: Binding(
+            get: { model.deck.settings.sessionCLIEnabled },
+            set: { on in
+                model.mutate(userInitiated: false) { $0.settings.sessionCLIEnabled = on }
+                model.installCLIScript()
+            }
+        ))
+        if model.deck.settings.sessionCLIEnabled {
+            Toggle("May type into Claude: sessions may send text to other Claude sessions", isOn: Binding(
+                get: { model.deck.settings.sessionsMayTypeIntoClaude },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayTypeIntoClaude = on } }
+            ))
+            Text("Sessions and terminals started from now on can run claudedeck: list sessions, open a terminal beside themselves, type into terminals they opened, read a screen, wait for a command, notify you. Restart running sessions to give them the command. Without “May type into Claude”, text for another Claude session becomes a note.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

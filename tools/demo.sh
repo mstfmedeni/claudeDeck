@@ -8,6 +8,11 @@
 # Demo mode never touches ~/.claude/settings.json, your deck.json or iCloud: sessions run
 # tools/demo-claude.sh (a stand-in that prints a canned conversation and reports a fixed state)
 # instead of the real `claude`.
+#
+# The agents' local API listens on $CLAUDEDECK_DEMO_AGENT_PORT (default 47832), never the real
+# app's 47647; it and the command-line tool for sessions (claudedeck) are on with CLAUDEDECK_DEMO_CLI=1.
+# CLAUDEDECK_DEMO_SHELL_COMMAND adds a terminal to acme-storefront that runs that command at launch
+# (in the second pane).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -265,8 +270,20 @@ S4=C0000000-0000-0000-0000-000000000004
 S5=C0000000-0000-0000-0000-000000000005
 S6=C0000000-0000-0000-0000-000000000006
 S7=C0000000-0000-0000-0000-000000000007
+S8=C0000000-0000-0000-0000-000000000008
 NOW=$(date +%s)
 P="$ROOT/projects"
+CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && CLI=true
+EXTRA_SESSION=""
+if [ -n "${CLAUDEDECK_DEMO_SHELL_COMMAND:-}" ]; then
+  EXTRA_SESSION=$(jq -cn --arg id "$S8" --arg p "$P1" --arg c "$CLAUDEDECK_DEMO_SHELL_COMMAND" --argjson now "$NOW" \
+    '{id: $id, projectID: $p, name: "acme-storefront · check", kind: "shell", createdAt: $now, isOpen: true, startupCommand: $c, autoStart: true}')
+  EXTRA_SESSION=",
+    $EXTRA_SESSION"
+  PANES="\"$S1\", \"$S8\""
+else
+  PANES="\"$S1\", \"$S2\""
+fi
 A1=D0000000-0000-0000-0000-000000000001
 A2=D0000000-0000-0000-0000-000000000002
 A3=D0000000-0000-0000-0000-000000000003
@@ -299,10 +316,10 @@ cat > "$ROOT/data/deck.json" <<EOF
     { "id": "$S5", "projectID": "$P3", "name": "mobile-app", "kind": "claude", "createdAt": $NOW, "isOpen": true },
     { "id": "$S6", "projectID": "$P4", "name": "swift-markdown-kit · fix-tables", "kind": "claude", "createdAt": $NOW, "isOpen": true, "worktreeName": "fix-tables",
       "linkedWorkItem": { "kind": "pr", "repo": "acme/swift-markdown-kit", "number": 7 } },
-    { "id": "$S7", "projectID": "$P5", "name": "blog", "kind": "claude", "createdAt": $NOW, "lastActivityAt": $((NOW - 7200)), "isOpen": false }
+    { "id": "$S7", "projectID": "$P5", "name": "blog", "kind": "claude", "createdAt": $NOW, "lastActivityAt": $((NOW - 7200)), "isOpen": false }$EXTRA_SESSION
   ],
   "selectedSessionID": "$S1",
-  "panes": [ "$S1", "$S2" ],
+  "panes": [ $PANES ],
   "automations": [
     { "id": "$A1", "name": "Test health", "projectID": "$P1", "workspace": "current", "reuseSession": false,
       "prompt": "Run the tests, lint and type checks. If anything is red, find the cause and fix what is safe to fix. Finish with a short summary of what you changed and what still needs a human.",
@@ -331,7 +348,8 @@ cat > "$ROOT/data/deck.json" <<EOF
       "startedAt": $(at -2d 10 0), "completedAt": $(at -2d 10 8), "status": "succeeded" }
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
-                "pencilMCP": false, "terminalFontSize": 11 }
+                "pencilMCP": false, "terminalFontSize": 11,
+                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI }
 }
 EOF
 
