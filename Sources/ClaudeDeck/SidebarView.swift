@@ -607,7 +607,8 @@ struct SessionStatusLine: View {
     let unseen: Bool
 
     var body: some View {
-        let quiet = status.display.isIdle && !unseen
+        // A failed command keeps its pill once seen.
+        let quiet = status.display.isIdle && !unseen && status.display.program?.state != .failed
         let detail = status.detail ?? session.startupCommand.map { "▶︎ " + $0 }
         let hasBadge = session.kind == .shell && session.startupCommand != nil
         if !quiet || hasBadge || detail != nil {
@@ -701,6 +702,11 @@ struct SessionMenu: View {
                     set: { value in model.mutate { $0.updateSession(session.id) { $0.autoStart = value } } }
                 ))
             }
+            // On or off for this terminal; back to the default in Settings when it matches it.
+            Toggle("Show Program Status", isOn: Binding(
+                get: { model.deck.showsProgramStatus(session.id) },
+                set: { value in model.setShowProgramStatus(value == model.deck.settings.terminalProgramStatus ? nil : value, for: session.id) }
+            ))
         }
         Divider()
         GitHubLinkMenuItems(session: session)

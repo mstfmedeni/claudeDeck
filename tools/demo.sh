@@ -112,14 +112,32 @@ EOF
 printf 'package webhooks\n\n// TODO: backoff\n' > "$ROOT/projects/payments-api/internal/webhooks/retry.go"
 cat > "$ROOT/projects/payments-api/dev.sh" <<'EOF'
 #!/bin/sh
-# Demo stand-in for a dev server.
+# Demo stand-in for a dev server. Reports its state with OSC 7501 (Program Status): the terminal
+# shows "Running", then "Needs input" until the migration question is answered.
+status() { printf '\033]7501;state=%s%s\033\\' "$1" "${2:+:msg=$(printf '%s' "$2" | base64)}"; }
+status working "Starting payments-db"
 printf '\033[35mpayments-db \033[0m | database system is ready to accept connections\n'
-printf '\033[36mpayments-api\033[0m | migrations up to date (42)\n'
+status blocked "Apply 3 pending migrations?"
+printf '\033[36mpayments-api\033[0m | 3 pending migrations. Apply them? [y/N] '
+read -r answer
+case "$answer" in y|Y) printf '\033[36mpayments-api\033[0m | migrations up to date (45)\n' ;; esac
+status working "Listening on :8080"
 printf '\033[36mpayments-api\033[0m | listening on http://localhost:8080\n'
 printf '\033[36mpayments-api\033[0m | POST /v1/webhooks/stripe 200 12ms\n'
 exec sleep 86400
 EOF
 chmod +x "$ROOT/projects/payments-api/dev.sh"
+cat > "$ROOT/projects/payments-api/check.sh" <<'EOF'
+#!/bin/sh
+# Demo stand-in for a test run: reports "working", then "error" (OSC 7501) and exits 1.
+printf '\033]7501;state=working:app=go:msg=%s\033\\' "$(printf 'Running 42 tests' | base64)"
+printf 'ok   example.com/payments/internal/webhooks  0.41s\n'
+sleep 2
+printf -- '--- FAIL: TestRetryBackoff (0.02s)\n    retry_test.go:31: want 3 attempts, got 1\nFAIL\n'
+printf '\033]7501;state=error:app=go:msg=%s\033\\' "$(printf '1 of 42 tests failed' | base64)"
+exit 1
+EOF
+chmod +x "$ROOT/projects/payments-api/check.sh"
 
 repo mobile-app <<'EOF'
 Package.swift|// swift-tools-version: 6.0
@@ -277,7 +295,7 @@ cat > "$ROOT/data/deck.json" <<EOF
     { "id": "$S3", "projectID": "$P2", "name": "payments-api", "kind": "claude", "createdAt": $NOW, "isOpen": true,
       "linkedWorkItem": { "kind": "issue", "repo": "acme/payments-api", "number": 118 } },
     { "id": "$S4", "projectID": "$P2", "name": "payments-api · ./dev.sh", "kind": "shell", "createdAt": $NOW, "isOpen": true,
-      "startupCommand": "./dev.sh", "autoStart": true },
+      "startupCommand": "./dev.sh", "autoStart": true, "showProgramStatus": true },
     { "id": "$S5", "projectID": "$P3", "name": "mobile-app", "kind": "claude", "createdAt": $NOW, "isOpen": true },
     { "id": "$S6", "projectID": "$P4", "name": "swift-markdown-kit · fix-tables", "kind": "claude", "createdAt": $NOW, "isOpen": true, "worktreeName": "fix-tables",
       "linkedWorkItem": { "kind": "pr", "repo": "acme/swift-markdown-kit", "number": 7 } },

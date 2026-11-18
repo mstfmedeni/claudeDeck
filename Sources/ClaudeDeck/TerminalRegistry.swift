@@ -342,9 +342,25 @@ final class DeckTerminalView: LocalProcessTerminalView {
     /// Raw pty output (remote mode streams it to watching Macs).
     var onOutput: ((ArraySlice<UInt8>) -> Void)?
 
+    /// Plain terminals with Program Status on: OSC 7501 / OSC 133 pulled from the output (nil: off,
+    /// the output isn't looked at). Chunks without an escape sequence are skipped whole.
+    var programMonitor: ProgramStatusMonitor?
+    /// The program status changed (not called for output that leaves it as it was).
+    var onProgramStatus: (() -> Void)?
+
     override func dataReceived(slice: ArraySlice<UInt8>) {
         super.dataReceived(slice: slice)
+        if programMonitor != nil { scanProgramStatus(slice) }
         onOutput?(slice)
+    }
+
+    private func scanProgramStatus(_ slice: ArraySlice<UInt8>) {
+        let now = Date()
+        let result = slice.withUnsafeBufferPointer { programMonitor?.feed($0, now: now) }
+        // `OSC 7501 ; ?`: tell the program this terminal understands it (straight to the pty,
+        // not through `send`, which counts as the user typing).
+        if result?.replyToQuery == true { process.send(data: ArraySlice(ProgramStatusParser.queryReply.utf8)) }
+        if result?.changed == true { onProgramStatus?() }
     }
 }
 
@@ -429,7 +445,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// otherwise Claude's TUI treats text+Enter as a paste and inserts a newline instead of submitting.
     /// A plain interactive login shell in `cwd` (no ClaudeDeck terminal id: claude started
     /// inside it is not tracked as this session).
-    func startShell(id: UUID, cwd: String) {
+    func startShell(id: UUID, cwd: String, programStatus: Bool = false) {
         let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
         view.drawingPaused = !AppVisibility.shared.windowsVisible
         view.processDelegate = self
@@ -450,17 +466,78 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         env["COLORTERM"] = "truecolor"
         env["TERM_PROGRAM"] = "ClaudeDeck"
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
+        var args = ["-l"]
+        var execName = "-" + (shell as NSString).lastPathComponent
+        // Program Status: our zsh / bash integration marks each command (OSC 133). Without it
+        // (other shells, or the scripts couldn't be written) OSC 7501 still works.
+        if programStatus, let folder = shellIntegrationFolder, let kind = ShellIntegration.shell(forPath: shell),
+           (try? ShellIntegration.install(in: folder)) != nil {
+            let launch = ShellIntegration.launch(kind, folder: folder, environment: env)
+            env.merge(launch.environment) { $1 }
+            args = launch.args
+            execName = (launch.login ? "-" : "") + (shell as NSString).lastPathComponent
+        }
+        view.programMonitor = programStatus ? ProgramStatusMonitor() : nil
+        view.onProgramStatus = { [weak self] in self?.programStatusChanged(id) }
         view.getTerminal().resetToInitialState()
         view.startProcess(
             executable: shell,
-            args: ["-l"],
+            args: args,
             environment: env.map { "\($0.key)=\($0.value)" },
-            execName: "-" + (shell as NSString).lastPathComponent,
+            execName: execName,
             currentDirectory: dir
         )
         running.insert(id)
         latestTitles[id] = nil
         titles[id] = nil
+        setProgramStatus(nil, for: id)
+    }
+
+    // MARK: Program status
+
+    /// Plain terminals' program status (those with it on and something to show). Written when the
+    /// state changes, at once, whether or not a window is visible (notifications and the phone need
+    /// it); a new message for the same state at most once a second. Never per output chunk.
+    private(set) var programStatuses: [UUID: ProgramStatus] = [:]
+    /// A terminal's `programStatuses` entry changed.
+    @ObservationIgnored var onProgramStatus: ((UUID) -> Void)?
+    /// Where the shell integration scripts are written (set by the app).
+    @ObservationIgnored var shellIntegrationFolder: URL?
+    @ObservationIgnored private var programMessageDelayed: Set<UUID> = []
+
+    /// Turns a running terminal's program status on or off (shell integration needs a restart).
+    func showProgramStatus(_ on: Bool, for id: UUID) {
+        guard let view = views[id], !view.isClaude else { return }
+        if on {
+            if view.programMonitor == nil { view.programMonitor = ProgramStatusMonitor() }
+        } else {
+            view.programMonitor = nil
+            setProgramStatus(nil, for: id)
+        }
+    }
+
+    private func programStatusChanged(_ id: UUID) {
+        let next = views[id]?.programMonitor?.status
+        if let next, let current = programStatuses[id], next.state == current.state,
+           next.exitCode == current.exitCode, next.since == current.since {
+            // Only the message changed: a program reporting progress mustn't redraw the sidebar
+            // and republish to phones on every line.
+            guard programMessageDelayed.insert(id).inserted else { return }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                self.programMessageDelayed.remove(id)
+                self.setProgramStatus(self.views[id]?.programMonitor?.status, for: id)
+            }
+            return
+        }
+        setProgramStatus(next, for: id)
+    }
+
+    private func setProgramStatus(_ status: ProgramStatus?, for id: UUID) {
+        guard programStatuses[id] != status else { return }
+        programStatuses[id] = status
+        onProgramStatus?(id)
     }
 
     /// Types `text`; a trailing `\r` is sent separately so it lands as Enter. Text containing
@@ -526,6 +603,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         let pid = view.process.shellPid
         view.terminate()
         running.remove(id)
+        setProgramStatus(nil, for: id)
         onExit?(id, nil)
         if pid > 0 { Self.reap(pid) }
     }
@@ -557,6 +635,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         running.remove(id)
         latestTitles[id] = nil
         titles[id] = nil
+        programStatuses[id] = nil
     }
 
     /// On quit: signal every process without reporting exits (quit keeps `isOpen` for auto-resume).
@@ -609,7 +688,12 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
 
     nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
         MainActor.assumeIsolated {
-            guard let id = (source as? DeckTerminalView)?.sessionID else { return }
+            guard let view = source as? DeckTerminalView else { return }
+            let id = view.sessionID
+            // A stopped terminal shows nothing (the next start begins afresh); publishing what the
+            // tracker falls back to would announce an old result as new.
+            view.programMonitor?.processExited(now: Date())
+            setProgramStatus(nil, for: id)
             running.remove(id)
             onExit?(id, exitCode)
         }

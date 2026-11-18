@@ -19,6 +19,12 @@ extension AppModel {
         case .activity(.running): .running
         case .activity(.needsPermission), .activity(.needsAnswer): .blocked
         case .activity(.idle): .idle(unseen: isUnseenIdle(session.id))
+        case .program(let program):
+            switch program.state {
+            case .working: .running
+            case .blocked: .blocked
+            case .finished, .failed: .idle(unseen: isUnseenIdle(session.id))
+            }
         }
         return SidebarSession(id: session.id, state: state, updatedAt: status.updatedAt, isWorktree: session.worktreeName != nil)
     }

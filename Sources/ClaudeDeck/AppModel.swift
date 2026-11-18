@@ -9,10 +9,38 @@ enum DisplayState: Equatable {
     case starting         // process running, no hook event yet
     case shell            // plain terminal (no Claude status)
     case activity(SessionActivity)
+    case program(ProgramBadge) // plain terminal with Program Status on, and something to show
 
-    var isBlocked: Bool { if case .activity(let a) = self { a.isBlocked } else { false } }
-    var isRunning: Bool { self == .activity(.running) }
-    var isIdle: Bool { self == .activity(.idle) }
+    var isBlocked: Bool {
+        switch self {
+        case .activity(let a): a.isBlocked
+        case .program(let p): p.state == .blocked
+        default: false
+        }
+    }
+    var isRunning: Bool { self == .activity(.running) || program?.state == .working }
+    /// "Your turn": Claude finished, or a terminal's command did (failed too).
+    var isIdle: Bool { self == .activity(.idle) || program?.isOutcome == true }
+    var program: ProgramBadge? { if case .program(let p) = self { p } else { nil } }
+}
+
+/// What a plain terminal's badge shows of its `ProgramStatus` (the message is the status detail).
+struct ProgramBadge: Equatable {
+    var state: ProgramStatus.State
+    var exitCode: Int32?
+    var kind: ProgramStatusReport.Kind?
+
+    init(_ status: ProgramStatus) {
+        self.init(state: status.state, exitCode: status.exitCode, kind: status.kind)
+    }
+
+    init(state: ProgramStatus.State, exitCode: Int32? = nil, kind: ProgramStatusReport.Kind? = nil) {
+        self.state = state
+        self.exitCode = exitCode
+        self.kind = kind
+    }
+
+    var isOutcome: Bool { state == .finished || state == .failed }
 }
 
 struct SessionCounts: Equatable {
@@ -100,6 +128,8 @@ final class AppModel {
     /// Last notified state per session. Blocked states include the hook timestamp so a second
     /// permission request in the same turn notifies again.
     @ObservationIgnored private var lastNotified: [UUID: String] = [:]
+    /// The same for plain terminals' program status ("state|since").
+    @ObservationIgnored private var lastProgramNotified: [UUID: String] = [:]
     /// When the user last submitted input (Enter / a choice) while the session was blocked.
     private var answeredAt: [UUID: Date] = [:]
     @ObservationIgnored private var pendingCompact: Set<UUID> = []
@@ -148,6 +178,8 @@ final class AppModel {
         self.store = store
         self.deck = store.load()
         terminals.onExit = { [weak self] id, _ in self?.terminalExited(id) }
+        terminals.onProgramStatus = { [weak self] id in self?.programStatusChanged(id) }
+        terminals.shellIntegrationFolder = store.url.deletingLastPathComponent().appending(path: "ShellIntegration")
         terminals.onUserInput = { [weak self] id, data in self?.userTyped(id, data) }
         terminals.fontSize = deck.settings.terminalFontSize
         terminals.onZoom = { [weak self] step in self?.zoomTerminals(by: Double(step)) }
@@ -268,9 +300,12 @@ final class AppModel {
 
     func status(of id: UUID) -> SessionStatus {
         if deck.session(id)?.kind == .shell {
-            return terminals.isRunning(id)
-                ? SessionStatus(display: .shell, detail: terminals.titles[id], updatedAt: nil)
-                : SessionStatus(display: .notStarted, detail: nil, updatedAt: nil)
+            guard terminals.isRunning(id) else { return SessionStatus(display: .notStarted, detail: nil, updatedAt: nil) }
+            if let program = terminals.programStatuses[id], deck.showsProgramStatus(id) {
+                return SessionStatus(display: .program(ProgramBadge(program)), detail: program.message ?? terminals.titles[id],
+                                     updatedAt: program.since)
+            }
+            return SessionStatus(display: .shell, detail: terminals.titles[id], updatedAt: nil)
         }
         guard terminals.isRunning(id) else {
             return SessionStatus(display: .notStarted, detail: nil, updatedAt: deck.session(id)?.lastActivityAt)
@@ -472,6 +507,46 @@ final class AppModel {
         }
     }
 
+    // MARK: Program status (plain terminals)
+
+    /// A plain terminal's program status changed: tell the user when it needs them (blocked) or
+    /// has a result (finished, failed), like a Claude session; update the badge and remotes.
+    private func programStatusChanged(_ id: UUID) {
+        defer { onCountsChanged?() }
+        guard let session = deck.session(id), let program = terminals.programStatuses[id], deck.showsProgramStatus(id),
+              program.state != .working else { return }
+        let key = "\(program.state.rawValue)|\(program.since.timeIntervalSince1970)"
+        guard lastProgramNotified[id] != key else { return }
+        lastProgramNotified[id] = key
+        // Finished while the user is looking at it: already seen.
+        if program.isOutcome, isVisible(id) { seenAt[id] = Date() }
+        let project = deck.project(session.projectID)?.name ?? ""
+        let title = session.name == project || project.isEmpty ? session.name : "\(session.name) — \(project)"
+        let body = StatusStyle.label(for: .program(ProgramBadge(program))) + (program.message.map { ": \($0)" } ?? "")
+        onAttention?(AttentionEvent(sessionID: id, activity: program.state == .blocked ? .needsAnswer : .idle, title: title, body: body))
+    }
+
+    /// Turns Program Status on or off for one terminal (nil: follow the default in Settings).
+    func setShowProgramStatus(_ on: Bool?, for id: UUID) {
+        mutate { $0.updateSession(id) { $0.showProgramStatus = on } }
+        applyProgramStatusSettings()
+    }
+
+    /// Settings › Terminals: the default for terminals that haven't been set on their own.
+    func setTerminalProgramStatusDefault(_ on: Bool) {
+        mutate { $0.settings.terminalProgramStatus = on }
+        applyProgramStatusSettings()
+    }
+
+    /// Running terminals follow a changed setting at once (OSC 7501); the shell integration's
+    /// command marks come with the terminal's next start.
+    private func applyProgramStatusSettings() {
+        for session in deck.sessions where session.kind == .shell && terminals.isRunning(session.id) {
+            terminals.showProgramStatus(deck.showsProgramStatus(session.id), for: session.id)
+        }
+        onCountsChanged?()
+    }
+
     private func cleanupStatusFiles() {
         let entries = StatusDirectory.readAll(in: statusDir)
         for url in StatusDirectory.filesToDelete(entries, now: Date()) {
@@ -485,7 +560,7 @@ final class AppModel {
         guard let session = deck.session(id), let project = deck.project(session.projectID) else { return }
         if terminals.isRunning(id) { return }
         if session.kind == .shell {
-            terminals.startShell(id: id, cwd: project.path)
+            terminals.startShell(id: id, cwd: project.path, programStatus: deck.showsProgramStatus(id))
             if let command = session.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty {
                 // Typed like the user would once the shell had a moment to load its rc files
                 // (the pty buffers it meanwhile), so it lands in history and Ctrl+C keeps the shell.
@@ -779,5 +854,15 @@ final class AppModel {
 extension DisplayState {
     var activityValue: SessionActivity? {
         if case .activity(let a) = self { a } else { nil }
+    }
+
+    /// The Claude state a terminal's program status looks like (widget): blocked asks, a result is "your turn".
+    var programActivity: SessionActivity? {
+        switch program?.state {
+        case .working?: .running
+        case .blocked?: .needsAnswer
+        case .finished?, .failed?: .idle
+        case nil: nil
+        }
     }
 }

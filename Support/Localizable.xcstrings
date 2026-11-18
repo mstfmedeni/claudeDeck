@@ -15450,6 +15450,86 @@
           }
         }
       }
+    },
+    "Finished": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitti"
+          }
+        }
+      }
+    },
+    "Needs input": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Girdi bekliyor"
+          }
+        }
+      }
+    },
+    "Needs sign-in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş bekliyor"
+          }
+        }
+      }
+    },
+    "Failed (exit %lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başarısız (çıkış %lld)"
+          }
+        }
+      }
+    },
+    "Terminals": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminaller"
+          }
+        }
+      }
+    },
+    "Show Program Status": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Program Durumunu Göster"
+          }
+        }
+      }
+    },
+    "Show Program Status in terminals": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminallerde program durumunu göster"
+          }
+        }
+      }
+    },
+    "Plain terminals show whether their command is running, needs input, finished or failed, and land in \"Waiting for you\" when they need you. Programs can report it themselves (OSC 7501); zsh and bash also mark each command (applies when a terminal starts). Each terminal can override this from its menu.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düz terminaller komutlarının çalıştığını, girdi beklediğini, bittiğini ya da başarısız olduğunu gösterir ve sana ihtiyaç duyduklarında \"Seni bekleyenler\"e düşer. Programlar bunu kendileri bildirebilir (OSC 7501); zsh ve bash ayrıca her komutu işaretler (terminal başlarken geçerli olur). Her terminal bunu kendi menüsünden değiştirebilir."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

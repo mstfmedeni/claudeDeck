@@ -7,9 +7,12 @@ enum StatusStyle {
     static let blocked = Color.red
     static let idle = Color.yellow
     static let inactive = Color.secondary.opacity(0.5)
+    /// A terminal's command that failed.
+    static let failed = Color.orange
 
     static func label(for display: DisplayState) -> String {
         switch display {
+        case .program(let program): programLabel(program)
         case .notStarted, .activity(.ended): String(localized: "Stopped")
         case .starting: String(localized: "Starting")
         case .shell: String(localized: "Terminal")
@@ -20,10 +23,26 @@ enum StatusStyle {
         }
     }
 
+    static func programLabel(_ program: ProgramBadge) -> String {
+        switch program.state {
+        case .working: String(localized: "Running")
+        case .blocked:
+            switch program.kind {
+            case .permission?: String(localized: "Needs permission")
+            case .question?: String(localized: "Asking a question")
+            case .auth?: String(localized: "Needs sign-in")
+            case nil: String(localized: "Needs input")
+            }
+        case .finished: String(localized: "Finished")
+        case .failed: program.exitCode.map { String(localized: "Failed (exit \(Int($0)))") } ?? String(localized: "Failed")
+        }
+    }
+
     /// Dark text on the light fills (yellow, green), white on the dark ones (red, blue): white on
     /// green was unreadable in dark mode.
     static func pillText(for display: DisplayState) -> Color {
-        display.isIdle || display.isRunning || display == .starting ? .black.opacity(0.8) : .white
+        display.program?.state == .failed ? .white
+            : display.isIdle || display.isRunning || display == .starting ? .black.opacity(0.8) : .white
     }
 
     static func color(for display: DisplayState) -> Color {
@@ -33,6 +52,13 @@ enum StatusStyle {
         case .activity(.idle): idle
         case .starting: running.opacity(0.5)
         case .shell: .blue
+        case .program(let program):
+            switch program.state {
+            case .working: running
+            case .blocked: blocked
+            case .finished: idle
+            case .failed: failed
+            }
         case .notStarted, .activity(.ended): inactive
         }
     }
@@ -50,7 +76,7 @@ struct StatusDot: View {
                           duration: display.isBlocked ? 1.0 : 1.6, active: AppVisibility.shared.windowsVisible)
                     .frame(width: 14, height: 14)
             }
-            if display.isIdle && !unseen {
+            if display.isIdle && !unseen && display.program?.state != .failed {
                 // Seen "your turn": a quiet grey ring; only unseen ones are yellow.
                 Circle()
                     .strokeBorder(Color.secondary.opacity(0.8), lineWidth: 1.5)
@@ -74,6 +100,7 @@ struct StatusDot: View {
         case .activity(.ended), .notStarted: String(localized: "Stopped")
         case .starting: String(localized: "Starting")
         case .shell: String(localized: "Terminal")
+        case .program(let program): StatusStyle.programLabel(program)
         }
     }
 }
@@ -88,7 +115,7 @@ struct StatusPill: View {
         let inactive = display == .notStarted || display == .activity(.ended)
         // Seen "your turn" stays yellow but softer than a fresh one.
         let fill: Color = inactive ? Color.secondary.opacity(0.18)
-            : display.isIdle && !unseen ? StatusStyle.idle.opacity(0.45)
+            : display.isIdle && !unseen ? StatusStyle.color(for: display).opacity(0.45)
             : StatusStyle.color(for: display)
         let live = AppVisibility.shared.windowsVisible
         HStack(spacing: 0) {

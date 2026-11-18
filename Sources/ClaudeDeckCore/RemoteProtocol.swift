@@ -356,9 +356,11 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let historyUpdates = "historyUpdates"
         /// `conversationOpen` / `conversationClose`, answered with `conversationChanged`.
         public static let conversationPush = "conversationPush"
+        /// `RemoteSession.program` on plain terminals that show their program's status.
+        public static let programStatus = "programStatus"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
-                                              historyUpdates, conversationPush]
+                                              historyUpdates, conversationPush, programStatus]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -457,6 +459,9 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     /// Changes whenever the session's agent notes do: a remote with the conversation open asks
     /// for the page (the notes come with it).
     public var notesRevision: Int?
+    /// What the program in a plain terminal is doing (hosts with `Feature.programStatus`). `state`
+    /// stays `.shell`, so older remotes still treat it as a terminal; `detail` says it in words.
+    public var program: RemoteProgramStatus?
 
     public init(
         id: UUID, name: String, project: String, state: State, detail: String? = nil,
@@ -472,7 +477,10 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
         self.permissionStamp = permissionStamp
     }
 
-    public var needsAttention: Bool { state.isBlocked || (state == .idle && unseen) }
+    public var needsAttention: Bool {
+        if state == .shell, let program { return program.isBlocked || (program.isOutcome && unseen) }
+        return state.isBlocked || (state == .idle && unseen)
+    }
 
     /// Identifies one attention-worthy moment: a second permission request in the same turn has
     /// a new timestamp and notifies again. nil when nothing needs the user.
@@ -480,6 +488,28 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
         guard needsAttention else { return nil }
         return "\(state.rawValue)|\(updatedAt?.timeIntervalSince1970 ?? 0)"
     }
+}
+
+/// A plain terminal's program status on the wire (ProgramStatus.swift on the host).
+public struct RemoteProgramStatus: Codable, Sendable, Equatable {
+    /// "working", "blocked", "finished" or "failed". A string, so a newer host's states don't break
+    /// decoding; remotes ignore ones they don't know.
+    public var state: String
+    /// The command's exit code, when known.
+    public var exitCode: Int32?
+    /// What a blocked program waits for: "permission", "question" or "auth".
+    public var kind: String?
+
+    public init(state: String, exitCode: Int32? = nil, kind: String? = nil) {
+        self.state = state
+        self.exitCode = exitCode
+        self.kind = kind
+    }
+
+    public var isBlocked: Bool { state == "blocked" }
+    public var isWorking: Bool { state == "working" }
+    /// Finished or failed: the result is ready.
+    public var isOutcome: Bool { state == "finished" || state == "failed" }
 }
 
 extension RemoteSnapshot {
