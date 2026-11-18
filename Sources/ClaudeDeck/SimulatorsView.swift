@@ -31,9 +31,7 @@ actor SimulatorSampler {
         used = []
         var sample = Sample()
         sample.launchdSims = SimulatorProcesses.launchdSims(in: table) { arguments(of: $0, in: table) }
-        for (udid, pid) in sample.launchdSims {
-            sample.memory[udid] = SimulatorMemory.measure(root: pid, in: table, footprint: SimulatorMemory.footprint(of:))
-        }
+        sample.memory = SimulatorMemory.measureAll(roots: sample.launchdSims, in: table, footprint: SimulatorMemory.footprint(of:))
         sample.uses = SimulatorUsage.link(roots: roots, table: table, devices: devices) { arguments(of: $0, in: table) }
         cache = cache.filter { used.contains($0.key) }
         return sample

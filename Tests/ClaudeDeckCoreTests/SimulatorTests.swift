@@ -186,6 +186,37 @@ import Testing
         #expect(SimulatorMemory.measure(root: 10, in: cyclic) { _ in 1 } == SimulatorMemory(bytes: 2, processes: 2))
     }
 
+    @Test func countsEachProcessForOneSimulatorOnly() {
+        let gb: UInt64 = 1 << 30
+        // Three booted simulators; the third's launchd_sim sits inside the first's tree (as a
+        // stale or reparented snapshot can show it). Each device gets only its own processes:
+        // per-device values never add up across devices.
+        let table = ProcessTable([
+            .init(pid: 1, ppid: 0, name: "launchd"),
+            .init(pid: 100, ppid: 1, name: "launchd_sim"),
+            .init(pid: 101, ppid: 100, name: "SpringBoard"),
+            .init(pid: 102, ppid: 101, name: "app"),
+            .init(pid: 200, ppid: 1, name: "launchd_sim"),
+            .init(pid: 201, ppid: 200, name: "SpringBoard"),
+            .init(pid: 300, ppid: 102, name: "launchd_sim"),  // nested in device A's tree
+            .init(pid: 301, ppid: 300, name: "SpringBoard"),
+            .init(pid: 400, ppid: 101, name: "launchd_sim"),  // a simulator whose UDID wasn't read
+            .init(pid: 401, ppid: 400, name: "SpringBoard"),
+        ])
+        let footprints: [pid_t: UInt64] = [100: 1 * gb, 101: 2 * gb, 102: 1 * gb, 200: 1 * gb, 201: 4 * gb,
+                                           300: 1 * gb, 301: 8 * gb, 400: 1 * gb, 401: 16 * gb]
+        let roots = ["A": pid_t(100), "B": pid_t(200), "C": pid_t(300)]
+        let memory = SimulatorMemory.measureAll(roots: roots, in: table) { footprints[$0] }
+        #expect(memory["A"] == SimulatorMemory(bytes: 4 * gb, processes: 3))
+        #expect(memory["B"] == SimulatorMemory(bytes: 5 * gb, processes: 2))
+        #expect(memory["C"] == SimulatorMemory(bytes: 9 * gb, processes: 2))
+        // The sum is every simulator process counted once (the unknown one's tree in none).
+        #expect(memory.values.map(\.bytes).reduce(0, +) == 18 * gb)
+        // The same devices in any order give the same values.
+        let again = SimulatorMemory.measureAll(roots: ["C": 300, "B": 200, "A": 100], in: table) { footprints[$0] }
+        #expect(again == memory)
+    }
+
     @Test func readsThisProcessLive() {
         // Smoke test of the Darwin calls against the test runner itself.
         let pid = getpid()

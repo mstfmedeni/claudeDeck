@@ -165,11 +165,16 @@ public struct ProcessTable: Sendable {
 
     /// Every process below `root` (children, grandchildren, …), not `root` itself.
     public func descendants(of root: pid_t) -> [pid_t] {
+        descendants(of: root, excluding: [])
+    }
+
+    /// Every process below `root`, leaving out the processes in `excluded` and everything below them.
+    public func descendants(of root: pid_t, excluding excluded: Set<pid_t>) -> [pid_t] {
         var result: [pid_t] = []
         var seen: Set<pid_t> = [root]
         var stack = children[root] ?? []
         while let pid = stack.popLast() {
-            guard seen.insert(pid).inserted else { continue }
+            guard !excluded.contains(pid), seen.insert(pid).inserted else { continue }
             result.append(pid)
             stack += children[pid] ?? []
         }
@@ -274,6 +279,30 @@ public struct SimulatorMemory: Equatable, Sendable {
             }
         }
         return memory
+    }
+
+    /// Every booted simulator's memory (UDID → its `launchd_sim`), each process counted for one
+    /// simulator only: a walk stops at another simulator's `launchd_sim` (or any `launchd_sim`),
+    /// so a tree nested in another one is never added to it as well.
+    public static func measureAll(roots: [String: pid_t], in table: ProcessTable,
+                                  footprint: (pid_t) -> UInt64?) -> [String: SimulatorMemory] {
+        let launchds = Set(roots.values).union(table.entries.filter { $0.name == SimulatorProcesses.launchdName }.map(\.pid))
+        var counted: Set<pid_t> = []
+        var result: [String: SimulatorMemory] = [:]
+        for (udid, root) in roots.sorted(by: { $0.key < $1.key }) {
+            var memory = SimulatorMemory()
+            for pid in [root] + table.descendants(of: root, excluding: launchds.subtracting([root]))
+            where counted.insert(pid).inserted {
+                if let bytes = footprint(pid) {
+                    memory.bytes += bytes
+                    memory.processes += 1
+                } else {
+                    memory.unreadable += 1
+                }
+            }
+            result[udid] = memory
+        }
+        return result
     }
 
     /// `phys_footprint` of one process through `proc_pid_rusage` (no task port needed).
