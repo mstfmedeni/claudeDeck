@@ -71,9 +71,13 @@ public enum ServerPlanCLI {
     }()
 
     /// Whether the panel behind `me` offers a v1.1 command (its scope is granted; v1 ones always).
+    /// A read-only one needs a panel that says it's 1.1 or later (an unknown version is tried).
     public static func offers(_ command: Command, me: ServerPlanMe?) -> Bool {
-        guard command.v11, let scope = command.scope, let me else { return true }
-        return me.scopes.contains(scope)
+        guard command.v11, let me else { return true }
+        if let scope = command.scope { return me.scopes.contains(scope) }
+        guard let version = me.serverVersion, let major = Int(version.split(separator: ".").first ?? "") else { return true }
+        let minor = version.split(separator: ".").dropFirst().first.flatMap { Int($0) } ?? 0
+        return major > 1 || major == 1 && minor >= 1
     }
 
     static let notAvailable = "not available: ServerPlan doesn't offer this yet"

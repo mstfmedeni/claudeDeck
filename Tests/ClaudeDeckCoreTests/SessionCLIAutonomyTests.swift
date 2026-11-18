@@ -265,8 +265,13 @@ private final class Box<T>: @unchecked Sendable {
             #expect(outcome.exit == .refused && outcome.text.contains("ServerPlan doesn't offer this yet"))
         }
         #expect(transport.requests.isEmpty)
-        // A read-only v1.1 route the panel doesn't have (404): not available either.
+        // A read-only v1.1 command on a panel that says it's version 1: not asked at all.
         #expect(await r.run("dirs", method: "GET", form: [:]).text.contains("doesn't offer this yet"))
+        #expect(transport.requests.isEmpty)
+        // Version unknown: tried, and a 404 means the panel doesn't have it.
+        let unknown = try runner(transport, me: #"{"user":"x","scopes":["read"]}"#)
+        #expect(await unknown.run("ports", method: "GET", form: ["server": "1"]).text.contains("doesn't offer this yet"))
+        #expect(transport.requests.count == 1)
         #expect(await r.run("list", method: "POST", form: [:]).exit == .usage)
         #expect(await r.run("frobnicate", method: "GET", form: [:]).exit == .usage)
     }

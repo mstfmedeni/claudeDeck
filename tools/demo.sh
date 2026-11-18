@@ -305,6 +305,9 @@ NOW=$(date +%s)
 P="$ROOT/projects"
 DEFAULTS=false; [ "${CLAUDEDECK_DEMO_DEFAULTS:-}" = 1 ] && DEFAULTS=true
 CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && [ "$DEFAULTS" = false ] && CLI=true
+# CLAUDEDECK_DEMO_AUTONOMY=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may add projects, start Claude
+# sessions and use ServerPlan (claudedeck project add / new / server).
+AUTONOMY=false; [ "$CLI" = true ] && [ "${CLAUDEDECK_DEMO_AUTONOMY:-}" = 1 ] && AUTONOMY=true
 # Opt-in features, on unless CLAUDEDECK_DEMO_DEFAULTS=1.
 if [ "$DEFAULTS" = true ]; then SIMULATORS=false; PROGRAM_STATUS=""; else SIMULATORS=true; PROGRAM_STATUS=', "showProgramStatus": true'; fi
 EXTRA_SESSION=""
@@ -385,7 +388,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
-                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI,
+                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY,
                 "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS }
 }
 EOF
