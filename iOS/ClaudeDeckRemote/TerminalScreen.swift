@@ -53,8 +53,8 @@ final class FixedGridTerminalView: TerminalView {
 
     @objc func copySelection() {
         guard selection.active else { return }
-        UIPasteboard.general.string = selection.getSelectedText()
-        selection.selectNone()
+        // SwiftTerm's own: it also drops the drag it may have added for a double-tapped selection.
+        copy(nil)
         setNeedsDisplay()
     }
 
@@ -343,6 +343,7 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         terminal.addGestureRecognizer(clear)
 
         // A drag at a selection end moves it instead of scrolling; a pointer click-drag selects.
+        terminal.gestureRecognizers?.filter { $0.delegate is WheelGate }.forEach { $0.require(toFail: handle) }
         for scrollPan in [terminal.panGestureRecognizer, scroll.panGestureRecognizer] {
             scrollPan.require(toFail: handle)
             scrollPan.allowedTouchTypes = Self.fingerTouches
