@@ -56,6 +56,13 @@ targets:
       - package: SwiftTerm
       - package: Sparkle
       - target: ClaudeDeckWidget   # embedded in Contents/PlugIns
+      # Session helper (Settings › Sessions › "Keep sessions running when ClaudeDeck quits"),
+      # in Contents/MacOS next to the app; its launch agent plist is written by the script below.
+      - target: claudedeck-ptyd
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
     entitlements:
       path: Support/ClaudeDeck.entitlements
       properties:
@@ -75,6 +82,39 @@ targets:
         # Needs a real pty, ~/.claude and the user's shell: no App Sandbox.
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: YES
+    postBuildScripts:
+      # SMAppService.agent(plistName:) looks in Contents/Library/LaunchAgents. The label carries
+      # the bundle id, which only exists at build time (DECK_BUNDLE_PREFIX), hence a script.
+      - name: Session helper launch agent
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          dir="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Library/LaunchAgents"
+          mkdir -p "$dir"
+          plist="$dir/$PRODUCT_BUNDLE_IDENTIFIER.ptyd.plist"
+          rm -f "$plist"
+          /usr/libexec/PlistBuddy -c "Add :Label string $PRODUCT_BUNDLE_IDENTIFIER.ptyd" \
+            -c "Add :BundleProgram string Contents/MacOS/claudedeck-ptyd" \
+            -c "Add :AssociatedBundleIdentifiers array" \
+            -c "Add :AssociatedBundleIdentifiers:0 string $PRODUCT_BUNDLE_IDENTIFIER" \
+            -c "Add :RunAtLoad bool true" \
+            -c "Add :KeepAlive bool true" \
+            -c "Add :ProcessType string Interactive" \
+            -c "Add :LimitLoadToSessionType string Aqua" \
+            "$plist"
+  # The session helper: owns the ptys of persistent sessions (PtydServer in ClaudeDeckCore).
+  claudedeck-ptyd:
+    type: tool
+    platform: macOS
+    sources: [Sources/claudedeck-ptyd]
+    dependencies:
+      - target: ClaudeDeckCore
+    settings:
+      base:
+        PRODUCT_NAME: claudedeck-ptyd
+        PRODUCT_BUNDLE_IDENTIFIER: $(DECK_BUNDLE_PREFIX).ClaudeDeck.ptyd
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
   ClaudeDeckWidget:
     type: app-extension
     platform: macOS

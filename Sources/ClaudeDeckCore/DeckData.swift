@@ -78,6 +78,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     /// Shell sessions that are a ServerPlan server's terminal (its SSH session through the panel)
     /// instead of a local shell. Older versions read such a session as a plain terminal.
     public var serverPlanTerminal: ServerPlanTerminalTarget?
+    /// Set while the session's process runs in the session helper (claudedeck-ptyd) instead of
+    /// the app: on the next launch it is reattached if still alive, never resumed (PtydLaunchPlan).
+    public var helperHost: PtydHost?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -119,6 +122,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
         openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
         serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
+        helperHost = try? c.decodeIfPresent(PtydHost.self, forKey: .helperHost)
     }
 }
 
@@ -224,6 +228,12 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var simulators = false
     /// ServerPlan panel address (Settings › ServerPlan); the token is in the keychain. Empty: off.
     public var serverPlanURL = ""
+    /// New sessions run in the session helper (claudedeck-ptyd) and keep running when the app
+    /// quits, crashes or updates; the app reattaches at launch. Off by default.
+    public var keepSessionsRunning = false
+    /// Turned off with "keep them until they end": the helper's launch agent is removed once its
+    /// last session has ended.
+    public var retireSessionHelper = false
 
     public init() {}
 
@@ -266,6 +276,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
         serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
+        keepSessionsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning) ?? d.keepSessionsRunning
+        retireSessionHelper = try c.decodeIfPresent(Bool.self, forKey: .retireSessionHelper) ?? d.retireSessionHelper
     }
 }
 

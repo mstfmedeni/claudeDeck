@@ -41,6 +41,7 @@ struct SettingsView: View {
             }
             SidebarSettingsSection()
             Section("Sessions") {
+                PtydSettingsRows()
                 Toggle("Resume open sessions at launch", isOn: setting(\.resumeOnLaunch))
                 Toggle("Run /compact on large resumed sessions", isOn: setting(\.compactOnResume))
                 Stepper(value: setting(\.compactThresholdTokens), in: 50_000...1_000_000, step: 25_000) {

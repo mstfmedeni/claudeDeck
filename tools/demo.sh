@@ -5,6 +5,8 @@
 #   tools/demo.sh -AppleLanguages '(tr)'     # same, with the Turkish UI
 #
 # Everything lives in $CLAUDEDECK_DEMO_ROOT (default /tmp/ClaudeDeckDemo) and is recreated on every run.
+# CLAUDEDECK_DEMO_KEEP=1 relaunches on the existing demo data instead (sessions kept running by
+# the demo's session helper reattach), e.g. after quitting the demo with the setting on.
 # Demo mode never touches ~/.claude/settings.json, your deck.json or iCloud: sessions run
 # tools/demo-claude.sh (a stand-in that prints a canned conversation and reports a fixed state)
 # instead of the real `claude`.
@@ -25,7 +27,30 @@ ROOT="${CLAUDEDECK_DEMO_ROOT:-/tmp/ClaudeDeckDemo}"
 APP=build/ClaudeDeck.app
 [ -d "$APP" ] || { echo "❌ $APP not found; run ./build.sh first" >&2; exit 1; }
 
+launch() {
+  echo "Demo data: $ROOT"
+  CLAUDEDECK_DEMO=1 \
+  CLAUDEDECK_DATA_DIR="$ROOT/data" \
+  CLAUDEDECK_STATE_DIR="$ROOT/sessions" \
+  CLAUDEDECK_CLAUDE_PATH="$ROOT/bin/claude" \
+  CLAUDEDECK_GH_PATH="$ROOT/bin/gh" \
+  CLAUDEDECK_CLAUDE_HOME="$ROOT/home" \
+    "$APP/Contents/MacOS/ClaudeDeck" "$@" >/dev/null 2>&1 &
+  echo "ClaudeDeck demo started (pid $!). Quit it with ⌘Q; run this script again for a fresh copy."
+}
+
+if [ -n "${CLAUDEDECK_DEMO_KEEP:-}" ] && [ -f "$ROOT/data/deck.json" ]; then
+  # A ServerPlan mock the previous run started is still the demo's panel.
+  if [ -f "$ROOT.serverplan.pid" ] && kill -0 "$(cat "$ROOT.serverplan.pid")" 2>/dev/null; then
+    export CLAUDEDECK_SERVERPLAN_URL="http://127.0.0.1:${CLAUDEDECK_SERVERPLAN_PORT:-5099}" CLAUDEDECK_SERVERPLAN_TOKEN=spk_1_demo
+  fi
+  launch "$@"
+  exit 0
+fi
+
 pkill -f "$ROOT/bin/claude" 2>/dev/null || true
+# The demo's session helper (if the setting was on) and its sessions go with the old data.
+pkill -f "claudedeck-ptyd --dir $ROOT/data" 2>/dev/null || true
 rm -rf "$ROOT"
 mkdir -p "$ROOT/bin" "$ROOT/scenes" "$ROOT/sessions" "$ROOT/data" "$ROOT/projects"
 cp tools/demo-claude.sh "$ROOT/bin/claude"
@@ -292,6 +317,9 @@ if [ -n "${CLAUDEDECK_DEMO_SHELL_COMMAND:-}" ]; then
 else
   PANES="\"$S1\", \"$S2\""
 fi
+# CLAUDEDECK_DEMO_PERSIST=1: start with "Keep sessions running when ClaudeDeck quits" on (ignored
+# with CLAUDEDECK_DEMO_DEFAULTS=1, like the other opt-in features).
+KEEP_SESSIONS=false; [ -n "${CLAUDEDECK_DEMO_PERSIST:-}" ] && [ "$DEFAULTS" = false ] && KEEP_SESSIONS=true
 A1=D0000000-0000-0000-0000-000000000001
 A2=D0000000-0000-0000-0000-000000000002
 A3=D0000000-0000-0000-0000-000000000003
@@ -358,7 +386,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
                 "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI,
-                "simulators": $SIMULATORS }
+                "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS }
 }
 EOF
 
@@ -602,8 +630,6 @@ jq -n --argjson now "$NOW" \
 # Opt-in: CLAUDEDECK_DEMO_LIVE=1 makes the stand-in sessions change state every so often.
 if [ -n "${CLAUDEDECK_DEMO_LIVE:-}" ]; then touch "$ROOT/live"; fi
 
-echo "Demo data: $ROOT"
-
 # --- ServerPlan: CLAUDEDECK_SERVERPLAN_DEMO=1 starts tools/serverplan-mock.py (made-up servers, a
 # local /bin/sh as their terminals) on :5099 and points the demo at it. Or set CLAUDEDECK_SERVERPLAN_URL
 # and CLAUDEDECK_SERVERPLAN_TOKEN yourself (demo mode only reads them).
@@ -620,11 +646,4 @@ elif [ "${CLAUDEDECK_SERVERPLAN_DEMO:-}" = 1 ]; then
   echo "ServerPlan mock on :$SP_PORT (pid $!); POST http://127.0.0.1:$SP_PORT/_demo/fail sends a failed deploy."
 fi
 
-CLAUDEDECK_DEMO=1 \
-CLAUDEDECK_DATA_DIR="$ROOT/data" \
-CLAUDEDECK_STATE_DIR="$ROOT/sessions" \
-CLAUDEDECK_CLAUDE_PATH="$ROOT/bin/claude" \
-CLAUDEDECK_GH_PATH="$ROOT/bin/gh" \
-CLAUDEDECK_CLAUDE_HOME="$ROOT/home" \
-  "$APP/Contents/MacOS/ClaudeDeck" "$@" >/dev/null 2>&1 &
-echo "ClaudeDeck demo started (pid $!). Quit it with ⌘Q; run this script again for a fresh copy."
+launch "$@"

@@ -282,6 +282,35 @@ enum DebugSnapshot {
             scroll.contentView.scroll(to: NSPoint(x: scroll.contentView.bounds.minX, y: end))
             scroll.reflectScrolledClipView(scroll.contentView)
         }
+        // `ptyd.cmd`: "on" / "off-keep" / "off-end" / "restart" for the session helper (no dialogs);
+        // `screens.dump`: every session's visible text and status to `screens.txt`.
+        for file in files where file == "ptyd.cmd" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let command = contents(path)
+            try? FileManager.default.removeItem(atPath: path)
+            Task { @MainActor in
+                switch command {
+                case "on": await model.ptyd.enable()
+                case "off-keep": await model.ptyd.disable(endSessions: false)
+                case "off-end": await model.ptyd.disable(endSessions: true)
+                case "restart": await model.ptyd.restartHelper()
+                default: break
+                }
+            }
+        }
+        for file in files where file == "screens.dump" {
+            try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent(file))
+            var out = "helper: \(model.ptyd.state) held: \(model.ptyd.held) readOnly: \(model.terminals.readOnlySessions)\n"
+            for session in model.deck.sessions {
+                let status = model.status(of: session.id)
+                out += "== \(session.id) \(session.name) running=\(model.terminals.isRunning(session.id)) helper=\(model.terminals.isInHelper(session.id)) pid=\(model.terminals.pid(for: session.id)) status=\(status.display) \(status.detail ?? "")\n"
+                if let view = model.terminals.view(for: session.id) {
+                    let lines = TerminalCapture.screen(of: view, scrollback: 0).lines.map { $0.map(\.text).joined() }
+                    out += lines.map { $0.replacingOccurrences(of: "\u{0}", with: " ") }.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "\n") + "\n"
+                }
+            }
+            try? out.write(toFile: (dir as NSString).appendingPathComponent("screens.txt"), atomically: true, encoding: .utf8)
+        }
         // `app.activate` brings the app forward (active window chrome, popovers); `app.quit` quits it.
         for file in files where file == "app.activate" || file == "app.quit" {
             try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent(file))

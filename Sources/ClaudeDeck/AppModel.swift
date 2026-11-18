@@ -121,6 +121,8 @@ final class AppModel {
     var restartingSessions: Set<UUID> = []
 
     @ObservationIgnored let terminals = TerminalRegistry()
+    /// The session helper (Settings › Sessions › "Keep sessions running when ClaudeDeck quits").
+    let ptyd = PtydController()
     @ObservationIgnored private let store: DeckDataStore
     @ObservationIgnored private let statusDir = ProcessInfo.processInfo.environment["CLAUDEDECK_STATE_DIR"]
         .map { URL(fileURLWithPath: $0) } ?? StatusDirectory.defaultURL()
@@ -196,6 +198,7 @@ final class AppModel {
             EditorOpener.openDefault(url, model: self)
         }
         terminals.transcriptPath = { [weak self] id in self?.deck.transcriptPath(for: id) }
+        terminals.onHelperStarted = { [weak self] id, info, instance in self?.helperSessionStarted(id, info, instance: instance) }
         // Clicking into a pane's terminal focuses that session.
         terminals.onFocus = { [weak self] id in
             guard let self, self.deck.selectedSessionID != id else { return }
@@ -206,6 +209,7 @@ final class AppModel {
     // MARK: Lifecycle
 
     func start() {
+        ptyd.model = self
         if !Self.isDemo { installHooks() }
         automations = AutomationScheduler(model: self) // marks runs interrupted by the last quit
         githubEvents = automations.map { GitHubEventPoller(model: self, scheduler: $0) }
@@ -228,6 +232,11 @@ final class AppModel {
         }
         // Resolving `claude` runs the login shell; keep it off the main thread.
         Task { @MainActor in
+            // Sessions still running in the session helper come back first (attached, with their
+            // scrollback); nothing that may still run there is started before this answer.
+            await ptyd.prepare(enabled: deck.settings.keepSessionsRunning,
+                               needed: deck.sessions.contains { $0.helperHost != nil })
+            attachHelperSessions()
             claudePath = await Task.detached { ShellEnvironment.resolveClaude() }.value
             // If an update is waiting, ask about it first: installing relaunches the app, and the
             // sessions would otherwise start twice.
@@ -244,10 +253,13 @@ final class AppModel {
 
     private func launchInitialSessions() {
         let toStart = deck.sessionsToStartOnLaunch(resumeOpen: deck.settings.resumeOnLaunch)
-        for session in deck.sessions where session.isOpen && !toStart.contains(where: { $0.id == session.id }) {
+        for session in deck.sessions where session.isOpen && !toStart.contains(where: { $0.id == session.id })
+            && !terminals.isRunning(session.id) && ptyd.held[session.id] == nil {
             deck.updateSession(session.id) { $0.isOpen = false }
         }
-        for session in toStart { launch(session.id, resume: true, automatic: true) }
+        for session in toStart where !terminals.isRunning(session.id) && ptyd.held[session.id] == nil {
+            launch(session.id, resume: true, automatic: true)
+        }
         // The selected session comes up so the window isn't empty, but it wasn't open (ended, or
         // resume on launch is off): nothing is typed into it (no continue message, no /compact).
         if let selected = deck.selectedSessionID, deck.session(selected) != nil, !terminals.isRunning(selected) {
@@ -280,6 +292,7 @@ final class AppModel {
         saveNow()
         remote.stop()
         terminals.terminateAll()
+        ptyd.detachForQuit()
     }
 
     func installHooks() {
@@ -567,16 +580,43 @@ final class AppModel {
     func launch(_ id: UUID, resume: Bool, automatic: Bool = false, resumeID: String? = nil, continueLatest: Bool = false) {
         guard let session = deck.session(id), let project = deck.project(session.projectID) else { return }
         if terminals.isRunning(id) { return }
+        // The one place every start goes through: a session that may still run in the session
+        // helper is attached (or left alone), never started a second time.
+        guard ptyd.prepared else {
+            ptyd.whenPrepared { [weak self] in
+                self?.launch(id, resume: resume, automatic: automatic, resumeID: resumeID, continueLatest: continueLatest)
+            }
+            return
+        }
+        switch ptyd.gate(for: session) {
+        case .attach(let info):
+            attachFromHelper(id, info, readOnly: false)
+            return
+        case .attachReadOnly(let info):
+            attachFromHelper(id, info, readOnly: true)
+            return
+        case .hold(let reason):
+            ptyd.held[id] = reason
+            return
+        case .ended, .proceed:
+            ptyd.held[id] = nil
+            if session.helperHost != nil { deck.updateSession(id) { $0.helperHost = nil } }
+        }
         if session.kind == .shell, let target = session.serverPlanTerminal {
+            // Always local: its process is ClaudeDeck itself bridging the pty to the panel.
             launchServerPlanTerminal(id, target: target, cwd: project.path)
             return
         }
+        // Terminals `claudedeck open` started stay local too: `wait` and `send` read their pty
+        // (foreground job, line editing), which a session in the helper doesn't expose.
+        let helper = session.openedBy == nil ? ptyd.clientForNewSessions(enabled: deck.settings.keepSessionsRunning) : nil
+        let cliEnv = cliEnvironment(for: id)
         if session.kind == .shell {
             // A terminal `claudedeck open` started elsewhere keeps its folder.
             let folder = session.workingDirectory.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             cli.restarted(id)
             terminals.startShell(id: id, cwd: folder ?? project.path, programStatus: deck.showsProgramStatus(id),
-                                 environment: cliEnvironment(for: id))
+                                 environment: cliEnv, helper: helper, helperMeta: ["cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
             if let command = session.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty {
                 // Typed like the user would once the shell had a moment to load its rc files
                 // (the pty buffers it meanwhile), so it lands in history and Ctrl+C keeps the shell.
@@ -611,10 +651,37 @@ final class AppModel {
         // Pencil MCP first: `--mcp-config` is variadic and the following `--name` ends it.
         let pencil = PencilApp.launchArgs(enabled: deck.settings.pencilMCP)
         if pencil.isEmpty { pencilSessions.remove(id) } else { pencilSessions.insert(id) }
+        let ask = askEnvironment(for: id)
         terminals.start(id: id, cwd: worktreeDir ?? project.path, claudePath: claudePath, args: pencil + args,
-                        environment: askEnvironment(for: id).merging(cliEnvironment(for: id)) { $1 })
+                        environment: ask.merging(cliEnv) { $1 }, helper: helper,
+                        helperMeta: ["askToken": ask["CLAUDEDECK_ASK_TOKEN"] ?? "", "pencil": pencil.isEmpty ? "0" : "1",
+                                     "cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
         deck.updateSession(id) { $0.isOpen = true }
         lastNotified[id] = nil
+        scheduleSave()
+        onCountsChanged?()
+    }
+
+    /// Shows a session whose process runs in the session helper: no new process, no resume, no
+    /// "continue" message. Its hook files since the process started still count.
+    func attachFromHelper(_ id: UUID, _ info: PtydSessionInfo, readOnly: Bool) {
+        guard let session = deck.session(id), let project = deck.project(session.projectID),
+              let client = ptyd.client, !terminals.isRunning(id) else { return }
+        ptyd.held[id] = nil
+        launchedAt[id] = Date(timeIntervalSince1970: info.startedAt - 1)
+        if let token = info.meta["askToken"] { askTokens[id] = token }
+        if info.meta["pencil"] == "1" { pencilSessions.insert(id) } else { pencilSessions.remove(id) }
+        // The claudedeck token it was started with (the process still has it in its environment).
+        if let token = info.meta["cliToken"], !token.isEmpty, deck.settings.sessionCLIEnabled {
+            cli.adopt(token, for: id, scopes: SessionCLI.scopes(openedBy: session.openedBy))
+        }
+        terminals.attachHelper(id, cwd: session.workingDirectory ?? project.path, isClaude: session.kind == .claude,
+                               client: client, readOnly: readOnly, known: info)
+        // Program Status picks up from the next report (the replayed scrollback isn't scanned).
+        if session.kind == .shell, deck.showsProgramStatus(id) { terminals.showProgramStatus(true, for: id) }
+        deck.updateSession(id) { $0.isOpen = true }
+        lastNotified[id] = nil
+        reloadStatuses(initial: true)
         scheduleSave()
         onCountsChanged?()
     }
@@ -695,7 +762,7 @@ final class AppModel {
         usageLimitHits[id] = nil
         // On quit, prepareForQuit already recorded which sessions were open and working.
         guard !isQuitting else { return }
-        deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false }
+        deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil }
         scheduleSave()
         onCountsChanged?()
     }

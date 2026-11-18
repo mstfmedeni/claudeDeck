@@ -471,6 +471,11 @@ public struct SessionCLIBook: Sendable {
         return token
     }
 
+    /// A session reattached from the session helper keeps the token its process was started with.
+    public mutating func adopt(_ token: String, for session: UUID, scopes: Set<SessionCLI.Scope>) {
+        grants[session] = Grant(token: token, scopes: scopes)
+    }
+
     /// Whose token this is (`Authorization: Bearer …`), compared in constant time.
     public func caller(for header: String?) -> (session: UUID, scopes: Set<SessionCLI.Scope>)? {
         guard let presented = AgentBearer.credential(from: header) else { return nil }
