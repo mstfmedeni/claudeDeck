@@ -870,6 +870,8 @@ Use it for screenshots.
   state, instead of the real `claude`.
 - GitHub links are answered by a stand-in `gh` that reads fixture files (made-up `acme/*` repositories).
   The demo also has automations with a run history, and staged and unstaged changes in `acme-storefront`.
+- It turns the opt-in features on so they show (Simulators, Program Status on a terminal).
+  `CLAUDEDECK_DEMO_DEFAULTS=1 tools/demo.sh` leaves them all off, as after an update.
 - Demo mode never touches `~/.claude/settings.json`, your `deck.json` or iCloud.
 
 ### Snapshot mode

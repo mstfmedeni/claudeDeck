@@ -13,6 +13,11 @@
 # app's 47647; it and the command-line tool for sessions (claudedeck) are on with CLAUDEDECK_DEMO_CLI=1.
 # CLAUDEDECK_DEMO_SHELL_COMMAND adds a terminal to acme-storefront that runs that command at launch
 # (in the second pane).
+#
+# The demo turns the newer opt-in features on so they show (Simulators, Program Status on the
+# payments-api dev server). CLAUDEDECK_DEMO_DEFAULTS=1 leaves every one of them at its default
+# (off) instead: no Simulators, no Program Status, no claudedeck (CLAUDEDECK_DEMO_CLI is ignored)
+# and no ServerPlan mock (CLAUDEDECK_SERVERPLAN_DEMO is ignored), as someone who just updated sees it.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -273,7 +278,10 @@ S7=C0000000-0000-0000-0000-000000000007
 S8=C0000000-0000-0000-0000-000000000008
 NOW=$(date +%s)
 P="$ROOT/projects"
-CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && CLI=true
+DEFAULTS=false; [ "${CLAUDEDECK_DEMO_DEFAULTS:-}" = 1 ] && DEFAULTS=true
+CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && [ "$DEFAULTS" = false ] && CLI=true
+# Opt-in features, on unless CLAUDEDECK_DEMO_DEFAULTS=1.
+if [ "$DEFAULTS" = true ]; then SIMULATORS=false; PROGRAM_STATUS=""; else SIMULATORS=true; PROGRAM_STATUS=', "showProgramStatus": true'; fi
 EXTRA_SESSION=""
 if [ -n "${CLAUDEDECK_DEMO_SHELL_COMMAND:-}" ]; then
   EXTRA_SESSION=$(jq -cn --arg id "$S8" --arg p "$P1" --arg c "$CLAUDEDECK_DEMO_SHELL_COMMAND" --argjson now "$NOW" \
@@ -312,7 +320,7 @@ cat > "$ROOT/data/deck.json" <<EOF
     { "id": "$S3", "projectID": "$P2", "name": "payments-api", "kind": "claude", "createdAt": $NOW, "isOpen": true,
       "linkedWorkItem": { "kind": "issue", "repo": "acme/payments-api", "number": 118 } },
     { "id": "$S4", "projectID": "$P2", "name": "payments-api · ./dev.sh", "kind": "shell", "createdAt": $NOW, "isOpen": true,
-      "startupCommand": "./dev.sh", "autoStart": true, "showProgramStatus": true },
+      "startupCommand": "./dev.sh", "autoStart": true$PROGRAM_STATUS },
     { "id": "$S5", "projectID": "$P3", "name": "mobile-app", "kind": "claude", "createdAt": $NOW, "isOpen": true },
     { "id": "$S6", "projectID": "$P4", "name": "swift-markdown-kit · fix-tables", "kind": "claude", "createdAt": $NOW, "isOpen": true, "worktreeName": "fix-tables",
       "linkedWorkItem": { "kind": "pr", "repo": "acme/swift-markdown-kit", "number": 7 } },
@@ -350,7 +358,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
                 "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI,
-                "simulators": true }
+                "simulators": $SIMULATORS }
 }
 EOF
 
@@ -599,7 +607,10 @@ echo "Demo data: $ROOT"
 # --- ServerPlan: CLAUDEDECK_SERVERPLAN_DEMO=1 starts tools/serverplan-mock.py (made-up servers, a
 # local /bin/sh as their terminals) on :5099 and points the demo at it. Or set CLAUDEDECK_SERVERPLAN_URL
 # and CLAUDEDECK_SERVERPLAN_TOKEN yourself (demo mode only reads them).
-if [ "${CLAUDEDECK_SERVERPLAN_DEMO:-}" = 1 ]; then
+if [ "$DEFAULTS" = true ]; then
+  [ "${CLAUDEDECK_SERVERPLAN_DEMO:-}" = 1 ] && echo "CLAUDEDECK_DEMO_DEFAULTS=1: ServerPlan stays off (no mock)."
+  unset CLAUDEDECK_SERVERPLAN_URL CLAUDEDECK_SERVERPLAN_TOKEN
+elif [ "${CLAUDEDECK_SERVERPLAN_DEMO:-}" = 1 ]; then
   SP_PORT="${CLAUDEDECK_SERVERPLAN_PORT:-5099}"
   [ -f "$ROOT.serverplan.pid" ] && kill "$(cat "$ROOT.serverplan.pid")" 2>/dev/null || true
   python3 tools/serverplan-mock.py --port "$SP_PORT" --token spk_1_demo --root "$ROOT" --claude "$ROOT/bin/claude" \
