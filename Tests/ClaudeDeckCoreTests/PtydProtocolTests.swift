@@ -103,6 +103,28 @@ import Testing
     }
 }
 
+@Suite struct PtydDeckDataTests {
+    @Test func settingIsOffByDefaultAndOldFilesDecode() throws {
+        #expect(DeckSettings().keepSessionsRunning == false)
+        let old = Data(#"{"settings":{"resumeOnLaunch":true},"sessions":[{"id":"C0000000-0000-0000-0000-000000000001","projectID":"B0000000-0000-0000-0000-000000000001","name":"a","isOpen":true}]}"#.utf8)
+        let deck = try JSONDecoder().decode(DeckData.self, from: old)
+        #expect(deck.settings.keepSessionsRunning == false)
+        #expect(deck.settings.retireSessionHelper == false)
+        #expect(deck.sessions.first?.helperHost == nil)
+    }
+
+    @Test func helperHostRoundTrips() throws {
+        var deck = DeckData()
+        var session = DeckSession(projectID: UUID(), name: "s")
+        session.helperHost = PtydHost(instance: "i", pid: 42, startedAt: 1234.5)
+        deck.sessions = [session]
+        deck.settings.keepSessionsRunning = true
+        let back = try JSONDecoder().decode(DeckData.self, from: JSONEncoder().encode(deck))
+        #expect(back.sessions.first?.helperHost == session.helperHost)
+        #expect(back.settings.keepSessionsRunning)
+    }
+}
+
 @Suite struct PtydRingBufferTests {
     @Test func keepsEverythingUnderCapacity() {
         var ring = PtydRingBuffer(capacity: 10)

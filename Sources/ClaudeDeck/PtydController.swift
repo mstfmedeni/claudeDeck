@@ -68,7 +68,7 @@ final class PtydController {
     /// Where new sessions run: the helper when the setting is on and it can be driven, else nil
     /// (in the app, as before).
     func clientForNewSessions(enabled: Bool) -> PtydClient? {
-        guard enabled, let client, client.isFull, !restarting else { return nil }
+        guard enabled, let client, client.isFull else { return nil }
         return client
     }
 
@@ -100,7 +100,21 @@ final class PtydController {
         await connect(startIfNeeded: enabled)
     }
 
+    /// One connection attempt at a time (launch, a dropped connection and a restart may overlap).
+    @ObservationIgnored private var connecting: Task<Void, Never>?
+
     private func connect(startIfNeeded: Bool) async {
+        if let connecting {
+            await connecting.value
+            if client != nil || !startIfNeeded { return }
+        }
+        let task = Task { @MainActor in await self.connectNow(startIfNeeded: startIfNeeded) }
+        connecting = task
+        await task.value
+        connecting = nil
+    }
+
+    private func connectNow(startIfNeeded: Bool) async {
         if let found = await tryConnect(for: .seconds(1)) {
             await adopt(found, startIfNeeded: startIfNeeded)
             return
@@ -305,16 +319,20 @@ final class PtydController {
         }
         childPID = pid
         // Reap it if it exits while the app runs (after a quit, launchd does).
-        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .global(qos: .utility))
-        source.setEventHandler { [source] in
-            var status: Int32 = 0
-            waitpid(pid, &status, WNOHANG)
-            source.cancel()
-        }
-        source.activate()
-        childExitSource = source
+        childExitSource = Self.reapWhenExits(pid)
         ptydLog.info("started helper as a child process (pid \(pid))")
         return true
+    }
+
+    /// Not main-actor isolated: the handler runs on a background queue.
+    private nonisolated static func reapWhenExits(_ pid: pid_t) -> DispatchSourceProcess {
+        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .global(qos: .utility))
+        source.setEventHandler { @Sendable in
+            var status: Int32 = 0
+            waitpid(pid, &status, WNOHANG)
+        }
+        source.activate()
+        return source
     }
 
     // MARK: Helper gone
@@ -396,8 +414,12 @@ final class PtydController {
         guard service.status != .notRegistered, service.status != .notFound else { return }
         // Only ever with no live session: unregistering stops the helper (SIGTERM).
         guard aliveCount == 0 else { return }
-        service.unregister { error in
-            if let error { ptydLog.error("helper unregister failed: \(error.localizedDescription, privacy: .public)") }
+        Task {
+            do {
+                try await service.unregister()
+            } catch {
+                ptydLog.error("helper unregister failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -407,9 +429,12 @@ final class PtydController {
         guard !restarting else { return }
         restarting = true
         defer { restarting = false }
-        let heldIDs = Array(held.keys)
+        var toRecover = Array(held.keys)
         held = [:]
         if let client {
+            // Taken off the helper first: their exits during the shutdown are an interruption to
+            // recover from, not the end of the session.
+            toRecover += model?.terminals.helperLost(client) ?? []
             client.shutdown()
         } else if paths.helperHoldsLock(), let pid = paths.lockHolderPID() {
             kill(pid, SIGTERM)
@@ -418,11 +443,9 @@ final class PtydController {
             problem = String(localized: "The session helper didn't stop.")
             return
         }
-        // Attached sessions are recovered through the dropped connection; held ones here.
-        if client == nil {
-            await connect(startIfNeeded: model?.deck.settings.keepSessionsRunning == true)
-        }
-        await model?.recoverHelperSessions(heldIDs)
+        // The dropped connection starts the new helper too; `connect` runs one attempt at a time.
+        await connect(startIfNeeded: model?.deck.settings.keepSessionsRunning == true)
+        await model?.recoverHelperSessions(toRecover)
     }
 
     /// Ends the sessions running in the helper that this deck doesn't know.

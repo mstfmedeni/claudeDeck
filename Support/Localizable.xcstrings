@@ -15450,6 +15450,216 @@
           }
         }
       }
+    },
+    "Keep sessions running when ClaudeDeck quits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck kapanınca oturumlar çalışmaya devam etsin"
+          }
+        }
+      }
+    },
+    "New sessions run in a small background helper and keep running when ClaudeDeck quits, crashes or updates. At launch ClaudeDeck reattaches to them, with their recent output, instead of resuming them. Sessions already open stay as they are. Restarting the Mac or logging out still ends them.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni oturumlar arka planda küçük bir yardımcıda çalışır ve ClaudeDeck kapandığında, çöktüğünde ya da güncellendiğinde çalışmaya devam eder. ClaudeDeck açılınca onları yeniden başlatmak yerine son çıktılarıyla birlikte yeniden bağlanır. Zaten açık olan oturumlar olduğu gibi kalır. Mac'i yeniden başlatmak ya da oturumu kapatmak onları yine de sonlandırır."
+          }
+        }
+      }
+    },
+    "Helper running (build %@), sessions in it: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcı çalışıyor (build %@), içindeki oturumlar: %lld"
+          }
+        }
+      }
+    },
+    "Sessions in the helper that belong to no project here: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcıda buradaki hiçbir projeye ait olmayan oturumlar: %lld"
+          }
+        }
+      }
+    },
+    "End Them": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonlandır"
+          }
+        }
+      }
+    },
+    "Restart Helper (Restarts Sessions)…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcıyı Yeniden Başlat (Oturumlar Yeniden Başlar)…"
+          }
+        }
+      }
+    },
+    "Restarting…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden başlatılıyor…"
+          }
+        }
+      }
+    },
+    "Restart sessions to upgrade: %lld sessions run in an older session helper and are read-only.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yükseltmek için oturumları yeniden başlat: %lld oturum eski bir oturum yardımcısında çalışıyor ve salt okunur."
+          }
+        }
+      }
+    },
+    "%lld sessions may still be running in a session helper that doesn't answer; they are left alone so nothing runs twice.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld oturum yanıt vermeyen bir oturum yardımcısında hâlâ çalışıyor olabilir; hiçbir şey iki kez çalışmasın diye onlara dokunulmuyor."
+          }
+        }
+      }
+    },
+    "Allow ClaudeDeck in System Settings › General › Login Items to keep sessions running.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumların çalışmaya devam etmesi için Sistem Ayarları › Genel › Giriş Öğeleri'nde ClaudeDeck'e izin ver."
+          }
+        }
+      }
+    },
+    "The session helper is missing from this copy of ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı bu ClaudeDeck kopyasında yok."
+          }
+        }
+      }
+    },
+    "The session helper didn't stop.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı durmadı."
+          }
+        }
+      }
+    },
+    "Sessions are running in the background helper": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar arka plandaki yardımcıda çalışıyor"
+          }
+        }
+      }
+    },
+    "%lld sessions run in the session helper. Keep them running until they end, or end them now? Sessions you start from now on run inside ClaudeDeck and end when it quits.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısında %lld oturum çalışıyor. Bitene kadar çalışmaya devam etsinler mi, yoksa şimdi sonlandırılsınlar mı? Bundan sonra başlattığın oturumlar ClaudeDeck'in içinde çalışır ve ClaudeDeck kapanınca sonlanır."
+          }
+        }
+      }
+    },
+    "Keep Until They End": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitene Kadar Çalışsın"
+          }
+        }
+      }
+    },
+    "End Them Now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şimdi Sonlandır"
+          }
+        }
+      }
+    },
+    "Restart the session helper?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı yeniden başlatılsın mı?"
+          }
+        }
+      }
+    },
+    "This ends the %lld sessions running in the helper and starts them again (Claude sessions resume their conversation). Anything they are doing right now is interrupted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu, yardımcıda çalışan %lld oturumu sonlandırır ve yeniden başlatır (Claude oturumları konuşmalarına devam eder). O anda yaptıkları her şey yarıda kalır."
+          }
+        }
+      }
+    },
+    "Restart Helper": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcıyı Yeniden Başlat"
+          }
+        }
+      }
+    },
+    ". They keep running in the background helper while ClaudeDeck is closed, and come back with their output when you open it again.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ". ClaudeDeck kapalıyken arka plandaki yardımcıda çalışmaya devam ederler ve yeniden açtığında çıktılarıyla birlikte geri gelirler."
+          }
+        }
+      }
+    },
+    ". %lld of them keep running in the background helper; the others close (Claude sessions resume where they left off next launch).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ". Bunlardan %lld tanesi arka plandaki yardımcıda çalışmaya devam eder; diğerleri kapanır (Claude oturumları bir sonraki açılışta kaldıkları yerden devam eder)."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

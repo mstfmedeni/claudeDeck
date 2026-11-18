@@ -299,6 +299,30 @@ ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same v
   Restart Session, Start Fresh, Rename, Link GitHub Issue or PR…, and End and Remove. End and Remove asks
   first and never deletes Claude's history.
 
+### Keep sessions running when ClaudeDeck quits (off by default)
+
+Settings › Sessions › "Keep sessions running when ClaudeDeck quits" moves new sessions out of the app
+into a small background helper, `claudedeck-ptyd`. The helper owns their terminals (ptys) and
+processes, so quitting, a crash or an update of ClaudeDeck no longer ends them.
+- **At launch** ClaudeDeck asks the helper which sessions are still alive and reattaches to them: the
+  last 4 MB of each terminal's output is replayed, then it streams live. A session that is still alive
+  is never resumed with `claude --resume`; only sessions the helper no longer has go through the usual
+  resume path.
+- **Turning it on** affects sessions started afterwards; open ones stay where they are. **Turning it off**
+  asks whether to keep the helper's sessions until they end or end them now.
+- **Quitting** disconnects from the helper; the quit question says so.
+- **If the helper dies**, its sessions get SIGHUP and end. ClaudeDeck notices the dropped connection and
+  resumes them once their old processes are gone, so nothing runs twice. A process that survives (it
+  ignored SIGHUP) is left alone, and a banner offers **Restart Helper (Restarts Sessions)**.
+- **Updates:** a newer ClaudeDeck keeps using an older helper whose protocol it speaks. With an
+  incompatible one, the helper's sessions are shown read-only with a banner; the new helper takes over
+  only when no session is running, or when you restart the helper.
+- Sessions survive the app, not a restart of the Mac or logging out. Phones and other Macs (remote mode)
+  see them while ClaudeDeck runs, as before.
+- The helper is a launch agent registered with macOS (it shows under ClaudeDeck in System Settings ›
+  General › Login Items) and listens on `ptyd.sock` (mode 0600, same user only) in the app's
+  Application Support folder. Idle, it uses no CPU.
+
 ### Plain terminals
 - Open one with the terminal icon on a project header, context menu › New Terminal, or ⌥⌘T. It starts
   a login shell in the project folder.
@@ -654,6 +678,7 @@ Turn it on in Settings › iCloud (off by default). No entitlement is needed; it
 | Widget snapshot | `~/Library/Group Containers/<team>.<bundle-prefix>.ClaudeDeck/widget-snapshot.json` |
 | iCloud sync (if on) | `~/Library/Mobile Documents/com~apple~CloudDocs/ClaudeDeck/projects.json` |
 | Conversation history | Claude's own location, `~/.claude/projects/<project>/<id>.jsonl` (read-only for ClaudeDeck) |
+| Session helper socket, lock and log (if "Keep sessions running" is on) | `~/Library/Application Support/ClaudeDeck/ptyd.sock`, `ptyd.lock`, `ptyd.log` |
 
 ## Building from source
 
@@ -723,6 +748,9 @@ notification permissions again after every build.
   - GitHub via `gh` (`GitHub`, `GitHubLink`, `GitHubInbox`), automations (`Automations`, `AutomationEvents`), restart and Pencil
     (`SessionRestart`, `PencilIntegration`)
   - iCloud (`DeckSync`) and the widget snapshot (`WidgetSnapshot`)
+  - Session helper: protocol and scrollback (`PtydProtocol`), the helper itself (`PtydServer`), the app's
+    connection (`PtydClient`) and the attach-or-resume decision (`PtydLaunchPlan`)
+- `Sources/claudedeck-ptyd/`: the session helper's executable (bundled in `Contents/MacOS`).
 - `Sources/ClaudeDeck/`: the SwiftUI app.
   - `AppModel` and `TerminalRegistry` (SwiftTerm, processes)
   - Views: `SidebarView`, `ContentView` (panes), `WorkspaceTabs` / `TabStrip`, `EditorWindow` /
@@ -746,6 +774,10 @@ Use it for screenshots.
 - GitHub links are answered by a stand-in `gh` that reads fixture files (made-up `acme/*` repositories).
   The demo also has automations with a run history, and staged and unstaged changes in `acme-storefront`.
 - Demo mode never touches `~/.claude/settings.json`, your `deck.json` or iCloud.
+- `CLAUDEDECK_DEMO_PERSIST=1` starts the demo with "Keep sessions running when ClaudeDeck quits" on.
+  The demo's helper runs as a plain child process (never launchd) with its socket in the demo folder.
+  `CLAUDEDECK_DEMO_KEEP=1 tools/demo.sh` relaunches on the existing demo data, so its sessions reattach.
+  Use `CLAUDEDECK_DEMO_ROOT` to keep demos apart.
 
 ### Snapshot mode
 
@@ -763,6 +795,8 @@ Recording permission:
     (fetch its link) and `<session>.popover` (open the link popover).
   - `<name>.frame` (`x y w h`, screen points) sizes the main window, `<name>.scroll` (`x y` in the window)
     scrolls the view there to its end, and `app.quit` quits.
+  - `ptyd.cmd` (`on`, `off-keep`, `off-end`, `restart`) drives the session helper without dialogs, and
+    `screens.dump` writes every session's state and visible text to `screens.txt`.
   - Together with `screencapture -l <window id>` this takes screenshots without any clicks or keystrokes.
 - The Liquid Glass sidebar renders blank in these snapshots; use `rows.txt` for it.
 

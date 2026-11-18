@@ -58,8 +58,12 @@ struct PtydBanner: View {
                 }
                 .font(.callout)
                 Spacer()
-                Button(ptyd.restarting ? "Restarting…" : "Restart Helper (Restarts Sessions)…") { model.confirmRestartHelper() }
-                    .disabled(ptyd.restarting)
+                Button {
+                    model.confirmRestartHelper()
+                } label: {
+                    ptyd.restarting ? Text("Restarting…") : Text("Restart Helper (Restarts Sessions)…")
+                }
+                .disabled(ptyd.restarting)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
