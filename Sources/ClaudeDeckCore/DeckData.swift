@@ -75,6 +75,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var showProgramStatus: Bool?
     /// Terminals a session opened with `claudedeck open`: that session (it may type into them).
     public var openedBy: UUID?
+    /// Shell sessions that are a ServerPlan server's terminal (its SSH session through the panel)
+    /// instead of a local shell. Older versions read such a session as a plain terminal.
+    public var serverPlanTerminal: ServerPlanTerminalTarget?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -115,6 +118,21 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
         showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
         openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
+        serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
+    }
+}
+
+/// The server a ServerPlan terminal session connects to.
+public struct ServerPlanTerminalTarget: Codable, Sendable, Equatable {
+    public var serverID: Int
+    public var serverName: String
+    /// Start `claude` in the remote shell once it's up.
+    public var runClaude: Bool
+
+    public init(serverID: Int, serverName: String, runClaude: Bool = false) {
+        self.serverID = serverID
+        self.serverName = serverName
+        self.runClaude = runClaude
     }
 }
 
@@ -204,6 +222,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// The Simulators tab (File › Simulators…): iOS, watchOS and visionOS simulators with their
     /// memory and the sessions using them. Off by default.
     public var simulators = false
+    /// ServerPlan panel address (Settings › ServerPlan); the token is in the keychain. Empty: off.
+    public var serverPlanURL = ""
 
     public init() {}
 
@@ -245,6 +265,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
+        serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
     }
 }
 
@@ -266,6 +287,8 @@ public struct DeckData: Codable, Sendable, Equatable {
     public var automationRuns: [AutomationRun] = []
     /// "Fix with Claude" requests for failed CI check runs (see GitHubInbox.swift).
     public var ciRepairRequests: [CIRepairRequest] = []
+    /// "Fix with Claude" requests for failed ServerPlan deploys (see ServerPlanRepair.swift).
+    public var deployRepairRequests: [DeployRepairRequest] = []
 
     public static let maxPanes = 4
 
@@ -284,6 +307,7 @@ public struct DeckData: Codable, Sendable, Equatable {
         automations = try c.decodeIfPresent([Automation].self, forKey: .automations) ?? []
         automationRuns = try c.decodeIfPresent([AutomationRun].self, forKey: .automationRuns) ?? []
         ciRepairRequests = (try? c.decodeIfPresent([Lossy<CIRepairRequest>].self, forKey: .ciRepairRequests))?.compactMap(\.value) ?? []
+        deployRepairRequests = (try? c.decodeIfPresent([Lossy<DeployRepairRequest>].self, forKey: .deployRepairRequests))?.compactMap(\.value) ?? []
     }
 
     // MARK: Mutations

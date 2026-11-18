@@ -567,6 +567,10 @@ final class AppModel {
     func launch(_ id: UUID, resume: Bool, automatic: Bool = false, resumeID: String? = nil, continueLatest: Bool = false) {
         guard let session = deck.session(id), let project = deck.project(session.projectID) else { return }
         if terminals.isRunning(id) { return }
+        if session.kind == .shell, let target = session.serverPlanTerminal {
+            launchServerPlanTerminal(id, target: target, cwd: project.path)
+            return
+        }
         if session.kind == .shell {
             // A terminal `claudedeck open` started elsewhere keeps its folder.
             let folder = session.workingDirectory.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }

@@ -1,0 +1,1 @@
+{"features":["deploy_stream","log_stream","events","terminal","terminal_claude"],"role":"admin","scopes":["containers","deploy","logs","read","terminal"],"server_version":"1","user":{"id":1,"username":"demo"}}

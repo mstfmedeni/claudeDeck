@@ -1,0 +1,5 @@
+[
+  {"health":{"checked_at":"2026-11-18T09:41:07.123456789+03:00","reachable":true},"host":"203.0.113.10","id":1,"name":"prod-eu-1","status":"online"},
+  {"health":{"checked_at":"2026-11-18T09:40:51+03:00","reachable":true},"host":"203.0.113.20","id":2,"name":"staging","status":"online"},
+  {"health":{"checked_at":null,"reachable":null},"host":"203.0.113.30","id":3,"name":"mail-relay","status":"offline"}
+]

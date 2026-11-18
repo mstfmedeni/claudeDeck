@@ -1,0 +1,6 @@
+[
+  { "name": "payments-api", "image": "payments-api:207", "state": "exited", "status": "Exited (1) 29 minutes ago", "ports": "" },
+  { "name": "acme-storefront", "image": "acme-storefront:205", "state": "running", "status": "Up 2 hours", "ports": "0.0.0.0:3000->3000/tcp" },
+  { "name": "traefik", "image": "traefik:v3.1", "state": "running", "status": "Up 12 days", "ports": "0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp" },
+  { "name": "postgres", "image": "postgres:16", "state": "running", "status": "Up 12 days", "ports": "5432/tcp" }
+]

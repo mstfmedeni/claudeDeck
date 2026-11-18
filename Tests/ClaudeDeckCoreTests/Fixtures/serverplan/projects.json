@@ -1,0 +1,13 @@
+[
+  { "id": 11, "display_name": "payments-api", "path": "/tmp/ClaudeDeckDemo/projects/payments-api", "branch": "main",
+    "git_remote": "git@github.com:acme/payments-api.git", "default_server_id": 1, "domain": "api.acme.example",
+    "last_deploy": { "id": 207, "status": "failed", "finished_at": "2026-11-18T09:12:44Z" } },
+  { "id": 12, "display_name": "acme-storefront", "path": "/tmp/ClaudeDeckDemo/projects/acme-storefront", "branch": "main",
+    "git_remote": null, "default_server_id": 1, "domain": "shop.acme.example",
+    "last_deploy": { "id": 205, "status": "success", "finished_at": "2026-11-18T08:03:10Z" } },
+  { "id": 13, "display_name": "blog", "path": "/tmp/ClaudeDeckDemo/projects/blog", "branch": "main",
+    "git_remote": null, "default_server_id": 2, "domain": null,
+    "last_deploy": { "id": 208, "status": "building", "finished_at": null } },
+  { "id": 14, "display_name": "internal-tools", "path": "/Users/someone/elsewhere/internal-tools", "branch": "dev",
+    "git_remote": null, "default_server_id": null, "domain": null, "last_deploy": null }
+]

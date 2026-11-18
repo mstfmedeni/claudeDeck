@@ -2,7 +2,7 @@ import AppKit
 import ClaudeDeckCore
 import SwiftUI
 
-@main
+/// Started by ClaudeDeckLauncher.
 struct ClaudeDeckApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
@@ -99,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installZoomKeys()
         model.start()
         DashboardRecorder.shared.start(model: model)
+        ServerPlanController.shared.start(model: model) // no-op unless ServerPlan is set up
         // Demo mode polls only with tools/demo.sh's stand-in gh (fixture PRs and issues).
         if !AppModel.isDemo || ProcessInfo.processInfo.environment["CLAUDEDECK_GH_PATH"] != nil {
             GitHubMonitor.shared.start(model: model)

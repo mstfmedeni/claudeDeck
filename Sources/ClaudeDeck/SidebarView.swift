@@ -113,6 +113,9 @@ struct SidebarView: View {
             if model.deck.settings.remoteClient {
                 RemoteSidebarSection(filter: layout.filter)
             }
+            if ServerPlanController.shared.isConfigured, layout.filter == .all {
+                ServerPlanSidebarSection()
+            }
             // Inactive: everything else in its saved order, collapsible like an accordion.
             // Hidden while a filter is on (nothing there is waiting or working).
             if layout.filter == .all {

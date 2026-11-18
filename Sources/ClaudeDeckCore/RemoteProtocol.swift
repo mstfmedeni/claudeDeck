@@ -321,6 +321,9 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     public var pendingAgents: [RemotePendingAgent]?
     /// The host's home folder (hosts with `Feature.homeFiles`): Files' "Home" entry, absolute paths there.
     public var homePath: String?
+    /// The host's ServerPlan servers and recent failed deploys (hosts with `Feature.serverPlan`,
+    /// and only while ServerPlan is set up there). Older remotes ignore it.
+    public var serverPlan: RemoteServerPlan?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -358,9 +361,11 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let conversationPush = "conversationPush"
         /// `RemoteSession.program` on plain terminals that show their program's status.
         public static let programStatus = "programStatus"
+        /// `serverPlan` in the snapshot (read-only; actions stay on the Mac).
+        public static let serverPlan = "serverPlan"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
-                                              historyUpdates, conversationPush, programStatus]
+                                              historyUpdates, conversationPush, programStatus, serverPlan]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -373,6 +378,48 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     }
 
     public func session(_ id: UUID) -> RemoteSession? { sessions.first { $0.id == id } }
+}
+
+/// ServerPlan as the host sees it (RemoteSnapshot.serverPlan).
+public struct RemoteServerPlan: Codable, Sendable, Equatable {
+    public struct Server: Codable, Sendable, Equatable, Identifiable {
+        public var id: Int
+        public var name: String
+        /// online | offline | unknown
+        public var status: String
+        public init(id: Int, name: String, status: String) {
+            self.id = id
+            self.name = name
+            self.status = status
+        }
+    }
+
+    public struct Deploy: Codable, Sendable, Equatable, Identifiable {
+        public var id: Int
+        public var project: String
+        public var server: String?
+        /// pending | building | transferring | deploying | success | failed | cancelled
+        public var status: String
+        public var error: String?
+        public var finishedAt: Date?
+        public init(id: Int, project: String, server: String?, status: String, error: String?, finishedAt: Date?) {
+            self.id = id
+            self.project = project
+            self.server = server
+            self.status = status
+            self.error = error
+            self.finishedAt = finishedAt
+        }
+    }
+
+    public var servers: [Server]
+    /// Running and recently failed deploys, newest first.
+    public var deploys: [Deploy]
+
+    public init(servers: [Server], deploys: [Deploy]) {
+        self.servers = servers
+        self.deploys = deploys
+    }
 }
 
 public struct RemoteUsage: Codable, Sendable, Equatable {

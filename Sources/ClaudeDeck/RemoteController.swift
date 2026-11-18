@@ -647,6 +647,7 @@ final class RemoteController {
         snapshot.addresses = hostAddresses.filter { $0 != "127.0.0.1" }
         snapshot.addressesOrdered = model.deck.settings.remoteAddresses.isEmpty ? nil : true
         snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
+        snapshot.serverPlan = ServerPlanController.shared.remoteStatus
         server.snapshot = snapshot
     }
 
@@ -1048,6 +1049,14 @@ final class RemoteController {
         let payload = APNs.payload(title: event.title, subtitle: Self.hostName, body: event.body, sessionID: event.sessionID,
                                    permissionStamp: stamp, blocked: event.activity.isBlocked)
         send(payload, to: devices, credentials: credentials, collapseID: event.sessionID.uuidString)
+    }
+
+    /// A notice that isn't about a session (a failed ServerPlan deploy): to every paired phone,
+    /// connected or not, since older phones don't show anything for it from the snapshot.
+    func pushNotice(title: String, body: String, collapseID: String) {
+        guard model?.deck.settings.remoteHost == true, let credentials = local.apns, !local.pushDevices.isEmpty else { return }
+        let payload = APNs.noticePayload(title: title, subtitle: Self.hostName, body: body, threadID: "serverplan", sound: true)
+        send(payload, to: local.pushDevices, credentials: credentials, collapseID: collapseID)
     }
 
     func sendTestPush() {

@@ -1,0 +1,14 @@
+: ping
+
+event: log
+data: {"line":"[git_pull] Already up to date."}
+
+event: status
+data: {"status":"building","step":"build"}
+
+event: log
+data: {"line":"[build] Step 5/9 : RUN go build -o /out/api ./cmd/api"}
+
+event: done
+data: {"id":207,"project_id":11,"project_name":"payments-api","server_id":1,"server_name":"prod-eu-1","status":"failed","step":"build","error":"docker build failed","branch":"main","commit":null,"log":"…","started_at":"2026-11-18T09:11:02Z","finished_at":"2026-11-18T09:12:44Z"}
+

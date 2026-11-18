@@ -1,0 +1,4 @@
+[
+  { "name": "blog", "image": "blog:206", "state": "running", "status": "Up 3 days", "ports": "0.0.0.0:4321->4321/tcp" },
+  { "name": "traefik", "image": "traefik:v3.1", "state": "running", "status": "Up 30 days", "ports": "0.0.0.0:80->80/tcp" }
+]

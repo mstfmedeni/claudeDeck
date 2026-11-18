@@ -579,6 +579,47 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
 
     func lastOutput(of id: UUID) -> Date? { views[id]?.lastOutputAt }
 
+    /// Runs `executable` directly in the terminal (no shell): ServerPlan terminals, whose process
+    /// is ClaudeDeck itself bridging the pty to the panel's WebSocket.
+    func startProcess(id: UUID, cwd: String, executable: String, args: [String], environment: [String: String]) {
+        let view = views[id] ?? DeckTerminalView(sessionID: id, fontSize: fontSize)
+        view.drawingPaused = !AppVisibility.shared.windowsVisible
+        view.processDelegate = self
+        view.onInput = { [weak self] data in self?.onUserInput?(id, data) }
+        view.onOutput = { [weak self] data in self?.onOutput?(id, data) }
+        view.onFocus = { [weak self] in self?.onFocus?(id) }
+        view.onMagnify = { [weak self] step in self?.onZoom?(step) }
+        view.onOpenFile = { [weak self] url in self?.onOpenFile?(url) }
+        view.transcriptPath = { [weak self] in self?.transcriptPath?(id) }
+        view.workingDirectory = cwd
+        view.isClaude = false
+        views[id] = view
+        if running.contains(id) { return }
+        var env = ShellEnvironment.cleanEnvironment
+        env["TERM"] = "xterm-256color"
+        env["COLORTERM"] = "truecolor"
+        env["TERM_PROGRAM"] = "ClaudeDeck"
+        if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
+        env.merge(environment) { _, new in new }
+        view.getTerminal().resetToInitialState()
+        view.startProcess(
+            executable: executable,
+            args: args,
+            environment: env.map { "\($0.key)=\($0.value)" },
+            execName: nil,
+            currentDirectory: FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
+        )
+        running.insert(id)
+        latestTitles[id] = nil
+        titles[id] = nil
+    }
+
+    /// The grid a terminal has (or will have: the default for a new one).
+    func gridSize(_ id: UUID) -> (cols: Int, rows: Int) {
+        guard let terminal = views[id]?.getTerminal(), terminal.cols > 0, terminal.rows > 0 else { return (120, 40) }
+        return (terminal.cols, terminal.rows)
+    }
+
     /// Types `text`; a trailing `\r` is sent separately so it lands as Enter. Text containing
     /// newlines goes in as a bracketed paste, since a raw newline in the pty would submit early.
     func type(_ text: String, into id: UUID) {

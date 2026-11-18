@@ -722,6 +722,33 @@ Text for another Claude session becomes a note unless you allow sessions to type
 `claudedeck skill setup` installs a Claude Code skill that tells Claude when to use it. Commands,
 token scopes and exit codes: [docs/agents.md](docs/agents.md#command-line-tool-for-sessions).
 
+## ServerPlan (optional)
+
+ServerPlan is a self-hosted server panel. Connect it in Settings › ServerPlan with the panel's
+address and an API token (create it in ServerPlan › Settings › API tokens). ClaudeDeck keeps the
+token in the Keychain. The feature is off until both are set.
+
+- **Sidebar › Servers:**
+  - Each server has a health dot, plus live CPU, memory and disk.
+  - Under each server: the projects deployed there with their last deploy, and the server's containers.
+  - Nothing is fetched while the section is closed or no window is visible.
+- **Terminal on a server:** right-click a server › **Open Terminal**.
+  - It opens as a normal terminal session.
+  - ServerPlan does the SSH, so ClaudeDeck never stores an SSH key or password. It only uses a
+    single-use ticket that's valid for 60 seconds.
+  - **Start Claude Code on …** appears only when the panel reports `claude` on that server.
+- **Deploy, restart, start and stop:** these always show a confirmation first, with the panel's own
+  summary of what will happen. A deploy's log streams live.
+- **Notifications:** a failed deploy notifies on the Mac and, through the paired phone's push, on
+  the phone. ClaudeDeck keeps one quiet event stream open while ServerPlan is set up.
+- **Fix with Claude on a failed deploy:** it starts a Claude session in that project with the
+  deploy log, as for a failed CI check.
+
+The client is `ServerPlanClient` in ClaudeDeckCore (`Sources/ClaudeDeckCore/ServerPlan*.swift`).
+
+For a local try-out, `CLAUDEDECK_SERVERPLAN_DEMO=1 tools/demo.sh` runs `tools/serverplan-mock.py` on
+:5099. It has made-up servers, and their terminals are a local shell.
+
 ## iCloud sync (optional)
 
 Turn it on in Settings › iCloud (off by default). No entitlement is needed; it is a plain file:

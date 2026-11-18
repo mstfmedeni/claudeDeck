@@ -1,0 +1,14 @@
+: keepalive
+
+id: 41
+event: deploy.started
+data: {"type":"deploy.started","at":"2026-11-18T09:11:02Z","data":{"id":207,"project_id":11,"project_name":"payments-api","server_id":1,"server_name":"prod-eu-1","status":"pending"}}
+
+id: 42
+event: deploy.failed
+data: {"type":"deploy.failed","at":"2026-11-18T09:12:44Z","data":{"id":207,"project_id":11,"project_name":"payments-api","server_id":1,"server_name":"prod-eu-1","status":"failed","error":"docker build failed"}}
+
+id: 43
+event: server.unreachable
+data: {"type":"server.unreachable","at":"2026-11-18T09:20:00Z","data":{"server_id":3,"server_name":"mail-relay"}}
+
