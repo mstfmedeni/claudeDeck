@@ -7446,6 +7446,16 @@
         }
       }
     },
+    "The pairing key couldn't be read from the Keychain. ClaudeDeck keeps trying; New Key replaces it (paired devices then pair again).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleştirme anahtarı Anahtar Zinciri'nden okunamadı. ClaudeDeck denemeye devam ediyor; Yeni anahtar onu değiştirir (eşleşmiş cihazların yeniden eşleşmesi gerekir)."
+          }
+        }
+      }
+    },
     "The password or pairing key doesn't match.": {
       "localizations": {
         "tr": {

@@ -33,6 +33,9 @@ public final class RemoteTransferClient {
     /// A finished upload: project, folder, saved path (relative to the project).
     @ObservationIgnored public var onUploaded: ((UUID, String, String) -> Void)?
 
+    /// Where downloads land, a folder each (tests use their own).
+    @ObservationIgnored var downloadsRoot = FileManager.default.temporaryDirectory.appending(path: "Downloads")
+
     public init() {}
 
     private struct Download { let projectID: UUID; let path: String; let file: URL; let handle: FileHandle; let then: ((URL) -> Void)? }
@@ -51,12 +54,17 @@ public final class RemoteTransferClient {
         let key = Self.downloadKey(projectID, path)
         guard downloads[key] == nil else { return }
         let name = (path as NSString).lastPathComponent
-        let folder = FileManager.default.temporaryDirectory.appending(path: "Downloads/\(UUID().uuidString)")
+        let folder = downloadsRoot.appending(path: UUID().uuidString)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appending(path: name)
         guard FileManager.default.createFile(atPath: file.path, contents: nil), let handle = try? FileHandle(forWritingTo: file) else { return }
         downloads[key] = Download(projectID: projectID, path: path, file: file, handle: handle, then: then)
-        if then == nil { put(Item(id: key, name: name, upload: false)) } else { previews[key] = Item(id: key, name: name, upload: false) }
+        if then == nil {
+            put(Item(id: key, name: name, upload: false))
+        } else {
+            previews[key] = Item(id: key, name: name, upload: false)
+            prunePreviews()
+        }
         if send?(.downloadFile(projectID: projectID, path: path, offset: 0)) != true { fail(key, String(localized: "Not connected")) }
     }
 
@@ -74,6 +82,7 @@ public final class RemoteTransferClient {
             update(key) { $0.finished = true }
             if let then = download.then {
                 previews[key]?.finished = true
+                forgetPreviewLater(key, after: finishedPreviewLife)
                 then(download.file)
             } else {
                 onDownloaded?(download.file)
@@ -182,11 +191,44 @@ public final class RemoteTransferClient {
     }
 
     private func fail(_ key: String, _ error: String) {
-        if let download = downloads.removeValue(forKey: key) { try? download.handle.close() }
+        if let download = downloads.removeValue(forKey: key) {
+            try? download.handle.close()
+            // The partial file and its folder: nothing will finish it.
+            try? FileManager.default.removeItem(at: download.file.deletingLastPathComponent())
+        }
         uploads[key] = nil
         update(key) { $0.error = error }
-        previews[key]?.error = error
+        if previews[key] != nil {
+            previews[key]?.error = error
+            forgetPreviewLater(key, after: failedPreviewLife)
+        }
     }
+
+    // MARK: Previews
+
+    /// A finished preview's entry goes soon (the view keeps what it loaded); a failed one stays a
+    /// while to show why. At most `maxPreviews` are kept, the ones in flight first.
+    @ObservationIgnored var finishedPreviewLife: TimeInterval = 3
+    @ObservationIgnored var failedPreviewLife: TimeInterval = 60
+    static let maxPreviews = 32
+
+    private func forgetPreviewLater(_ key: String, after seconds: TimeInterval) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, self.downloads[key] == nil, let item = self.previews[key], item.finished || item.error != nil else { return }
+            self.previews[key] = nil
+        }
+    }
+
+    private func prunePreviews() {
+        guard previews.count > Self.maxPreviews else { return }
+        // Done ones first, then the rest; never one still downloading.
+        let done = previews.filter { downloads[$0.key] == nil }.keys.sorted { (previews[$0]?.finished == true ? 0 : 1) < (previews[$1]?.finished == true ? 0 : 1) }
+        for key in done.prefix(previews.count - Self.maxPreviews) { previews[key] = nil }
+    }
+
+    /// Downloads in flight (tests).
+    var downloadsInFlight: Int { downloads.count }
 
     private func removeLater(_ id: String, after seconds: Double = 3) {
         Task { @MainActor in

@@ -14,8 +14,8 @@ final class AgentAPIController {
     @ObservationIgnored private let server = AgentAPIServer()
     @ObservationIgnored private var runningPort: Int?
 
-    /// The remote listener's port is never shared.
-    static let reservedPorts: Set<Int> = [Int(RemotePairing.defaultPort)]
+    /// The remote listener's port is never shared (`CLAUDEDECK_REMOTE_PORT` included).
+    static let reservedPorts: Set<Int> = RemotePairing.reservedPorts()
 
     var token: String? { AgentKeychain.read("api-token") }
 

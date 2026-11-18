@@ -165,6 +165,15 @@ public final class RemoteChannel: @unchecked Sendable {
         return Self.ipString(host)
     }
 
+    /// The address the peer connected to (incoming connections; nil when unknown).
+    public var localIP: String? {
+        guard case .hostPort(let host, _) = stream.localEndpoint else { return nil }
+        return Self.ipString(host)
+    }
+
+    /// The interface the connection arrived on (diagnostics).
+    public var interfaceName: String? { stream.interfaceName }
+
     static func ipString(_ host: NWEndpoint.Host) -> String? {
         switch host {
         case .ipv4(let address):
@@ -281,12 +290,27 @@ public final class RemoteServer: @unchecked Sendable {
         self.acceptsPeer = acceptsPeer
     }
 
+    /// After `acceptsPeer`: the peer's address and the local one it connected to (nil when the
+    /// path doesn't say); false drops the connection. nil: not checked.
+    public var acceptsPath: ((_ remoteIP: String, _ localIP: String?) -> Bool)?
+
     public var peerNames: [String] { peers.values.map(\.name).sorted() }
     /// Advertise on the local network (Bonjour) under this name, with the host id in the TXT record.
     /// Set before `start()`.
     public var bonjour: (name: String, hostID: UUID)?
     /// Push tokens of the phones connected right now.
     public var connectedPushTokens: Set<Data> { Set(peers.values.compactMap(\.pushToken)) }
+
+    /// Push tokens of the connected phones heard from in the last `seconds`. A phone pings every
+    /// 20 s while it's in front; one that went away without closing (out of range, suspended)
+    /// stays connected here until the keepalive drops it (75 s), and should get pushes meanwhile.
+    public func pushTokensHeard(within seconds: TimeInterval, now: Date = Date()) -> Set<Data> {
+        Set(peers.values.filter { now.timeIntervalSince($0.channel.lastReceived) <= seconds }.compactMap(\.pushToken))
+    }
+
+    /// How long a phone may be silent and still count as there for pushes: its ping interval
+    /// (20 s, a timer with leeway) plus room for a slow network.
+    public static let pushSilence: TimeInterval = 30
 
     public struct TerminalStart: Sendable {
         public var cols: Int
@@ -477,6 +501,12 @@ public final class RemoteServer: @unchecked Sendable {
         let channel = RemoteChannel(connection: connection, queue: queue)
         guard let ip = channel.remoteIP, acceptsPeer(ip) else {
             lastRejectedPeer = "\(connection.endpoint)"
+            connection.cancel()
+            return
+        }
+        // Then where it arrived (the source address alone can be spoofed by the network's range).
+        if let acceptsPath, !acceptsPath(ip, channel.localIP) {
+            lastRejectedPeer = "\(connection.endpoint) → \(channel.localIP ?? "?") on \(channel.interfaceName ?? "?")"
             connection.cancel()
             return
         }

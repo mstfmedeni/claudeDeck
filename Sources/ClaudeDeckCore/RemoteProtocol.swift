@@ -575,6 +575,17 @@ public struct RemotePairing: Codable, Sendable, Equatable, Identifiable {
 
     public static let defaultPort: UInt16 = 47821
 
+    /// The port the host listens on: `CLAUDEDECK_REMOTE_PORT` (demo copies), else the default.
+    public static func listenPort(environment: [String: String] = ProcessInfo.processInfo.environment) -> UInt16 {
+        environment["CLAUDEDECK_REMOTE_PORT"].flatMap(UInt16.init) ?? defaultPort
+    }
+
+    /// Ports another listener of this app (the agents' API) must leave alone: the remote one in
+    /// use, and the default one (a demo copy must not take the real app's).
+    public static func reservedPorts(environment: [String: String] = ProcessInfo.processInfo.environment) -> Set<Int> {
+        [Int(defaultPort), Int(listenPort(environment: environment))]
+    }
+
     public static func makeKey() -> Data {
         SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
     }
@@ -619,13 +630,23 @@ public struct RemotePairing: Codable, Sendable, Equatable, Identifiable {
 
 // MARK: Local state
 
-/// This Mac's remote-mode identity and pairing, in `remote.json` next to `deck.json` (0600; it
-/// holds keys, so it is kept out of deck.json).
+/// The secrets in `RemoteLocalState` that live in the Keychain once migrated (RemoteSecrets.swift).
+public enum RemoteSecret: String, Codable, Sendable, CaseIterable {
+    case hostKey
+    case passwordKey
+    /// The APNs .p8 key's PEM (its key and team ids stay in the file).
+    case apnsKey
+}
+
+/// This Mac's remote-mode identity and pairing, in `remote.json` next to `deck.json` (0600).
+/// The keys go to the Keychain (`RemoteLocalStore`): the file keeps one only while the Keychain
+/// can't take it, and lists the ones the Keychain holds.
 public struct RemoteLocalState: Codable, Sendable, Equatable {
     /// Stable id of this Mac as a host.
     public var hostID = UUID()
-    /// The key remotes must prove (host side). Replaced by "New key".
-    public var hostKey = RemotePairing.makeKey()
+    /// The key remotes must prove (host side). Replaced by "New key". Empty while the Keychain
+    /// hasn't given it back (`unreadSecrets`).
+    public var hostKey = RemotePairing.makeKey() { didSet { unreadSecrets.remove(.hostKey) } }
     /// Host chosen among the ones found in iCloud Drive (remote side).
     public var pairedHostID: UUID?
     /// Pairing pasted from a link / QR code; wins over iCloud Drive.
@@ -633,20 +654,39 @@ public struct RemoteLocalState: Codable, Sendable, Equatable {
     /// Host side: `hostKey` was derived from a password the user chose.
     public var hostUsesPassword = false
     /// Remote side: key derived from the password typed here (finds the host through Tailscale).
-    public var passwordKey: Data?
+    public var passwordKey: Data? { didSet { unreadSecrets.remove(.passwordKey) } }
     /// Remote side: the address the password-found host answered on last time (tried first).
     public var lastHostAddress: String?
     /// Host side: the APNs auth key for iPhone pushes, and the phones that registered.
-    public var apns: APNsCredentials?
+    public var apns: APNsCredentials? { didSet { unreadSecrets.remove(.apnsKey) } }
     public var pushDevices: [PushDevice] = []
+    /// Secrets the Keychain holds instead of the file (listed in the file as `keychain`).
+    public var keychainSecrets: Set<RemoteSecret> = []
+    /// Secrets the Keychain didn't give back at load (locked, access denied): left alone there and
+    /// asked for again later. Setting a new value clears its entry. Not saved.
+    public var unreadSecrets: Set<RemoteSecret> = []
+    /// What the Keychain was last seen holding, by secret (saves skip unchanged ones). Not saved.
+    public var verified: [RemoteSecret: Data] = [:]
+
+    /// The host key is known: this Mac can host and publish its pairing.
+    public var hasHostKey: Bool { !hostKey.isEmpty && !unreadSecrets.contains(.hostKey) }
 
     public init() {}
 
+    enum CodingKeys: String, CodingKey {
+        case hostID, hostKey, pairedHostID, manualPairing, hostUsesPassword, passwordKey, lastHostAddress, apns, pushDevices
+        case keychainSecrets = "keychain"
+    }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let d = RemoteLocalState()
-        hostID = try c.decodeIfPresent(UUID.self, forKey: .hostID) ?? d.hostID
-        hostKey = try c.decodeIfPresent(Data.self, forKey: .hostKey).flatMap { $0.isEmpty ? nil : $0 } ?? d.hostKey
+        let inKeychain = Set(try c.decodeIfPresent([RemoteSecret].self, forKey: .keychainSecrets) ?? [])
+        hostID = try c.decodeIfPresent(UUID.self, forKey: .hostID) ?? UUID()
+        // A key in the file wins (put there because the Keychain failed, or by an older version).
+        // Absent and held by the Keychain: empty until `RemoteLocalStore` reads it. Absent
+        // otherwise: a new identity, as before.
+        let fileKey = try c.decodeIfPresent(Data.self, forKey: .hostKey).flatMap { $0.isEmpty ? nil : $0 }
+        hostKey = fileKey ?? (inKeychain.contains(.hostKey) ? Data() : RemotePairing.makeKey())
         pairedHostID = try c.decodeIfPresent(UUID.self, forKey: .pairedHostID)
         manualPairing = try c.decodeIfPresent(RemotePairing.self, forKey: .manualPairing)
         hostUsesPassword = try c.decodeIfPresent(Bool.self, forKey: .hostUsesPassword) ?? false
@@ -654,32 +694,108 @@ public struct RemoteLocalState: Codable, Sendable, Equatable {
         lastHostAddress = try c.decodeIfPresent(String.self, forKey: .lastHostAddress)
         apns = try c.decodeIfPresent(APNsCredentials.self, forKey: .apns)
         pushDevices = try c.decodeIfPresent([PushDevice].self, forKey: .pushDevices) ?? []
+        // Only what the file doesn't hold itself is the Keychain's.
+        keychainSecrets = inKeychain.filter { secret in
+            switch secret {
+            case .hostKey: fileKey == nil
+            case .passwordKey: passwordKey == nil
+            case .apnsKey: apns != nil && apns?.keyPEM.isEmpty == true
+            }
+        }
+        unreadSecrets = []
     }
 
-    /// Loads the file, or creates (and saves) a fresh identity. The key stays the same across
-    /// launches; only "New Key" replaces it. An unreadable file is kept aside, not overwritten silently.
-    public static func load(from url: URL) -> RemoteLocalState {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSince1970
-        if let data = try? Data(contentsOf: url) {
-            if let state = try? decoder.decode(RemoteLocalState.self, from: data) { return state }
-            let broken = url.deletingPathExtension().appendingPathExtension("broken-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.copyItem(at: url, to: broken)
+    /// Leaves out the secrets in `keychainSecrets` (the APNs entry keeps its ids, without the key).
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(hostID, forKey: .hostID)
+        if !keychainSecrets.contains(.hostKey) { try c.encode(hostKey, forKey: .hostKey) }
+        try c.encodeIfPresent(pairedHostID, forKey: .pairedHostID)
+        try c.encodeIfPresent(manualPairing, forKey: .manualPairing)
+        try c.encode(hostUsesPassword, forKey: .hostUsesPassword)
+        if !keychainSecrets.contains(.passwordKey) { try c.encodeIfPresent(passwordKey, forKey: .passwordKey) }
+        try c.encodeIfPresent(lastHostAddress, forKey: .lastHostAddress)
+        if var apns {
+            if keychainSecrets.contains(.apnsKey) { apns.keyPEM = "" }
+            try c.encode(apns, forKey: .apns)
         }
+        try c.encode(pushDevices, forKey: .pushDevices)
+        if !keychainSecrets.isEmpty { try c.encode(keychainSecrets.map(\.rawValue).sorted(), forKey: .keychainSecrets) }
+    }
+
+    /// A secret's value (nil: none).
+    public func secretData(_ secret: RemoteSecret) -> Data? {
+        switch secret {
+        case .hostKey: hostKey.isEmpty ? nil : hostKey
+        case .passwordKey: passwordKey
+        case .apnsKey: apns.flatMap { $0.keyPEM.isEmpty ? nil : Data($0.keyPEM.utf8) }
+        }
+    }
+
+    /// Puts a secret read back from the Keychain in place.
+    public mutating func setSecretData(_ secret: RemoteSecret, _ data: Data) {
+        switch secret {
+        case .hostKey: hostKey = data
+        case .passwordKey: passwordKey = data
+        case .apnsKey: apns?.keyPEM = String(decoding: data, as: UTF8.self)
+        }
+    }
+
+    /// The file alone (no Keychain: see `RemoteLocalStore.load`), or a fresh identity, saved.
+    /// An unreadable file is kept aside, not overwritten silently.
+    public static func load(from url: URL) -> RemoteLocalState {
+        if let state = read(from: url) { return state }
         let state = RemoteLocalState()
         try? state.save(to: url)
         return state
     }
 
+    /// The file as it is; nil when it's missing or unreadable (then copied aside).
+    public static func read(from url: URL) -> RemoteLocalState? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        if let state = try? decoder.decode(RemoteLocalState.self, from: data) { return state }
+        let broken = url.deletingPathExtension().appendingPathExtension("broken-\(Int(Date().timeIntervalSince1970)).json")
+        try? FileManager.default.copyItem(at: url, to: broken)
+        return nil
+    }
+
+    /// Atomically, readable by this user only from the first byte.
     public func save(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self).write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try PrivateFile.write(try encoder.encode(self), to: url)
     }
 }
+
+/// A file only this user may read, replaced atomically and created 0600 (never briefly with the
+/// default permissions, as a write followed by chmod would be).
+public enum PrivateFile {
+    public static func write(_ data: Data, to url: URL) throws {
+        let folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let temp = folder.appending(path: ".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        let fd = open(temp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        do {
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
+        guard rename(temp.path, url.path) == 0 else {
+            let code = errno
+            try? FileManager.default.removeItem(at: temp)
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+        }
+    }
+}
+
 
 #if os(macOS)
 /// Pairing records in a shared folder (iCloud Drive `ClaudeDeck/Remote/<host id>.json`).
