@@ -410,7 +410,22 @@ struct ChangeCard: View {
             Button { composing = true } label: { Label("Write About This…", systemImage: "text.bubble") }
             if picked != nil { Button { picked = nil; anchor = nil } label: { Label("Clear Selection", systemImage: "xmark.circle") } }
             Button { UIPasteboard.general.string = EditsPaths.relative(path, root: root) } label: { Label("Copy Path", systemImage: "doc.on.doc") }
+            Button { UIPasteboard.general.string = Self.copyText(messageLines.filter { $0.kind != .removed }, diff: false) } label: {
+                Label(picked == nil ? LocalizedStringKey("Copy Lines") : "Copy the Picked Lines", systemImage: "text.alignleft")
+            }
+            Button { UIPasteboard.general.string = Self.copyText(messageLines, diff: true) } label: {
+                Label("Copy as Diff", systemImage: "plusminus")
+            }
         }
+    }
+
+    /// The lines as text: the new version (removed lines left out), or as a diff ("+", "-", " ").
+    static func copyText(_ lines: [DiffLine], diff: Bool) -> String {
+        lines.compactMap { line in
+            guard line.kind != .noNewline else { return nil }
+            guard diff else { return line.text }
+            return (line.kind == .added ? "+" : line.kind == .removed ? "-" : " ") + line.text
+        }.joined(separator: "\n")
     }
 
     private var allLines: [DiffLine] { hunks.flatMap(\.lines) }

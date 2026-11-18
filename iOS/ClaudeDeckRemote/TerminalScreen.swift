@@ -39,6 +39,25 @@ final class FixedGridTerminalView: TerminalView {
     /// (see `RemoteTerminalUIView.wheeled`), taps still click.
     override func mouseModeChanged(source: Terminal) {}
 
+    /// SwiftTerm drops the selection at every new line while mouse reporting is allowed, and a busy
+    /// program (Claude Code redraws all the time) cleared it before Copy could be chosen. A tap or
+    /// Copy clears it instead (see `RemoteTerminalUIView`).
+    override func linefeed(source: Terminal) {}
+
+    /// ⌘C on a hardware keyboard copies the selection (keys otherwise go to the program).
+    override var keyCommands: [UIKeyCommand]? {
+        let copy = UIKeyCommand(input: "c", modifierFlags: .command, action: #selector(copySelection))
+        copy.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [copy]
+    }
+
+    @objc func copySelection() {
+        guard selection.active else { return }
+        // SwiftTerm's own: it also drops the drag it may have added for a double-tapped selection.
+        copy(nil)
+        setNeedsDisplay()
+    }
+
     @discardableResult
     func enforceGrid() -> Bool {
         let terminal = getTerminal()
@@ -58,6 +77,24 @@ private final class WheelGate: NSObject, UIGestureRecognizerDelegate {
         else { return false }
         let velocity = pan.velocity(in: terminal)
         return abs(velocity.y) > abs(velocity.x)
+    }
+}
+
+/// Lets a selection drag start only at one end of the selection (its "handle"); the tap that
+/// clears a selection doesn't hold back the terminal's own taps (the program's clicks).
+private final class SelectionGate: NSObject, UIGestureRecognizerDelegate {
+    weak var view: RemoteTerminalUIView?
+
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        guard let view else { return false }
+        if gesture.name == RemoteTerminalUIView.handleDragName {
+            return view.selectionEnd(near: gesture.location(in: view.terminal)) != nil
+        }
+        return true
+    }
+
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        gesture.name == RemoteTerminalUIView.clearTapName
     }
 }
 
@@ -102,6 +139,13 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
     /// A wheel pan's movement not yet sent as a wheel step.
     private var wheelRemainder: CGFloat = 0
     private let wheelGate = WheelGate()
+    private let selectionGate = SelectionGate()
+    static let handleDragName = "selectionHandle"
+    static let clearTapName = "clearSelection"
+    /// Where a long press started its selection.
+    private var selectionAnchor: Position?
+    /// A link (OSC 8, or a URL in the text) under the long press.
+    private var pressedLink: URL?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -126,7 +170,10 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         wheel.allowedScrollTypesMask = .all
         wheelGate.terminal = terminal
         wheel.delegate = wheelGate
+        // A pointer click-drag selects (below); the trackpad's two-finger scroll is still the wheel.
+        wheel.allowedTouchTypes = Self.fingerTouches
         terminal.addGestureRecognizer(wheel)
+        setUpSelection()
         setFont(10)
     }
 
@@ -263,6 +310,167 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         }
     }
 
+    // MARK: Selection
+
+    static let fingerTouches = [NSNumber(value: UITouch.TouchType.direct.rawValue), NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+
+    /// Selecting works the same whether or not the program has the mouse on (Claude Code's full-screen
+    /// mode does): a long press selects the word (or URL) under the finger and opens the menu (Copy,
+    /// Open Link, Copy Screen…); dragging on from the press, or later from either end of the selection,
+    /// changes it; a pointer (trackpad, mouse) click-drag selects. A plain tap stays the program's click.
+    /// SwiftTerm's own long press is off: it only offered "Select" in a menu, brought the keyboard up,
+    /// and with the mouse on its selection drag never started.
+    private func setUpSelection() {
+        terminal.gestureRecognizers?.filter { $0 is UILongPressGestureRecognizer }.forEach { $0.isEnabled = false }
+        selectionGate.view = self
+
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
+        press.minimumPressDuration = 0.45
+        terminal.addGestureRecognizer(press)
+
+        let handle = UIPanGestureRecognizer(target: self, action: #selector(handleDragged(_:)))
+        handle.name = Self.handleDragName
+        handle.delegate = selectionGate
+        terminal.addGestureRecognizer(handle)
+
+        let pointer = UIPanGestureRecognizer(target: self, action: #selector(pointerDragged(_:)))
+        pointer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+        terminal.addGestureRecognizer(pointer)
+
+        let clear = UITapGestureRecognizer(target: self, action: #selector(tappedToClear(_:)))
+        clear.name = Self.clearTapName
+        clear.delegate = selectionGate
+        terminal.addGestureRecognizer(clear)
+
+        // A drag at a selection end moves it instead of scrolling; a pointer click-drag selects.
+        terminal.gestureRecognizers?.filter { $0.delegate is WheelGate }.forEach { $0.require(toFail: handle) }
+        for scrollPan in [terminal.panGestureRecognizer, scroll.panGestureRecognizer] {
+            scrollPan.require(toFail: handle)
+            scrollPan.allowedTouchTypes = Self.fingerTouches
+        }
+        terminal.addInteraction(UIEditMenuInteraction(delegate: self))
+    }
+
+    private var cellSize: CGSize {
+        let size = terminal.getOptimalFrameSize().size
+        return CGSize(width: max(1, size.width / CGFloat(max(terminal.gridCols, 1))),
+                      height: max(1, size.height / CGFloat(max(terminal.gridRows, 1))))
+    }
+
+    /// The buffer cell (scrollback included) at a point in the terminal's content.
+    private func cell(at point: CGPoint) -> Position {
+        let cell = cellSize
+        let lines = Int((max(terminal.contentSize.height, terminal.bounds.height) / cell.height).rounded())
+        return Position(col: min(max(0, Int(point.x / cell.width)), terminal.gridCols - 1),
+                        row: min(max(0, Int(point.y / cell.height)), max(0, lines - 1)))
+    }
+
+    /// The selection's start or end when the point is on (or right next to) it.
+    func selectionEnd(near point: CGPoint) -> Position? {
+        guard let selection = terminal.selection, selection.active else { return nil }
+        let hit = cell(at: point)
+        func near(_ position: Position) -> Bool { abs(position.col - hit.col) < 3 && abs(position.row - hit.row) < 2 }
+        if near(selection.end) { return selection.end }
+        if near(selection.start) { return selection.start }
+        return nil
+    }
+
+    @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
+        guard let selection = terminal.selection else { return }
+        let point = gesture.location(in: terminal)
+        switch gesture.state {
+        case .began:
+            let hit = cell(at: point)
+            selection.selectWordOrExpression(at: hit, in: terminal.getTerminal().buffer)
+            selection.selectionMode = .character
+            if !selection.active { selection.setSelection(start: hit, end: Position(col: hit.col + 1, row: hit.row)) }
+            selectionAnchor = selection.start
+            pressedLink = link(at: point)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            terminal.setNeedsDisplay()
+        case .changed:
+            // Dragging on from the press: from where it started to the finger.
+            guard let anchor = selectionAnchor else { return }
+            selection.pivot = anchor
+            selection.pivotExtend(bufferPosition: cell(at: point))
+            terminal.setNeedsDisplay()
+        case .ended:
+            selectionAnchor = nil
+            showMenu(at: point)
+        default:
+            selectionAnchor = nil
+        }
+    }
+
+    @objc private func handleDragged(_ gesture: UIPanGestureRecognizer) {
+        guard let selection = terminal.selection else { return }
+        let point = gesture.location(in: terminal)
+        switch gesture.state {
+        case .began:
+            // The other end stays.
+            guard let end = selectionEnd(near: point) else { return }
+            selection.pivot = end == selection.end ? selection.start : selection.end
+            pressedLink = nil
+        case .changed:
+            selection.pivotExtend(bufferPosition: cell(at: point))
+            terminal.setNeedsDisplay()
+        case .ended:
+            showMenu(at: point)
+        default:
+            break
+        }
+    }
+
+    @objc private func pointerDragged(_ gesture: UIPanGestureRecognizer) {
+        guard let selection = terminal.selection else { return }
+        let point = gesture.location(in: terminal)
+        switch gesture.state {
+        case .began:
+            let start = cell(at: gesture.location(in: terminal))
+            selection.setSelection(start: start, end: start)
+            selection.selectionMode = .character
+            selection.pivot = start
+            pressedLink = nil
+        case .changed:
+            selection.pivotExtend(bufferPosition: cell(at: point))
+            terminal.setNeedsDisplay()
+        case .ended:
+            if selection.active { showMenu(at: point) }
+        default:
+            break
+        }
+    }
+
+    @objc private func tappedToClear(_ gesture: UITapGestureRecognizer) {
+        guard let selection = terminal.selection, selection.active else { return }
+        selection.selectNone()
+        terminal.setNeedsDisplay()
+    }
+
+    private func link(at point: CGPoint) -> URL? {
+        guard let text = terminal.getTerminal().link(at: .buffer(cell(at: point)), mode: .explicitAndImplicit),
+              let url = URL(string: text), url.scheme == "http" || url.scheme == "https"
+        else { return nil }
+        return url
+    }
+
+    func showMenu(at point: CGPoint) {
+        guard let interaction = terminal.interactions.lazy.compactMap({ $0 as? UIEditMenuInteraction }).first else { return }
+        interaction.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+    }
+
+    /// The terminal's text: the screen (`lines` nil) or its last lines (scrollback included),
+    /// without trailing blanks.
+    func text(lastLines lines: Int?) -> String {
+        let data = terminal.getTerminal().getBufferAsData(kind: .active)
+        var rows = String(decoding: data, as: UTF8.self).components(separatedBy: "\n")
+            .map { String($0.reversed().drop(while: { $0 == " " }).reversed()) }
+        rows = Array(rows.suffix(lines ?? terminal.gridRows))
+        while rows.last?.isEmpty == true { rows.removeLast() }
+        while rows.first?.isEmpty == true { rows.removeFirst() }
+        return rows.joined(separator: "\n")
+    }
+
     func toggleKeyboard() {
         if terminal.isFirstResponder { _ = terminal.resignFirstResponder() } else { _ = terminal.becomeFirstResponder() }
     }
@@ -294,10 +502,41 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
     func iTermContent(source: TerminalView, content: ArraySlice<UInt8>) {}
 }
 
+extension RemoteTerminalUIView: @preconcurrency UIEditMenuInteractionDelegate {
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        var actions: [UIMenuElement] = []
+        if terminal.selection?.active == true {
+            actions.append(UIAction(title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+                self?.terminal.copySelection()
+            })
+        }
+        if let url = pressedLink {
+            actions.append(UIAction(title: String(localized: "Open Link"), image: UIImage(systemName: "safari")) { _ in
+                UIApplication.shared.open(url)
+            })
+            actions.append(UIAction(title: String(localized: "Copy Link"), image: UIImage(systemName: "link")) { _ in
+                UIPasteboard.general.url = url
+            })
+        }
+        actions.append(UIAction(title: String(localized: "Copy Screen"), image: UIImage(systemName: "rectangle.on.rectangle")) { [weak self] _ in
+            guard let self else { return }
+            UIPasteboard.general.string = self.text(lastLines: nil)
+        })
+        if UIPasteboard.general.hasStrings {
+            actions.append(UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+                self?.terminal.paste(nil)
+            })
+        }
+        return UIMenu(children: actions)
+    }
+}
+
 struct RemoteTerminalRepresentable: UIViewRepresentable {
     let sessionID: UUID
     let store: RemoteStore
     let keyboardToggle: Int
+    var copyRequest = TerminalCopyRequest()
     let fitToScreen: Bool
     @Binding var fontSize: Double
 
@@ -305,6 +544,7 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
         let sessionID: UUID
         weak var store: RemoteStore?
         var lastToggle = 0
+        var lastCopy = 0
         init(sessionID: UUID, store: RemoteStore) {
             self.sessionID = sessionID
             self.store = store
@@ -325,6 +565,7 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
         view.onReadingFont = { size.wrappedValue = $0 }
         store.attachTerminal(id, sink: view)
         context.coordinator.lastToggle = keyboardToggle
+        context.coordinator.lastCopy = copyRequest.serial
         return view
     }
 
@@ -334,6 +575,10 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
         if keyboardToggle != context.coordinator.lastToggle {
             context.coordinator.lastToggle = keyboardToggle
             view.toggleKeyboard()
+        }
+        if copyRequest.serial != context.coordinator.lastCopy {
+            context.coordinator.lastCopy = copyRequest.serial
+            UIPasteboard.general.string = view.text(lastLines: copyRequest.lines)
         }
     }
 
@@ -354,6 +599,7 @@ struct SessionDetailView: View {
     @Environment(RemoteStore.self) private var store
     let sessionID: UUID
     @State private var keyboardToggle = 0
+    @State private var copyRequest = TerminalCopyRequest()
     /// Per window: two windows can show a conversation and a terminal side by side.
     @SceneStorage("detail.mode") private var mode = Mode.conversation
     @AppStorage("terminal.fit") private var fitToScreen = true
@@ -422,6 +668,19 @@ struct SessionDetailView: View {
                         .accessibilityLabel(Text("Text Size"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    // A fallback to the long press: the screen's or the latest lines' text at once.
+                    Menu {
+                        Button { copyRequest = TerminalCopyRequest(serial: copyRequest.serial + 1, lines: nil) } label: {
+                            Label("Copy Screen", systemImage: "rectangle.on.rectangle")
+                        }
+                        Button { copyRequest = TerminalCopyRequest(serial: copyRequest.serial + 1, lines: 200) } label: {
+                            Label("Copy Last 200 Lines", systemImage: "text.append")
+                        }
+                    } label: { Image(systemName: "doc.on.doc") }
+                        .accessibilityLabel(Text("Copy"))
+                        .disabled(store.terminalStates[sessionID] == nil)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { keyboardToggle += 1 } label: { Image(systemName: "keyboard") }
                         .accessibilityLabel(Text("Keyboard"))
                         .disabled(store.terminalStates[sessionID] != .live)
@@ -455,7 +714,7 @@ struct SessionDetailView: View {
     }
 
     private var terminal: some View {
-            RemoteTerminalRepresentable(sessionID: sessionID, store: store, keyboardToggle: keyboardToggle, fitToScreen: fitToScreen, fontSize: $terminalFont)
+            RemoteTerminalRepresentable(sessionID: sessionID, store: store, keyboardToggle: keyboardToggle, copyRequest: copyRequest, fitToScreen: fitToScreen, fontSize: $terminalFont)
                 .overlay {
                     if let message = overlayMessage {
                         VStack(spacing: 8) {
@@ -476,6 +735,12 @@ struct SessionDetailView: View {
         default: return String(localized: "Loading the terminal…")
         }
     }
+}
+
+/// A toolbar copy of the terminal's text: `lines` nil is the screen.
+struct TerminalCopyRequest: Equatable {
+    var serial = 0
+    var lines: Int?
 }
 
 /// The terminal's font size (fit mode: the Mac's terminal is sized to the screen at it).

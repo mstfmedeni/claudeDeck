@@ -18100,6 +18100,136 @@
           }
         }
       }
+    },
+    "Copy as Markdown": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markdown Olarak Kopyala"
+          }
+        }
+      }
+    },
+    "Select Text…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metin Seç…"
+          }
+        }
+      }
+    },
+    "Copy Result": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonucu Kopyala"
+          }
+        }
+      }
+    },
+    "Copy Code": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kodu Kopyala"
+          }
+        }
+      }
+    },
+    "Select Text": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metin Seç"
+          }
+        }
+      }
+    },
+    "Copy All": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tümünü Kopyala"
+          }
+        }
+      }
+    },
+    "Copy Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satırları Kopyala"
+          }
+        }
+      }
+    },
+    "Copy the Picked Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçilen Satırları Kopyala"
+          }
+        }
+      }
+    },
+    "Copy as Diff": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diff Olarak Kopyala"
+          }
+        }
+      }
+    },
+    "Open Link": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı Aç"
+          }
+        }
+      }
+    },
+    "Copy Link": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı Kopyala"
+          }
+        }
+      }
+    },
+    "Copy Screen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekranı Kopyala"
+          }
+        }
+      }
+    },
+    "Copy Last 200 Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son 200 Satırı Kopyala"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
