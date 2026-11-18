@@ -17220,6 +17220,476 @@
           }
         }
       }
+    },
+    "Waiting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekliyor"
+          }
+        }
+      }
+    },
+    "Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satır"
+          }
+        }
+      }
+    },
+    "Claude sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude oturumları"
+          }
+        }
+      }
+    },
+    "−%@ removed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "−%@ silindi"
+          }
+        }
+      }
+    },
+    "Counting…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sayılıyor…"
+          }
+        }
+      }
+    },
+    "No Dashboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano yok"
+          }
+        }
+      }
+    },
+    "Update ClaudeDeck on the Mac to see its dashboard here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panoyu burada görmek için Mac'teki ClaudeDeck'i güncelle."
+          }
+        }
+      }
+    },
+    "Usage": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanım"
+          }
+        }
+      }
+    },
+    "Usage isn’t available (sign in to Claude Code on the Mac)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanım bilgisi yok (Mac'te Claude Code'a giriş yap)"
+          }
+        }
+      }
+    },
+    "Resets %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sıfırlanma: %@"
+          }
+        }
+      }
+    },
+    "At this pace: limit at %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hızla: limit %@ civarında"
+          }
+        }
+      }
+    },
+    "At this pace: no limit before the reset": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hızla: sıfırlanmadan önce limite ulaşılmaz"
+          }
+        }
+      }
+    },
+    "Not climbing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artmıyor"
+          }
+        }
+      }
+    },
+    "Online": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çevrimiçi"
+          }
+        }
+      }
+    },
+    "Offline": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çevrimdışı"
+          }
+        }
+      }
+    },
+    "Pending": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sırada"
+          }
+        }
+      }
+    },
+    "Building": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleniyor"
+          }
+        }
+      }
+    },
+    "Transferring": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktarılıyor"
+          }
+        }
+      }
+    },
+    "%lld failed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld başarısız"
+          }
+        }
+      }
+    },
+    "%lld offline": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld çevrimdışı"
+          }
+        }
+      }
+    },
+    "ServerPlan Isn't Set Up": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan ayarlanmamış"
+          }
+        }
+      }
+    },
+    "Connect ServerPlan in the Mac's Settings › ServerPlan.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'ı Mac'te Ayarlar › ServerPlan'dan bağla."
+          }
+        }
+      }
+    },
+    "Fix with Claude didn't start": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude ile Düzelt başlamadı"
+          }
+        }
+      }
+    },
+    "Fix with Claude didn't start on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude ile Düzelt Mac'te başlamadı."
+          }
+        }
+      }
+    },
+    "Failed Deploys": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başarısız dağıtımlar"
+          }
+        }
+      }
+    },
+    "No projects": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proje yok"
+          }
+        }
+      }
+    },
+    "Other Projects": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer projeler"
+          }
+        }
+      }
+    },
+    "No servers yet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz sunucu yok"
+          }
+        }
+      }
+    },
+    "Read only. Deploy, restart and the terminals are on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salt okunur. Dağıtım, yeniden başlatma ve terminaller Mac'te."
+          }
+        }
+      }
+    },
+    "Never deployed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiç dağıtılmadı"
+          }
+        }
+      }
+    },
+    "None running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan yok"
+          }
+        }
+      }
+    },
+    "No Running Simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan simülatör yok"
+          }
+        }
+      }
+    },
+    "Running simulators and the ones a session used show up here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan simülatörler ve bir oturumun kullandıkları burada görünür."
+          }
+        }
+      }
+    },
+    "Read only. Boot, shut down and erase on the Mac (File › Simulators…).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salt okunur. Başlatma, kapatma ve silme Mac'te (Dosya › Simülatörler…)."
+          }
+        }
+      }
+    },
+    "Simulators Are Off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler kapalı"
+          }
+        }
+      }
+    },
+    "Turn them on in the Mac's Settings › Simulators.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te Ayarlar › Simülatörler'den aç."
+          }
+        }
+      }
+    },
+    "Shut down": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapalı"
+          }
+        }
+      }
+    },
+    "Connection Log": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı günlüğü"
+          }
+        }
+      }
+    },
+    "No Attempts Yet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz deneme yok"
+          }
+        }
+      }
+    },
+    "Connection attempts to the Mac show up here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'e bağlanma denemeleri burada görünür."
+          }
+        }
+      }
+    },
+    "The last %lld attempts, kept until the app quits.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son %lld deneme; uygulama kapanana kadar tutulur."
+          }
+        }
+      }
+    },
+    "Waiting %@ before trying again": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden denemeden önce %@ bekleniyor"
+          }
+        }
+      }
+    },
+    "Local network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel ağ"
+          }
+        }
+      }
+    },
+    "Refused": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reddedildi"
+          }
+        }
+      }
+    },
+    "Not needed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerek kalmadı"
+          }
+        }
+      }
+    },
+    "Fix with Claude is already starting for this deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu dağıtım için Claude ile Düzelt zaten başlatılıyor."
+          }
+        }
+      }
+    },
+    "The session couldn't be started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum başlatılamadı."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

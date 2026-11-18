@@ -178,6 +178,8 @@ struct RootView: View {
                         // A new identity per session: another session opened from a notification starts fresh.
                         if selection == ScreenTab.id {
                             ScreenDetailView(back: { selection = nil }, toggleList: { withAnimation { screenListOpen.toggle() } })
+                        } else if let selection, MacScreen.isScreen(selection) {
+                            MacScreen.view(for: selection)
                         } else if let selection {
                             SessionDetailView(sessionID: selection).id(selection)
                         } else {
@@ -239,6 +241,12 @@ struct RootView: View {
                 if sizeClass == .regular, sidebarMode != .full { withAnimation { hiddenOpen = false } }
                 return
             }
+            // The dashboard, servers or simulators: not a session.
+            if let id, MacScreen.isScreen(id) {
+                store.sceneSelected(sceneID, session: nil)
+                if sizeClass == .regular, sidebarMode != .full { withAnimation { hiddenOpen = false } }
+                return
+            }
             // Whatever set it (a restored window, an old notification), a session the Mac doesn't
             // have would show an empty "Session" screen: back to the list.
             if let id, let snapshot = store.snapshot, snapshot.session(id) == nil {
@@ -256,7 +264,7 @@ struct RootView: View {
         // A restored (or opened) session the Mac no longer has: back to the list instead of an
         // empty "Session" screen. A new session is in the snapshot before its id comes back.
         .onChange(of: store.snapshot?.sessions.map(\.id)) { _, ids in
-            guard let selection, selection != ScreenTab.id, let ids, !ids.contains(selection) else { return }
+            guard let selection, !MacScreen.isScreen(selection), let ids, !ids.contains(selection) else { return }
             self.selection = nil
             windowSession = nil
         }
@@ -354,7 +362,14 @@ struct SessionListView: View {
         List(selection: $selection) {
             ConnectionBanner()
             if !RootView.usesTabs { ScreenTabRow() }
-            if let usage = store.snapshot?.usage { UsageRow(usage: usage) }
+            // A Mac with the dashboard: its card (with the usage); else the usage meter.
+            if let dashboard = store.dashboard {
+                DashboardRow(dashboard: dashboard)
+            } else if let usage = store.snapshot?.usage {
+                UsageRow(usage: usage)
+            }
+            if let plan = store.serverPlan { ServersRow(plan: plan) }
+            if let simulators = store.simulators { SimulatorsRow(simulators: simulators) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
                store.snapshot?.supports(RemoteSnapshot.Feature.agentApproval) == true {
                 PendingAgentsSection(agents: pending)
@@ -529,6 +544,9 @@ struct SessionListView: View {
             switch screen {
             case "settings": showSettings = true
             case "files": showFiles = true
+            case "dashboard": selection = MacScreen.dashboard
+            case "servers": selection = MacScreen.servers
+            case "simulators": selection = MacScreen.simulators
             case "newsession": newSessionProject = nil; newSessionKind = .claude; showNewSession = true
             default: debugSheet = DebugSheet(id: screen)
             }
@@ -537,6 +555,7 @@ struct SessionListView: View {
             NavigationStack {
                 switch sheet.id {
                 case "addresses": AddressesView()
+                case "connectionlog": ConnectionLogView()
                 case "licenses": LicensesView()
                 case "homefiles": DirectoryView(projectID: RemoteFiles.homeID, path: "", title: store.fileProject(RemoteFiles.homeID)?.name ?? "Home")
                 default: Text(sheet.id)
@@ -1098,16 +1117,21 @@ struct SessionRow: View {
     let session: RemoteSession
     let showProject: Bool
 
-    private var quiet: Bool { session.state == .idle && !session.unseen }
+    private var program: RemoteProgramStatus? { store.program(of: session) }
+
+    /// Like the Mac: a seen "your turn" (or a terminal's seen "Finished") is quiet.
+    private var quiet: Bool { (session.state == .idle || program?.state == "finished") && !session.unseen }
 
     var body: some View {
+        let detail = store.detail(of: session)
         VStack(alignment: .leading, spacing: density == 0 ? 5 : density == 1 ? 3 : 1) {
             HStack(spacing: 8) {
                 // Like the Mac: a seen "your turn" is a quiet grey ring, only an unseen one is colored.
                 if quiet {
                     Circle().strokeBorder(Color.secondary.opacity(0.8), lineWidth: 1.5).frame(width: 9, height: 9)
                 } else {
-                    Circle().fill(SessionStyle.color(session.state, custom: customColors)).frame(width: 9, height: 9)
+                    Circle().fill(program.map { ProgramStyle.color($0, custom: customColors) } ?? SessionStyle.color(session.state, custom: customColors))
+                        .frame(width: 9, height: 9)
                 }
                 Text(session.name).listFont(.body, weight: .medium).lineLimit(1)
                 if showProject, !session.project.isEmpty, !session.name.hasPrefix(session.project) {
@@ -1123,10 +1147,10 @@ struct SessionRow: View {
                     }
                 }
             }
-            if !quiet || session.detail != nil {
+            if !quiet || detail != nil {
                 HStack(spacing: 6) {
-                    if !quiet { StatusPill(state: session.state) }
-                    if let detail = session.detail {
+                    if !quiet { StatusPill(state: session.state, program: program) }
+                    if let detail {
                         Text(MarkdownBlocks.shortToolNames(detail)).listFont(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                 }
@@ -1150,15 +1174,17 @@ struct SessionRow: View {
 
 struct StatusPill: View {
     let state: RemoteSession.State
+    /// A terminal's program status (`RemoteStore.program(of:)`): its badge instead of "Terminal".
+    var program: RemoteProgramStatus? = nil
     @AppStorage(SessionStyle.colorsKey) private var customColors = ""
 
     var body: some View {
-        Text(SessionStyle.label(state))
+        Text(program.map(ProgramStyle.label) ?? SessionStyle.label(state))
             .listFont(.caption2, weight: .semibold)
-            .foregroundStyle(SessionStyle.textColor(on: state, custom: customColors))
+            .foregroundStyle(program.map { ProgramStyle.textColor($0, custom: customColors) } ?? SessionStyle.textColor(on: state, custom: customColors))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(SessionStyle.color(state, custom: customColors), in: Capsule())
+            .background(program.map { ProgramStyle.color($0, custom: customColors) } ?? SessionStyle.color(state, custom: customColors), in: Capsule())
     }
 }
 
@@ -1414,6 +1440,7 @@ struct SettingsView: View {
                         }
                     }
                     if store.localNetworkDenied { LocalNetworkDeniedHint() }
+                    NavigationLink("Connection Log") { ConnectionLogView() }
                     if store.snapshot?.supports(RemoteSnapshot.Feature.agentDetails) == true {
                         NavigationLink("Agents") { AgentsScreen() }
                     }

@@ -121,6 +121,8 @@ targets:
         buildPhase: resources
       - Sources/ClaudeDeckCore/RemoteProtocol.swift
       - Sources/ClaudeDeckCore/RemoteTransport.swift
+      - Sources/ClaudeDeckCore/RemoteDashboard.swift
+      - Sources/ClaudeDeckCore/RemoteConnectionLog.swift
       - Sources/ClaudeDeckCore/RemoteScreen.swift
       - Sources/ClaudeDeckCore/TailscaleAddress.swift
       - Sources/ClaudeDeckCore/InAppTailscale.swift

@@ -371,8 +371,8 @@ struct SessionDetailView: View {
             if let session {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        StatusPill(state: session.state)
-                        if let detail = session.detail {
+                        StatusPill(state: session.state, program: store.program(of: session))
+                        if let detail = store.detail(of: session) {
                             Text(MarkdownBlocks.shortToolNames(detail)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                         }
                         Spacer(minLength: 0)

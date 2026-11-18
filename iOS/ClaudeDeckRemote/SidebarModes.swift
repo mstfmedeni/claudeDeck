@@ -33,7 +33,8 @@ struct SessionRail: View {
         let pinned = Set(store.projects.filter(\.pinned).map(\.name))
         let sessions = (store.snapshot?.sessions ?? [])
             // Only what's working or waiting for the user (and the one on screen).
-            .filter { $0.state == .running || $0.state == .starting || $0.needsAttention || $0.id == selection }
+            .filter { $0.state == .running || $0.state == .starting || $0.needsAttention || $0.id == selection
+                || store.program(of: $0)?.isWorking == true }
             .sorted { pinned.contains($0.project) && !pinned.contains($1.project) }
         VStack(spacing: 0) {
             Button { mode = .full } label: { Image(systemName: "sidebar.left").font(.system(size: 17)) }
@@ -53,7 +54,8 @@ struct SessionRail: View {
                     .help(Text("Mac Screen"))
                     .accessibilityLabel(Text("Mac Screen"))
                     ForEach(sessions) { session in
-                        let color = SessionStyle.color(session.state, custom: customColors)
+                        let color = store.program(of: session).map { ProgramStyle.color($0, custom: customColors) }
+                            ?? SessionStyle.color(session.state, custom: customColors)
                         Button { selection = session.id } label: {
                             ZStack(alignment: .bottomTrailing) {
                                 RoundedRectangle(cornerRadius: 8)

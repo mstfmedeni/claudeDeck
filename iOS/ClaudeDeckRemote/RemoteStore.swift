@@ -83,6 +83,12 @@ final class RemoteStore {
     private(set) var sendingFiles: Set<UUID> = []
     /// Why the last message with files didn't go in.
     var promptError: String?
+    /// The last connection attempts and waits (Settings › Connection Log), in memory only.
+    private(set) var connectionLog = RemoteConnectionLog()
+    /// Failed deploys whose Fix with Claude the Mac is starting (hosts with `Feature.serverPlanRepair`).
+    private(set) var repairingDeploys: Set<Int> = []
+    /// Why the Mac couldn't start Fix with Claude (shown, then cleared).
+    var serverPlanError: String?
 
     // Windows (iPad): each keeps its own selection; the store only routes "show this session".
     struct OpenRequest: Equatable {
@@ -451,6 +457,12 @@ final class RemoteStore {
                 self.terminalStates[id] = .ended
             }
         }
+        next.onAttemptEnded = { [weak self] address, route, startedAt, outcome in
+            MainActor.assumeIsolated { self?.connectionLog.attempt(address: address, route: route, startedAt: startedAt, outcome: outcome) }
+        }
+        next.onServerPlanRepairResult = { [weak self] deploymentID, sessionID, error in
+            MainActor.assumeIsolated { self?.serverPlanRepaired(deploymentID, sessionID: sessionID, error: error) }
+        }
         hostConnection = next
         next.start()
     }
@@ -493,6 +505,7 @@ final class RemoteStore {
             announcedConversations = []
             transfers.connectionLost()
             guard isActive else { connection = .paused; return }
+            connectionLog.backoff(wait: retryDelay, reason: reason)
             connection = .retrying(reason, at: Date().addingTimeInterval(retryDelay))
             scheduleRetry(after: retryDelay)
             retryDelay = min(retryDelay * 2, 30)
@@ -527,6 +540,8 @@ final class RemoteStore {
         for id in openEdits.keys where old?.session(id) != new.session(id) || old?.supports(RemoteSnapshot.Feature.edits) != true {
             requestEdits(id)
         }
+        // A terminal on screen whose command finished: seen, like the Mac's selected terminal.
+        for id in sinks.keys { markTerminalSeen(id) }
         answering = answering.filter { new.session($0)?.permissionStamp != nil || new.session($0)?.state == .needsAnswer }
         for session in fresh { LocalAlerts.post(session, hostName: new.hostName) }
     }
@@ -697,6 +712,48 @@ final class RemoteStore {
 
     /// Clears "your turn" without opening the session.
     func markSeen(_ id: UUID) { _ = send(.markSeen(sessionID: id)) }
+
+    /// A plain terminal's result (Program Status) is seen once its terminal is open here.
+    private func markTerminalSeen(_ id: UUID) {
+        guard let session = snapshot?.session(id), session.state == .shell, session.unseen,
+              program(of: session)?.isOutcome == true else { return }
+        markSeen(id)
+    }
+
+    /// A terminal's program status, from a Mac with `Feature.programStatus` (states this build knows).
+    func program(of session: RemoteSession) -> RemoteProgramStatus? {
+        guard session.state == .shell, let program = session.program, ProgramStyle.knows(program),
+              snapshot?.supports(RemoteSnapshot.Feature.programStatus) == true else { return nil }
+        return program
+    }
+
+    // MARK: ServerPlan
+
+    /// Fix with Claude for a failed deploy: the Mac starts the session (its own repair flow) and
+    /// the window that asked opens it.
+    func fixDeploy(_ deploymentID: Int, from scene: UUID? = nil) {
+        guard snapshot?.supports(RemoteSnapshot.Feature.serverPlanRepair) == true, !repairingDeploys.contains(deploymentID),
+              send(.serverPlanRepair(deploymentID: deploymentID)) else { return }
+        repairingDeploys.insert(deploymentID)
+        startingScene = scene
+        serverPlanError = nil
+        // The log is fetched first; a Mac that never answers frees the button.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(45))
+            self?.repairingDeploys.remove(deploymentID)
+        }
+    }
+
+    private func serverPlanRepaired(_ deploymentID: Int, sessionID: UUID?, error: String?) {
+        repairingDeploys.remove(deploymentID)
+        if let sessionID {
+            open(sessionID, in: startingScene)
+        } else {
+            serverPlanError = error ?? String(localized: "Fix with Claude didn't start on the Mac.")
+        }
+    }
+
+    func clearConnectionLog() { connectionLog.removeAll() }
 
     func resumeSession(_ id: UUID, from scene: UUID? = nil) {
         guard send(.resumeSession(sessionID: id)) else { return }
@@ -922,6 +979,7 @@ final class RemoteStore {
     func attachTerminal(_ id: UUID, sink: RemoteTerminalSink) {
         // Opening again gives every view of it a fresh screen, the new one included.
         sinks[id, default: []].append(sink)
+        markTerminalSeen(id)
         if terminalStates[id] != .live { terminalStates[id] = .waiting }
         hostConnection?.openTerminal(id)
         if let grid = fitGrids[id] { hostConnection?.send(.terminalFit(sessionID: id, cols: grid.0, rows: grid.1)) }
@@ -997,8 +1055,14 @@ enum LocalAlerts {
         let content = UNMutableNotificationContent()
         content.title = session.project.isEmpty || session.name.hasPrefix(session.project) ? session.name : "\(session.name) — \(session.project)"
         content.subtitle = hostName
-        content.body = SessionStyle.label(session.state) + (session.detail.map { ": \($0)" } ?? "")
-        content.sound = session.state.isBlocked ? .default : nil
+        // A terminal's program status: its detail starts with the badge ("Failed (exit 1) · …").
+        let program = session.state == .shell ? session.program.flatMap { ProgramStyle.knows($0) ? $0 : nil } : nil
+        if let program {
+            content.body = session.detail ?? ProgramStyle.label(program)
+        } else {
+            content.body = SessionStyle.label(session.state) + (session.detail.map { ": \($0)" } ?? "")
+        }
+        content.sound = session.state.isBlocked || program?.isBlocked == true ? .default : nil
         content.userInfo = ["sessionID": session.id.uuidString]
         if let stamp = session.permissionStamp {
             content.categoryIdentifier = permissionCategory

@@ -5,6 +5,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
+///   fix.txt (a ServerPlan deploy id: Fix with Claude) · show.txt also takes dashboard / servers / simulators / connectionlog ·
 ///   track.txt (seconds: the main run loop stays in tracking mode, as while a finger is on the screen) ·
 ///   homefiles.txt (a folder in the Mac's home) · addresses.txt (one per line; empty: automatic) · pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
@@ -92,6 +93,10 @@ final class DebugHooks {
                 try? FileManager.default.removeItem(at: url)
                 store.agentRegistration(id, approve: file.hasSuffix(".agentapprove"), url: lines.first.flatMap { $0.isEmpty ? nil : $0 },
                                         authHeader: lines.count > 1 && !lines[1].isEmpty ? lines[1] : nil)
+            } else if file == "fix.txt", let text = try? String(contentsOf: url, encoding: .utf8),
+                      let id = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                try? FileManager.default.removeItem(at: url)
+                store.fixDeploy(id)
             } else if file == "show.txt" {
                 // settings · files · newsession · addresses · licenses · homefiles
                 let screen = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -243,8 +248,20 @@ final class DebugHooks {
             lines.append("  activity \(details.activity.count): \(details.activity.prefix(3).map { "\($0.agent): \($0.summary)" })")
         }
         for session in store.snapshot?.sessions ?? [] {
-            lines.append("  \(session.id.uuidString) \(session.name) \(session.state.rawValue) stamp=\(session.permissionStamp.map { String($0) } ?? "-") unseen=\(session.unseen)")
+            lines.append("  \(session.id.uuidString) \(session.name) \(session.state.rawValue) stamp=\(session.permissionStamp.map { String($0) } ?? "-") unseen=\(session.unseen)"
+                + (store.program(of: session).map { " program=\($0.state)\($0.exitCode.map { ":\($0)" } ?? "")" } ?? ""))
         }
+        if let dashboard = store.dashboard {
+            lines.append("dashboard: working=\(dashboard.working) waiting=\(dashboard.waiting) yourTurn=\(dashboard.yourTurn) lines=\(dashboard.linesAdded.map(String.init) ?? "-") "
+                + "list=\(dashboard.waitingList.map { "\($0.name):\($0.reason)" }) 5h=\(dashboard.fiveHour.map { "\($0.usedPercent)" } ?? "-") week=\(dashboard.week.map { "\($0.usedPercent)" } ?? "-")")
+        }
+        if let plan = store.serverPlan {
+            lines.append("serverPlan: servers=\(plan.servers.map { "\($0.name):\($0.status)" }) projects=\(plan.projects?.count ?? -1) failed=\(plan.deploys.filter { $0.status == "failed" }.map(\.id)) repairing=\(store.repairingDeploys.sorted()) error=\(store.serverPlanError ?? "-")")
+        }
+        if let simulators = store.simulators {
+            lines.append("simulators: \(simulators.map { "\($0.name):\($0.state):\($0.sessionIDs.count)" })")
+        }
+        lines.append("connectionLog: \(store.connectionLog.entries.count)")
         for (id, conversation) in store.conversations {
             let questions = conversation.entries.filter { $0.questions != nil }.map { "\($0.id.suffix(6)):\($0.questions?.count ?? 0)q:\($0.result == nil ? "open" : "done")" }
             let pending = conversation.entries.filter { $0.kind == .tool && $0.result == nil }.map { String($0.id.suffix(8)) }
