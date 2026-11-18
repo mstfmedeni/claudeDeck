@@ -668,6 +668,12 @@ final class RemoteController {
             )
             remote.queue = session.queue.isEmpty ? nil : session.queue
             remote.notesRevision = model.agentNotesRevision[session.id]
+            if let program = status.display.program {
+                remote.program = RemoteProgramStatus(state: program.state.rawValue, exitCode: program.exitCode, kind: program.kind?.rawValue)
+                // Older remotes only show "Terminal": the detail says what it's doing.
+                remote.detail = ([StatusStyle.programLabel(program)] + [status.detail].compactMap { $0 })
+                    .joined(separator: " · ").prefix(300).description
+            }
             return remote
         }
         return RemoteSnapshot(hostName: hostName, sessions: sessions)
@@ -933,7 +939,7 @@ final class RemoteController {
         guard let model, let session = model.deck.session(id), model.terminals.isRunning(id) else {
             return String(localized: "This session isn't running on the other Mac.")
         }
-        guard !model.status(of: id).display.isBlocked else { return String(localized: "Answer the prompt above first") }
+        guard session.kind != .claude || !model.status(of: id).display.isBlocked else { return String(localized: "Answer the prompt above first") }
         let saved: (images: [String], others: [String])
         do { saved = try saveUploads(files) } catch {
             return String(localized: "Couldn't save the files on the other Mac: \(error.localizedDescription)")
@@ -1567,12 +1573,23 @@ final class RemoteController {
     }
 }
 
+extension RemoteSession {
+    /// The host's sidebar state, with a terminal's program status when the host sends one.
+    var displayState: DisplayState {
+        guard state == .shell, let program, let programState = ProgramStatus.State(rawValue: program.state) else { return state.display }
+        return .program(ProgramBadge(state: programState, exitCode: program.exitCode,
+                                     kind: program.kind.flatMap(ProgramStatusReport.Kind.init(rawValue:))))
+    }
+}
+
 extension RemoteSession.State {
     init?(_ display: DisplayState) {
         switch display {
         case .notStarted: self = .notStarted
         case .starting: self = .starting
-        case .shell: self = .shell
+        // Still a terminal on the wire (older remotes decide terminal vs conversation by it);
+        // the program status goes in `RemoteSession.program`.
+        case .shell, .program: self = .shell
         case .activity(let activity):
             switch activity {
             case .running: self = .running

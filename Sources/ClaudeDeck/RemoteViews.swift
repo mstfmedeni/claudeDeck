@@ -542,7 +542,7 @@ struct RemoteSessionRow: View {
     @State private var confirmStop = false
 
     var body: some View {
-        let display = session.state.display
+        let display = session.displayState
         HStack(alignment: .top, spacing: 8) {
             StatusDot(display: display, unseen: session.unseen)
                 .padding(.top, 2)

@@ -60,6 +60,14 @@ struct SettingsView: View {
                 Text("A session that stopped on the Claude plan's usage limit gets this message once, when the limit resets.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Terminals") {
+                Toggle("Show Program Status in terminals", isOn: Binding(
+                    get: { model.deck.settings.terminalProgramStatus },
+                    set: { model.setTerminalProgramStatusDefault($0) }
+                ))
+                Text("Plain terminals show whether their command is running, needs input, finished or failed, and land in \"Waiting for you\" when they need you. Programs can report it themselves (OSC 7501); zsh and bash also mark each command (applies when a terminal starts). Each terminal can override this from its menu.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Editor") {
                 Toggle("Open text files in the built-in editor (double-click in the Files panel)", isOn: setting(\.openFilesInBuiltInEditor))
                 Stepper(value: setting(\.editorFontSize), in: DeckSettings.fontSizeRange, step: 1) {

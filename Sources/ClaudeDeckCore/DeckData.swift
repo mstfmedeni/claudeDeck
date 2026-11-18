@@ -70,6 +70,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var linkedWorkItem: LinkedWorkItem?
     /// Claude sessions: messages waiting for "your turn", sent one per turn, oldest first.
     public var queue: [QueuedPrompt] = []
+    /// Shell sessions: show what the program in it is doing (OSC 7501 / shell integration, see
+    /// ProgramStatus.swift). nil follows `DeckSettings.terminalProgramStatus`.
+    public var showProgramStatus: Bool?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -108,6 +111,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         workingDirectory = try c.decodeIfPresent(String.self, forKey: .workingDirectory)
         linkedWorkItem = try? c.decodeIfPresent(LinkedWorkItem.self, forKey: .linkedWorkItem)
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
+        showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
     }
 }
 
@@ -186,6 +190,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
+    /// Plain terminals show their program's status (working, needs input, finished, failed) unless
+    /// the terminal says otherwise (`DeckSession.showProgramStatus`). Off: terminals are just terminals.
+    public var terminalProgramStatus = false
 
     public init() {}
 
@@ -223,6 +230,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agentAPIEnabled = try c.decodeIfPresent(Bool.self, forKey: .agentAPIEnabled) ?? d.agentAPIEnabled
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
+        terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
     }
 }
 
@@ -379,6 +387,12 @@ public struct DeckData: Codable, Sendable, Equatable {
         session.startupCommand = command
         session.autoStart = true
         return session
+    }
+
+    /// Whether a plain terminal shows its program's status: its own switch, else the global default.
+    public func showsProgramStatus(_ id: UUID) -> Bool {
+        guard let session = session(id), session.kind == .shell else { return false }
+        return session.showProgramStatus ?? settings.terminalProgramStatus
     }
 
     /// Sessions to start when the app launches. Terminals with a startup command follow only their

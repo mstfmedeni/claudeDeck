@@ -143,7 +143,7 @@ extension AppModel {
         switch display {
         case .notStarted: "stopped"
         case .starting: "starting"
-        case .shell: "shell"
+        case .shell, .program: "shell" // agents see a terminal as before
         case .activity(let activity):
             switch activity {
             case .running: "running"

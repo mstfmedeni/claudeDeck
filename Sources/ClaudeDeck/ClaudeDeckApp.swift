@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard systemIsPoweringOff || EditorRegistry.confirmQuit() else { return .terminateCancel }
         let running = model.deck.sessions.filter { model.terminals.isRunning($0.id) }
         guard model.deck.settings.confirmQuit, !systemIsPoweringOff, !running.isEmpty else { return .terminateNow }
-        let working = running.filter { model.status(of: $0.id).display.isRunning || model.status(of: $0.id).display.isBlocked }.count
+        let working = running.filter { $0.kind == .claude && (model.status(of: $0.id).display.isRunning || model.status(of: $0.id).display.isBlocked) }.count
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = String(localized: "Quit ClaudeDeck?")

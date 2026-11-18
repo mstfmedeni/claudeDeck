@@ -47,13 +47,17 @@ final class WidgetBridge {
         let counts = model.counts
         let items: [WidgetSnapshot.Item] = model.attentionSessions.prefix(4).compactMap { session in
             let status = model.status(of: session.id)
-            guard let activity = status.display.activityValue, let state = WidgetSnapshot.State(activity) else { return nil }
+            guard let activity = status.display.activityValue ?? status.display.programActivity,
+                  let state = WidgetSnapshot.State(activity) else { return nil }
+            // A terminal says what happened ("Failed (exit 1)") before its message.
+            let detail = status.display.program.map { ([StatusStyle.programLabel($0)] + [status.detail].compactMap { $0 }).joined(separator: " · ") }
+                ?? status.detail
             return WidgetSnapshot.Item(
                 id: session.id,
                 name: session.name,
                 project: model.deck.project(session.projectID)?.name ?? "",
                 state: state,
-                detail: status.detail.map { String($0.prefix(120)) },
+                detail: detail.map { String($0.prefix(120)) },
                 updatedAt: status.updatedAt
             )
         }

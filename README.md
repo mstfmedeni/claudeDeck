@@ -204,7 +204,8 @@ Billing, usage limits and sign-in stay entirely with Claude Code. ClaudeDeck doe
   settings take effect.
 - ✏️ **Pencil (pen.dev):** sessions ClaudeDeck starts can use Pencil's design tools, and `.pen` files open in Pencil.
 - 💻 **Plain terminals:** a shell in the project folder, optionally with a startup command such as
-  `yarn start` that runs when the app launches.
+  `yarn start` that runs when the app launches. Optional Program Status shows whether its command is
+  running, needs input, finished or failed (OSC 7501 and shell integration).
 - ☁️ **iCloud sync (optional):** your project list and groups stay in sync across your Macs.
 - 🎨 Light and dark themes, terminal zoom (⌘+ / ⌘- / ⌘0), and ⌘V to paste images into Claude.
 - ⌨️ Terminal keys like Terminal.app: ⌘F find (⌘G next), ⌘K clear, ⌘⌫ delete to line start.
@@ -303,10 +304,49 @@ ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same v
 - Open one with the terminal icon on a project header, context menu › New Terminal, or ⌥⌘T. It starts
   a login shell in the project folder.
   - Terminals show a blue "Terminal" tag and the current terminal title.
-  - They don't count toward status or notifications.
+  - They don't count toward status or notifications, unless Program Status is on (below).
 - **Startup command** (e.g. `yarn start`): typed and run every time the terminal opens.
   - It stays in history, and Ctrl+C doesn't close the terminal.
 - **Start when the app launches:** on by default for terminals with a startup command.
+
+#### Program Status (optional)
+Plain terminals can show what their program is doing, like Claude sessions do: **Running**,
+**Needs input**, **Finished** or **Failed (exit N)**. A terminal that needs you, or whose command
+finished while you weren't looking, lands in "Waiting for you", counts in the menu bar and the Dock
+badge, sends a notification, and shows up on the phone.
+
+- **Off by default.** Turn it on for every terminal in Settings › Terminals › "Show Program Status in
+  terminals", or for one terminal from its menu › Show Program Status. Off, a terminal is exactly as
+  before: its output isn't looked at and nothing is added to its shell.
+- **Programs can report it themselves** with OSC 7501, the
+  [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status):
+  `ESC ] 7501 ; state=working:msg=<base64> ESC \` (states `idle`, `working`, `done`, `blocked`,
+  `error`, `clear`; `kind=permission|question|auth` with `blocked`; `id` for child records).
+  - A blocked record wins, then a working one; `done` / `error` show as Finished / Failed; `idle` shows
+    the plain Terminal tag.
+  - Like the spec says, a new prompt or the process ending drops `working` and `blocked`; results stay.
+  - ClaudeDeck answers the `ESC ] 7501 ; ? ST` query. `progress` is read but not shown.
+  ```sh
+  printf '\033]7501;state=blocked:kind=question:msg=%s\033\\' "$(printf 'Deploy to prod?' | base64)"
+  ```
+- **Shell integration** covers everything else: in zsh and bash, ClaudeDeck marks each command with
+  OSC 133 (`C` when it runs, `D;<exit code>` when it ends, `A` at the prompt), so a build or a test run
+  goes Running → Finished, or Failed with its exit code. Shells that emit OSC 133 themselves work too.
+  - Your dotfiles aren't changed. zsh starts with `ZDOTDIR` pointing at a small folder of ClaudeDeck's
+    whose `.zshenv` puts your `ZDOTDIR` back, loads your `.zshenv` and adds two hooks; zsh then reads
+    your `.zprofile`, `.zshrc` and `.zlogin` as usual. bash starts with `--init-file`, which reads the
+    files a login bash would (`/etc/profile`, then `~/.bash_profile`, `~/.bash_login` or `~/.profile`)
+    and adds the hooks; an existing DEBUG trap (bash-preexec) is left alone.
+  - It applies when the terminal starts: after turning Program Status on, Restart Terminal. OSC 7501
+    works at once.
+  - A command stopped with Ctrl+C (exit 130) shows nothing; an empty line isn't a command.
+- **No "needs input" guessing.** Only a program can say it waits for input (OSC 7501 `blocked`): a
+  quiet process could be a server waiting for requests or a prompt waiting for you, and telling them
+  apart would mean polling every terminal's process, which costs CPU while idle.
+- The status changes only when the state does (a new message at most once a second), never for each
+  piece of output.
+- **Phone and other Macs:** the terminal stays a terminal; its status comes as an extra field (older
+  versions ignore it) and in the detail text, so older phones show "Failed (exit 1) · …" under it.
 
 ### Permissions and notifications
 - **Notifications** for permission prompts, questions and finished turns, with the tool and its
@@ -549,6 +589,7 @@ ClaudeDeck on your Mac over Tailscale (Settings › Remote) and needs the same v
 - Launch at login (the app must be in `/Applications`).
 - Resume sessions on launch, auto /compact and its token threshold.
 - Notifications and Dock bounce, theme, and keeping the app in the menu bar when the window is closed.
+- Terminals: Program Status for plain terminals (off by default).
 - Editor: built-in editor on or off, separate windows instead of tabs, font size, wrap lines.
 - Pencil: connect Claude sessions to Pencil, with its status.
 - iCloud sync (below).
