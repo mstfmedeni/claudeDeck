@@ -58,6 +58,10 @@ final class AppModel {
     /// Each Claude session's own token for `claudedeck-ask` (AgentAsk), made when it starts.
     @ObservationIgnored var askTokens: [UUID: String] = [:]
     @ObservationIgnored var askLimiter = AgentAskLimiter()
+    /// `claudedeck` (AppModel+SessionCLI): each session's token and scopes, and what `wait` goes by.
+    @ObservationIgnored var cli = SessionCLIBook()
+    /// The command asked for a notification (AttentionCenter shows it).
+    @ObservationIgnored var onSessionNotice: ((UUID, String) -> Void)?
     @ObservationIgnored var agentPromptSeen: [UUID: Date] = [:]
     @ObservationIgnored var agentTypedPrompts: [UUID: [String]] = [:]
     /// A note was added, answered or removed (remotes refresh the conversation).
@@ -147,7 +151,10 @@ final class AppModel {
     init(store: DeckDataStore = .default()) {
         self.store = store
         self.deck = store.load()
-        terminals.onExit = { [weak self] id, _ in self?.terminalExited(id) }
+        terminals.onExit = { [weak self] id, status in
+            if let status { self?.cli.processExits[id] = SessionCLI.exitCode(waitStatus: status) }
+            self?.terminalExited(id)
+        }
         terminals.onUserInput = { [weak self] id, data in self?.userTyped(id, data) }
         terminals.fontSize = deck.settings.terminalFontSize
         terminals.onZoom = { [weak self] step in self?.zoomTerminals(by: Double(step)) }
@@ -180,6 +187,7 @@ final class AppModel {
         remote.start(model: self) // no-op unless remote mode is on in Settings
         agentAPI.start(model: self) // no-op unless the agents' API is on
         installAskScript()
+        installCLIScript() // only while the command-line tool is on
         loadAgentNotes()
         usage.start()
         trackMenuBarCounts()
@@ -485,7 +493,10 @@ final class AppModel {
         guard let session = deck.session(id), let project = deck.project(session.projectID) else { return }
         if terminals.isRunning(id) { return }
         if session.kind == .shell {
-            terminals.startShell(id: id, cwd: project.path)
+            // A terminal `claudedeck open` started elsewhere keeps its folder.
+            let folder = session.workingDirectory.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+            cli.restarted(id)
+            terminals.startShell(id: id, cwd: folder ?? project.path, environment: cliEnvironment(for: id))
             if let command = session.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty {
                 // Typed like the user would once the shell had a moment to load its rc files
                 // (the pty buffers it meanwhile), so it lands in history and Ctrl+C keeps the shell.
@@ -521,7 +532,7 @@ final class AppModel {
         let pencil = PencilApp.launchArgs(enabled: deck.settings.pencilMCP)
         if pencil.isEmpty { pencilSessions.remove(id) } else { pencilSessions.insert(id) }
         terminals.start(id: id, cwd: worktreeDir ?? project.path, claudePath: claudePath, args: pencil + args,
-                        environment: askEnvironment(for: id))
+                        environment: askEnvironment(for: id).merging(cliEnvironment(for: id)) { $1 })
         deck.updateSession(id) { $0.isOpen = true }
         lastNotified[id] = nil
         scheduleSave()
@@ -730,6 +741,7 @@ final class AppModel {
         pendingCompact.remove(id)
         pendingContinue.remove(id)
         usageLimitHits[id] = nil
+        cli.forget(id)
         scheduleSave()
         onCountsChanged?()
     }

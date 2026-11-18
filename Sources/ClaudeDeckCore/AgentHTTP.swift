@@ -98,12 +98,16 @@ public struct AgentHTTPResponse: Equatable, Sendable {
     public var body: Data
     public var contentType: String
     public var authenticate: Bool
+    /// Extra headers (`claudedeck`'s exit code); none on the older routes.
+    public var headers: [String: String]
 
-    public init(status: Int, body: Data, contentType: String = "application/json; charset=utf-8", authenticate: Bool = false) {
+    public init(status: Int, body: Data, contentType: String = "application/json; charset=utf-8", authenticate: Bool = false,
+                headers: [String: String] = [:]) {
         self.status = status
         self.body = body
         self.contentType = contentType
         self.authenticate = authenticate
+        self.headers = headers
     }
 
     public static func json<T: Encodable>(_ status: Int, _ value: T) -> AgentHTTPResponse {
@@ -121,6 +125,7 @@ public struct AgentHTTPResponse: Equatable, Sendable {
         head += "Content-Length: \(body.count)\r\n"
         head += "Connection: close\r\n"
         if authenticate { head += "WWW-Authenticate: Bearer\r\n" }
+        for (name, value) in headers.sorted(by: { $0.key < $1.key }) { head += "\(name): \(value)\r\n" }
         head += "\r\n"
         var data = Data(head.utf8)
         data.append(body)

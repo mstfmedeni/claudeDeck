@@ -46,6 +46,20 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         }
         model.onCountsChanged = { [weak self] in self?.updateBadge() }
         model.onAgentRegistered = { [weak self] record in self?.agentRegistered(record) }
+        model.onSessionNotice = { [weak self] id, text in self?.sessionNotice(id, text) }
+    }
+
+    /// `claudedeck notify` / `ask` from a session's terminal (the caller checked the setting).
+    private func sessionNotice(_ sessionID: UUID, _ text: String) {
+        guard let center, let session = model.deck.session(sessionID) else { return }
+        let project = model.deck.project(session.projectID)?.name ?? ""
+        let content = UNMutableNotificationContent()
+        content.title = session.name == project || project.isEmpty ? session.name : "\(session.name) — \(project)"
+        content.body = text
+        content.sound = .default
+        content.userInfo = ["sessionID": sessionID.uuidString]
+        content.threadIdentifier = sessionID.uuidString
+        center.add(UNNotificationRequest(identifier: "cli-\(UUID().uuidString)", content: content, trigger: nil))
     }
 
     /// An agent signed itself up: it waits for approval (shown whatever the notification setting,

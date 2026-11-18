@@ -70,6 +70,8 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var linkedWorkItem: LinkedWorkItem?
     /// Claude sessions: messages waiting for "your turn", sent one per turn, oldest first.
     public var queue: [QueuedPrompt] = []
+    /// Terminals a session opened with `claudedeck open`: that session (it may type into them).
+    public var openedBy: UUID?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -108,6 +110,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         workingDirectory = try c.decodeIfPresent(String.self, forKey: .workingDirectory)
         linkedWorkItem = try? c.decodeIfPresent(LinkedWorkItem.self, forKey: .linkedWorkItem)
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
+        openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
     }
 }
 
@@ -183,6 +186,11 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// The agents' local API (127.0.0.1 only; the token is in the keychain).
     public var agentAPIEnabled = false
     public var agentAPIPort = 47647
+    /// `claudedeck` in every terminal ClaudeDeck starts (SessionCLI), through the local API. Off:
+    /// no environment for it and its routes answer 404.
+    public var sessionCLIEnabled = false
+    /// `claudedeck send` may type into another Claude session; off, the text becomes a note.
+    public var sessionsMayTypeIntoClaude = false
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
@@ -222,6 +230,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         agents = (try? c.decodeIfPresent([AgentProfile].self, forKey: .agents)) ?? d.agents
         agentAPIEnabled = try c.decodeIfPresent(Bool.self, forKey: .agentAPIEnabled) ?? d.agentAPIEnabled
         agentAPIPort = try c.decodeIfPresent(Int.self, forKey: .agentAPIPort) ?? d.agentAPIPort
+        sessionCLIEnabled = try c.decodeIfPresent(Bool.self, forKey: .sessionCLIEnabled) ?? d.sessionCLIEnabled
+        sessionsMayTypeIntoClaude = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayTypeIntoClaude) ?? d.sessionsMayTypeIntoClaude
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
     }
 }

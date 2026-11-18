@@ -143,6 +143,104 @@ claudedeck-ask --list                          # which ones those are
   project's `CLAUDE.md`, for example: *"To get a second opinion, run `"$CLAUDEDECK_ASK" "Grok Bot"
   "<question>"`; the answer goes to the user."*
 
+## Command-line tool for sessions
+
+`claudedeck` lets a Claude session (or a terminal) work with ClaudeDeck from its own shell: open a
+terminal beside itself for a dev server or a test run, type into it, read its screen, wait for it,
+and notify or ask you. Turn it on in **Settings › Agents › Command-line tool for sessions** (off by
+default; it needs the **Local API** on). Sessions and terminals started after that get it; restart
+running ones.
+
+```sh
+claudedeck list [--json]
+claudedeck open [--split right|left|down|none] [--cwd DIR] [--name NAME] [--json] [--] [COMMAND...]
+claudedeck send ID TEXT [--enter] [--json]
+claudedeck capture ID [--lines N] [--trim] [--json]
+claudedeck wait ID [--timeout SECONDS] [--json]
+claudedeck notify TEXT
+claudedeck ask [--agent NAME] QUESTION
+claudedeck skill setup [--user|--project] [--force]
+```
+
+- `ID` is an id from `list`, a unique prefix of one (at least 4 characters; `list` shows 8), or `self`.
+- **list:** every session and terminal: id, kind (`claude`/`terminal`), state, pane (1 = leftmost,
+  `-` when not on screen) and whose it is (`self`, `mine` for terminals it opened). A terminal's
+  state is `running` (a command has the terminal), `idle` (at its prompt), `failed` (its first
+  command exited non-zero) or `stopped`; a Claude session's is as in `/v1/projects`.
+- **open:** a plain terminal in the session's project, in the session's folder (or `--cwd`), running
+  `COMMAND`; prints the new id. One argument is a shell command line (`"npm run dev && open …"`),
+  several are run as given. The terminal goes in a pane beside the caller when the caller is on
+  screen and there's room (at most 4 panes; `down` is placed like `right`, since panes sit side by
+  side; `none` never shows it). Your selection stays where it was. Otherwise it runs in the sidebar
+  only (`"shown": false`). It's an ordinary terminal afterwards: its command is its startup command
+  (run again when you restart it, never on launch), and the shell stays when the command ends.
+- **send:** types `TEXT` (`-` reads stdin); `--enter` presses Return after it. See the rule below.
+- **capture:** the screen and up to 1000 lines of scrollback (or `--lines N`, the last N), trailing
+  spaces cut; `--trim` also drops blank lines at the top and bottom.
+- **wait:** until the terminal's command finishes, or a Claude session is idle or needs you. A
+  command `open` started reports its exit code. After `send --enter` into a terminal, it waits until
+  no other process has the terminal, the shell is back in its line editor (zsh, bash; at most 30 s
+  for shells without one, like `sh`) and the output has settled; a typed command's exit code isn't
+  known (`finished`). After a send to a Claude session, only a newer hook state counts. No
+  `--timeout` (or `0`): no limit.
+- **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
+  session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
+  `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
+- **skill setup:** writes a Claude Code skill (`SKILL.md`) explaining the command to
+  `~/.claude/skills/claudedeck/` (`--user`, the default; `$CLAUDE_CONFIG_DIR` if set) or the
+  repository's `.claude/skills/claudedeck/` (`--project`). The last line holds a hash of what
+  ClaudeDeck wrote; a file changed by hand (or written by you) is left alone unless `--force`.
+
+**Exit codes** (stable):
+
+| Code | Meaning |
+|---|---|
+| 0 | OK; `wait`: the command exited 0, the Claude session is idle, or the target isn't running |
+| 1 | `wait`: the command failed (its code is printed); otherwise an error (API off, not running…) |
+| 2 | Bad arguments, or not inside a ClaudeDeck session |
+| 3 | `wait`: the Claude session needs you (a permission or a question); `send`: one is on screen |
+| 4 | Refused: the session's token doesn't allow it, the tool is off, or too many requests |
+| 5 | Unknown id |
+| 124 | `wait` timed out; still running |
+
+**Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
+token, and the API's token isn't accepted here). Its scopes:
+
+| Terminal | list | open | send | capture | wait | notify | ask |
+|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | |
+
+`send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
+session gets the text **as a note** unless **May type into Claude: sessions may send text to other
+Claude sessions** is on (off by default); then it's typed like `/v1/sessions/{id}/prompt` would
+(`409` while a permission or question is on screen). Anyone else's terminal, and the caller itself,
+are refused. The output starts with what happened: `terminal:`, `claude:` or `note:`.
+
+**Environment.** While the setting is on, every terminal ClaudeDeck starts gets `CLAUDEDECK_SESSION`
+(its session id; a pane shows one session, so there's no separate pane id), `CLAUDEDECK_CLI_TOKEN`,
+`CLAUDEDECK_CLI_URL` (`http://127.0.0.1:<port>/v1/cli`) and `CLAUDEDECK_CLI` (the command's absolute
+path; its folder is also put first on `PATH`). The command is a shell script written to
+Application Support/ClaudeDeck/bin/claudedeck; it holds no secret.
+
+**Routes.** The command is a thin client of these (form-encoded bodies, as `curl --data-urlencode`
+sends; `format=json` for JSON, otherwise text). Every answer has `X-ClaudeDeck-Exit` with the exit code.
+Off, they answer `404 not_found`.
+
+| Method | Path | Parameters | Scope |
+|---|---|---|---|
+| GET | `/v1/cli/sessions` | | list |
+| POST | `/v1/cli/terminals` | `command, cwd, name, split` | open |
+| POST | `/v1/cli/sessions/{ref}/send` | `text, enter=1` | send |
+| GET | `/v1/cli/sessions/{ref}/screen` | `lines, trim=1` | capture |
+| GET | `/v1/cli/sessions/{ref}/wait` | `timeout` (seconds, at most 25 per request) | wait |
+| POST | `/v1/cli/notify` | `text` | notify |
+| POST | `/v1/cli/ask` | `question, agent` | ask |
+
+Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
+`cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
+`409 not_running` / `blocked` / `not_started`, `429 too_many`. The routes for agents above are unchanged.
+
 ## Agents signing themselves up
 
 A bot can add itself instead of being typed into Settings: it registers through the local API

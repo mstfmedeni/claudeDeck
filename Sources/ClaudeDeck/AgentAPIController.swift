@@ -67,6 +67,12 @@ final class AgentAPIController {
             guard let model else { return .error(503, "unavailable") }
             return model.handleClaudeAsk(request)
         }
+        // `claudedeck` in a session's terminal: its own token too. Off, as if the routes didn't exist.
+        if SessionCLI.handles(request.path) {
+            guard let model else { return .error(503, "unavailable") }
+            guard model.deck.settings.sessionCLIEnabled else { return .error(404, "not_found") }
+            return await model.handleSessionCLI(request)
+        }
         let route: AgentRoute
         switch AgentRoute.resolve(request, token: token) {
         case .failure(let refusal): return refusal.response
