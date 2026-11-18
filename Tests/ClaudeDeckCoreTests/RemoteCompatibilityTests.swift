@@ -89,5 +89,9 @@ import Testing
         #expect(!deck.settings.sessionsMayTypeIntoClaude)
         #expect(deck.settings.serverPlanURL.isEmpty)
         #expect(deck.deployRepairRequests.isEmpty)
+        // Persistent sessions stay off, and nothing runs in the session helper.
+        #expect(!deck.settings.keepSessionsRunning)
+        #expect(!deck.settings.retireSessionHelper)
+        #expect(session.helperHost == nil)
     }
 }
