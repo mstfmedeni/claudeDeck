@@ -376,8 +376,15 @@ final class ServerPlanController {
         return DeployRepair.project(forRepoPath: project.repoPath, in: model.deck.projects)
     }
 
+    /// Terminals: the token's scope and the panel's feature flag (it only sends `terminal` when the
+    /// user also has the servers.ssh permission).
+    var canOpenTerminal: Bool {
+        guard let me else { return false }
+        return me.allows(.terminal) && me.has(feature: ServerPlanContract.Feature.terminal)
+    }
+
     func canRunClaude(on serverID: Int) -> Bool {
-        guard let me, me.allows(.terminal), me.has(feature: ServerPlanContract.Feature.terminalClaude) else { return false }
+        guard canOpenTerminal, me?.has(feature: ServerPlanContract.Feature.terminalClaude) == true else { return false }
         return capabilities[serverID]?.claude == true
     }
 

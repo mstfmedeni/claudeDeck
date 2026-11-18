@@ -246,8 +246,21 @@ public struct ServerPlanClient: Sendable {
         "/servers/\(serverID)/containers/\(pathComponent(container))/logs"
     }
 
+    /// Docker container names the panel accepts (anything else is a 400 there): checked before a
+    /// container URL is built.
+    public static func isValidContainerName(_ name: String) -> Bool {
+        name.wholeMatch(of: /[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}/) != nil
+    }
+
+    static func checkContainer(_ name: String) throws {
+        guard isValidContainerName(name) else {
+            throw ServerPlanError.http(status: 400, code: "bad_request", message: String(localized: "Not a valid container name: \(name)"))
+        }
+    }
+
     /// The last `tail` lines of a container's log (text/plain).
     public func containerLogs(serverID: Int, container: String, tail: Int = 200) async throws -> String {
+        try Self.checkContainer(container)
         let request = try request(Self.logsPath(serverID: serverID, container: container),
                                   query: [URLQueryItem(name: "tail", value: String(tail))], accept: "text/plain")
         let (data, _) = try await send(request)
@@ -259,6 +272,7 @@ public struct ServerPlanClient: Sendable {
     /// Asks what a destructive action would do, without doing it: the request carries no
     /// `confirm`, so the server checks auth and permission and answers 428 with a summary.
     public func preview(_ action: ServerPlanAction) async throws -> ServerPlanActionPreview {
+        if case .container(_, _, let name, _) = action { try Self.checkContainer(name) }
         do {
             _ = try await send(try request(action.path, method: "POST", json: action.body(confirm: nil)))
         } catch ServerPlanError.confirmRequired(let summary, let expected) {
@@ -272,6 +286,7 @@ public struct ServerPlanClient: Sendable {
     /// `ServerPlanConfirmation`, which the confirmation dialog makes.
     public func perform(_ confirmation: ServerPlanConfirmation) async throws -> ServerPlanActionResult {
         let action = confirmation.action
+        if case .container(_, _, let name, _) = action { try Self.checkContainer(name) }
         let (data, _) = try await send(try request(action.path, method: "POST", json: action.body(confirm: confirmation.target)))
         if case .deploy = action { return .deployStarted(try Self.decode(ServerPlanDeployStarted.self, from: data)) }
         return .done
@@ -360,7 +375,8 @@ public struct ServerPlanClient: Sendable {
 
     /// Follows a container's log (`event: log`), starting with the last `tail` lines.
     public func containerLogStream(serverID: Int, container: String, tail: Int = 100) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
-        try await events(Self.logsPath(serverID: serverID, container: container) + "/stream", query: [URLQueryItem(name: "tail", value: String(tail))])
+        try Self.checkContainer(container)
+        return try await events(Self.logsPath(serverID: serverID, container: container) + "/stream", query: [URLQueryItem(name: "tail", value: String(tail))])
     }
 
     /// `/events`, resuming after `lastEventID`.

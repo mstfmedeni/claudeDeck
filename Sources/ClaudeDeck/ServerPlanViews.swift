@@ -256,7 +256,7 @@ private struct ServerPlanServerRow: View {
     }
 
     @ViewBuilder private func menu(_ controller: ServerPlanController) -> some View {
-        if controller.allows(.terminal) {
+        if controller.canOpenTerminal {
             Button("Open Terminal") { model.openServerPlanTerminal(serverID: server.id, serverName: server.name, runClaude: false) }
             if controller.canRunClaude(on: server.id) {
                 Button("Start Claude Code on \(server.name)") {

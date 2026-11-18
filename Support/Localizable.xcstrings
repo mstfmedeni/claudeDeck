@@ -16110,6 +16110,16 @@
           }
         }
       }
+    },
+    "Not a valid container name: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçerli bir konteyner adı değil: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

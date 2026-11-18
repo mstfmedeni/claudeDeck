@@ -219,6 +219,21 @@ private func json(_ request: URLRequest) -> [String: Any] {
         #expect(json(try #require(transport.requests.first))["confirm"] as? String == "api")
     }
 
+    @Test func containerNamesAreCheckedBeforeAnyRequest() async {
+        #expect(ServerPlanClient.isValidContainerName("payments-api_1.web"))
+        #expect(!ServerPlanClient.isValidContainerName("-api"))
+        #expect(!ServerPlanClient.isValidContainerName("a/b"))
+        #expect(!ServerPlanClient.isValidContainerName(""))
+        #expect(!ServerPlanClient.isValidContainerName(String(repeating: "a", count: 129)))
+        let transport = StubTransport { _ in .init(status: 200, body: Data()) }
+        let client = ServerPlanClient(config: config, transport: transport)
+        await #expect(throws: ServerPlanError.self) { try await client.containerLogs(serverID: 1, container: "../etc") }
+        await #expect(throws: ServerPlanError.self) {
+            try await client.preview(.container(serverID: 1, serverName: "s", name: "x y", verb: .stop))
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
     // MARK: Terminal
 
     @Test func terminalTicketAndWebSocketURL() async throws {
