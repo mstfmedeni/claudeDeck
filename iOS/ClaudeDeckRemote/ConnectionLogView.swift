@@ -95,6 +95,7 @@ struct ConnectionLogView: View {
         case .failed: String(localized: "Failed")
         case .refused: String(localized: "Refused")
         case .cancelled: String(localized: "Not needed")
+        case .skipped: String(localized: "Skipped")
         }
     }
 
@@ -102,6 +103,7 @@ struct ConnectionLogView: View {
         switch outcome {
         case .failed(let reason): reason
         case .refused(let reason): reason
+        case .skipped(let reason): reason
         case .connected, .cancelled: nil
         }
     }
@@ -112,6 +114,7 @@ struct ConnectionLogView: View {
         case .failed: "xmark.circle.fill"
         case .refused: "lock.circle.fill"
         case .cancelled: "minus.circle"
+        case .skipped: "arrow.uturn.right.circle"
         }
     }
 
@@ -120,7 +123,7 @@ struct ConnectionLogView: View {
         case .connected: .green
         case .failed: .red
         case .refused: .orange
-        case .cancelled: .secondary
+        case .cancelled, .skipped: .secondary
         }
     }
 

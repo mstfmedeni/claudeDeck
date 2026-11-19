@@ -19,9 +19,9 @@ public enum InAppTailscale {
 
     /// Prefix of the node's Tailscale name.
     public static let appName = "claudedeck"
-    /// How long the system route gets for a tailnet address before the in-app node is tried
-    /// (another VPN can claim 100.64.0.0/10 and black-hole it).
-    public static let systemTryTimeout: TimeInterval = 2
+    /// How long the system route gets to connect to a tailnet address when the in-app node is
+    /// raced next to it (another VPN can claim 100.64.0.0/10 and black-hole it).
+    public static let systemTryTimeout: TimeInterval = 4
 
     /// The node's Tailscale hostname: `claudedeck-<device name>`, DNS-safe (a–z, 0–9, '-';
     /// no repeats or trailing dashes; at most 63 characters). "Mustafa's iPhone" →
@@ -73,11 +73,10 @@ public enum InAppTailscale {
         return Tailscale.isTailscaleIP(host)
     }
 
-    /// The ways to try `address`, in order (each next one only when the one before failed).
-    /// - Not a tailnet address, or the in-app node is off: the system only (today's behaviour).
-    /// - The in-app node is on: the system first (the Tailscale app may be on) with a short
-    ///   timeout, then the node. When one of them worked on this network (`remembered`), that
-    ///   one first; the node still backs up the system route.
+    /// The ways to try `address`, in launch order (they're raced, see `RemoteRoutePlan`).
+    /// - Not a tailnet address, or the in-app node is off: the system only.
+    /// - The in-app node is on: the system (the Tailscale app may be on), then the node; the
+    ///   one that worked last (`remembered`) first.
     public static func routes(for address: String, inAppEnabled: Bool, remembered: RemoteRoute?) -> [RemoteRoute] {
         guard inAppEnabled, isTailnetAddress(address) else { return [.system] }
         return remembered == .inApp ? [.inApp, .system] : [.system, .inApp]
