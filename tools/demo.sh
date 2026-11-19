@@ -348,8 +348,11 @@ fi
 if [ "$DEFAULTS" = true ]; then SIMULATORS=false; PROGRAM_STATUS=""; else SIMULATORS=true; PROGRAM_STATUS=', "showProgramStatus": true'; fi
 EXTRA_SESSION=""
 if [ -n "${CLAUDEDECK_DEMO_SHELL_COMMAND:-}" ]; then
+  # Program Status on it too (unless CLAUDEDECK_DEMO_DEFAULTS=1): a server shows as one after ~30 s.
   EXTRA_SESSION=$(jq -cn --arg id "$S8" --arg p "$P1" --arg c "$CLAUDEDECK_DEMO_SHELL_COMMAND" --argjson now "$NOW" \
-    '{id: $id, projectID: $p, name: "acme-storefront · check", kind: "shell", createdAt: $now, isOpen: true, startupCommand: $c, autoStart: true}')
+    --argjson ps "$([ "$DEFAULTS" = true ] && echo false || echo true)" \
+    '{id: $id, projectID: $p, name: "acme-storefront · check", kind: "shell", createdAt: $now, isOpen: true, startupCommand: $c, autoStart: true}
+     + (if $ps then {showProgramStatus: true} else {} end)')
   EXTRA_SESSION=",
     $EXTRA_SESSION"
   PANES="\"$S1\", \"$S8\""

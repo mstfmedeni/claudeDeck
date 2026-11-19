@@ -97,7 +97,10 @@ public enum ListeningPorts {
         var capacity = 32
         while true {
             var buffer = [pid_t](repeating: 0, count: capacity)
-            let bytes = buffer.withUnsafeMutableBytes { proc_listchildpids(pid, $0.baseAddress, Int32($0.count)) }
+            // proc_listpids returns bytes (proc_listchildpids returns a count: not used, to avoid mixing them up).
+            let bytes = buffer.withUnsafeMutableBytes {
+                proc_listpids(UInt32(PROC_PPID_ONLY), UInt32(pid), $0.baseAddress, Int32($0.count))
+            }
             guard bytes > 0 else { return [] }
             let count = Int(bytes) / MemoryLayout<pid_t>.stride
             // A full buffer may have been cut short: ask again with more room.

@@ -178,12 +178,24 @@ import Testing
         #expect(ListeningPorts.scan(roots: [getpid()], includeRoot: true)[getpid()]?.contains(port) == true)
     }
 
-    @Test func walksChildProcesses() throws {
-        let child = Process()
-        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
-        child.arguments = ["5"]
-        try child.run()
-        defer { child.terminate() }
-        #expect(ListeningPorts.descendants(of: getpid()).contains(child.processIdentifier))
+    /// Like a terminal: shell → its command, which listens (a grandchild of the root).
+    @Test func findsAGrandchildListening() async throws {
+        let port = Int.random(in: 40000...49000)
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // `; true` keeps sh alive, so nc is its child rather than exec'd in its place.
+        shell.arguments = ["-c", "/usr/bin/nc -l 127.0.0.1 \(port); true"]
+        try shell.run()
+        defer {
+            for pid in ListeningPorts.descendants(of: shell.processIdentifier) { kill(pid, SIGTERM) }
+            shell.terminate()
+        }
+        var found: [Int]?
+        for _ in 0..<40 where found == nil {
+            try await Task.sleep(for: .milliseconds(50))
+            found = ListeningPorts.scan(roots: [shell.processIdentifier])[shell.processIdentifier]
+        }
+        #expect(ListeningPorts.descendants(of: shell.processIdentifier).count == 1)
+        #expect(found == [port])
     }
 }
