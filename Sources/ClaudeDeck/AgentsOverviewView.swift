@@ -50,9 +50,8 @@ struct AgentsOverviewView: View {
                                 AgentsProjectSection(group: group, rows: rows)
                             }
                         }
-                        .padding(16)
-                        .frame(maxWidth: 1100, alignment: .leading)
-                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 24).padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
