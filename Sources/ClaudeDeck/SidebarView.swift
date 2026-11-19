@@ -17,6 +17,7 @@ struct SidebarView: View {
         // Rows only move when the user caused it or isn't pointing at the sidebar (LayoutGate).
         let layout = layoutController.shown ?? latest
         let waiting = model.waitingSessions
+        let agentGroups = model.agentTreeGroups
         ScrollViewReader { proxy in
             list(layout)
                 .onChange(of: latest, initial: true) { _, value in
@@ -50,6 +51,11 @@ struct SidebarView: View {
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                if !agentGroups.isEmpty {
+                    AgentsOverviewTray(running: model.cliRunningStarted)
+                        .sidebarStyle(scale: textScale, density: density)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if !model.pendingAgents.isEmpty {
                     PendingAgentsTray()
                         .sidebarStyle(scale: textScale, density: density)
@@ -66,6 +72,7 @@ struct SidebarView: View {
             .animation(.snappy(duration: 0.3), value: waiting.isEmpty)
             .animation(.snappy(duration: 0.3), value: model.pendingAgents.isEmpty)
             .animation(.snappy(duration: 0.3), value: model.decisions.pendingCount == 0)
+            .animation(.snappy(duration: 0.3), value: agentGroups.isEmpty)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeight = $0 }
         // The whole column (list, filter bar, tray) counts as "pointing at the sidebar".

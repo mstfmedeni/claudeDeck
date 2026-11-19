@@ -236,6 +236,12 @@ extension AppModel {
         tabs.open(.dashboard)
         showMainWindow()
     }
+
+    /// The Agents tab: every agent tree by project.
+    func showAgentsOverview() {
+        tabs.open(.agentsOverview)
+        showMainWindow()
+    }
 }
 
 extension UserDefaults {

@@ -349,6 +349,11 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     public var decisions: [OwnerDecision]?
     /// The projects' `docs/AGENDA.md` boards (hosts with `Feature.agenda`; read-only).
     public var agendas: [RemoteAgenda]?
+    /// The Agents overview's header (hosts with `Feature.agentTree`): sessions started by
+    /// sessions that are running, the cap on them, and starts queued under it.
+    public var agentsRunning: Int?
+    public var agentsCap: Int?
+    public var agentsQueued: Int?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -402,11 +407,13 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let dismissDecision = "dismissDecision"
         /// `changeDecisionAnswer`; answered decisions carry `answerHistory` / `changedAt`.
         public static let changeDecisionAnswer = "changeDecisionAnswer"
+        /// `RemoteSession.agent` and the `agents…` counts in the snapshot (read-only).
+        public static let agentTree = "agentTree"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
-                                              changeDecisionAnswer]
+                                              changeDecisionAnswer, agentTree]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -572,6 +579,9 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     /// What the program in a plain terminal is doing (hosts with `Feature.programStatus`). `state`
     /// stays `.shell`, so older remotes still treat it as a terminal; `detail` says it in words.
     public var program: RemoteProgramStatus?
+    /// Claude sessions in an agent tree (`claudedeck new`): who started it, its launch options,
+    /// what it holds (hosts with `Feature.agentTree`). Older remotes ignore it.
+    public var agent: RemoteAgentInfo?
 
     public init(
         id: UUID, name: String, project: String, state: State, detail: String? = nil,
@@ -597,6 +607,39 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     public var attentionKey: String? {
         guard needsAttention else { return nil }
         return "\(state.rawValue)|\(updatedAt?.timeIntervalSince1970 ?? 0)"
+    }
+}
+
+/// A session's place in an agent tree on the wire (`RemoteSession.agent`). Sent only for sessions
+/// in a tree; `startedBy` nil marks a lead.
+public struct RemoteAgentInfo: Codable, Sendable, Equatable {
+    public var startedBy: UUID?
+    public var model: String?
+    public var effort: String?
+    public var permissionMode: String?
+    /// The Claude account's label, when the host has more than one account.
+    public var account: String?
+    /// `limit_reached` / `switching_account` while that's so (the session's `state` says the rest).
+    public var limitState: String?
+    /// When its process started (nil while it isn't running).
+    public var runningSince: Date?
+    public var simulators: Int?
+    public var pendingDecisions: Int?
+    public var queuedStarts: Int?
+
+    public init(startedBy: UUID? = nil, model: String? = nil, effort: String? = nil, permissionMode: String? = nil,
+                account: String? = nil, limitState: String? = nil, runningSince: Date? = nil,
+                simulators: Int? = nil, pendingDecisions: Int? = nil, queuedStarts: Int? = nil) {
+        self.startedBy = startedBy
+        self.model = model
+        self.effort = effort
+        self.permissionMode = permissionMode
+        self.account = account
+        self.limitState = limitState
+        self.runningSince = runningSince
+        self.simulators = simulators
+        self.pendingDecisions = pendingDecisions
+        self.queuedStarts = queuedStarts
     }
 }
 

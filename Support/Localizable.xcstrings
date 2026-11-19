@@ -20153,6 +20153,306 @@
           }
         }
       }
+    },
+    "Sessions started by sessions, by project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumların başlattığı oturumlar, projeye göre"
+          }
+        }
+      }
+    },
+    "No Agent Sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajan oturumu yok"
+          }
+        }
+      }
+    },
+    "Sessions start other sessions with `claudedeck new`. They show up here by project, under the session that started them.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar `claudedeck new` ile başka oturumlar başlatır. Burada projeye göre, onları başlatan oturumun altında görünürler."
+          }
+        }
+      }
+    },
+    "No agent is working": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan ajan yok"
+          }
+        }
+      }
+    },
+    "%lld of %lld running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld / %lld çalışıyor"
+          }
+        }
+      }
+    },
+    "Sessions started by sessions that are running, out of the cap in Settings › Agents": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumların başlattığı ve çalışan oturumlar; üst sınır Ayarlar › Ajanlar'da"
+          }
+        }
+      }
+    },
+    "%lld queued": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sırada"
+          }
+        }
+      }
+    },
+    "Starts waiting for a free slot under the cap": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üst sınırda yer açılmasını bekleyen başlatmalar"
+          }
+        }
+      }
+    },
+    "%lld decisions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld karar"
+          }
+        }
+      }
+    },
+    "Removed project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaldırılmış proje"
+          }
+        }
+      }
+    },
+    "Switching account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap değişiyor"
+          }
+        }
+      }
+    },
+    "← %@ · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "← %@ · %@"
+          }
+        }
+      }
+    },
+    "Started by “%@” in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ projesindeki “%1$@” başlattı"
+          }
+        }
+      }
+    },
+    "← ended": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "← kapandı"
+          }
+        }
+      }
+    },
+    "The session that started it was removed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onu başlatan oturum kaldırıldı"
+          }
+        }
+      }
+    },
+    "→ %@ %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "→ %@ %lld"
+          }
+        }
+      }
+    },
+    "Started %lld sessions in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ içinde %1$lld oturum başlattı"
+          }
+        }
+      }
+    },
+    "Model and effort it was started with": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatıldığı model ve efor"
+          }
+        }
+      }
+    },
+    "Permission mode it was started with": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatıldığı izin modu"
+          }
+        }
+      }
+    },
+    "Claude account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude hesabı"
+          }
+        }
+      }
+    },
+    "Simulators it holds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayırdığı simülatörler"
+          }
+        }
+      }
+    },
+    "Decisions it left for you": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sana bıraktığı kararlar"
+          }
+        }
+      }
+    },
+    "Its starts waiting under the cap": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üst sınırda bekleyen başlatmaları"
+          }
+        }
+      }
+    },
+    "up %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ açık"
+          }
+        }
+      }
+    },
+    "Running since %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ saatinden beri çalışıyor"
+          }
+        }
+      }
+    },
+    "Last activity": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son etkinlik"
+          }
+        }
+      }
+    },
+    "Which agents run in which project (Window › Agents)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hangi ajan hangi projede çalışıyor (Pencere › Ajanlar)"
+          }
+        }
+      }
+    },
+    "Update ClaudeDeck on the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'teki ClaudeDeck'i güncelle"
+          }
+        }
+      }
+    },
+    "The Agents overview needs a newer ClaudeDeck on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar görünümü için Mac'te daha yeni bir ClaudeDeck gerekir."
+          }
+        }
+      }
+    },
+    "Agent Sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajan oturumları"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

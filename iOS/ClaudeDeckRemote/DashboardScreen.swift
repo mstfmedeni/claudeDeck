@@ -14,10 +14,11 @@ enum MacScreen {
     static let simulators = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000004")!
     static let decisions = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000005")!
     static let agenda = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000006")!
+    static let agents = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000007")!
 
     /// Not a session: the Mac never has it, and it mustn't be cleared as one it lost.
     static func isScreen(_ id: UUID) -> Bool {
-        id == ScreenTab.id || id == dashboard || id == servers || id == simulators || id == decisions || id == agenda
+        id == ScreenTab.id || id == dashboard || id == servers || id == simulators || id == decisions || id == agenda || id == agents
     }
 
     @MainActor @ViewBuilder
@@ -28,6 +29,7 @@ enum MacScreen {
         case simulators: SimulatorsScreen()
         case decisions: DecisionsScreen()
         case agenda: AgendaScreen()
+        case agents: AgentTreeScreen()
         default: EmptyView()
         }
     }

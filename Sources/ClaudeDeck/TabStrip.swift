@@ -65,7 +65,7 @@ struct WorkspaceView: View {
         case .automations: ""
         case .repository(let repo, _): (repo as NSString).abbreviatingWithTildeInPath
         case .inbox: ""
-        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions: ""
+        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions, .agentsOverview: ""
         case .agenda(let id): (model.deck.project(id)?.path).map { ($0 as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }
@@ -110,6 +110,8 @@ private struct TabContent: View {
             DecisionsView()
         case .agenda(let id):
             if isSelected { AgendaBoardView(projectID: id) }
+        case .agentsOverview:
+            if isSelected { AgentsOverviewView() }
         }
     }
 }
@@ -269,6 +271,7 @@ private struct TabItem: View {
         case .simulators: Image(systemName: "iphone.gen3")
         case .decisions: Image(systemName: "signpost.right.and.left")
         case .agenda: Image(systemName: "rectangle.split.3x1")
+        case .agentsOverview: Image(systemName: "point.3.connected.trianglepath.dotted")
         }
     }
 
@@ -524,6 +527,7 @@ extension WorkspaceTab {
         case .simulators: "simulators"
         case .decisions: "decisions"
         case .agenda(let id): "agenda:\(id.uuidString)"
+        case .agentsOverview: "agentsOverview"
         }
     }
 
@@ -546,6 +550,7 @@ extension WorkspaceTab {
         case .decisions: String(localized: "Your Decisions")
         case .agenda(let id):
             MainActor.assumeIsolated { AgendaController.tabTitle(id) }
+        case .agentsOverview: String(localized: "Agents")
         }
     }
 
@@ -570,6 +575,7 @@ extension WorkspaceTab {
         case .dashboard: String(localized: "Live dashboard (⇧⌘B)")
         case .decisions: String(localized: "Decisions your sessions left for you")
         case .agenda: String(localized: "The project's docs/AGENDA.md as a board")
+        case .agentsOverview: String(localized: "Sessions started by sessions, by project")
         default: url.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }
@@ -676,6 +682,8 @@ struct TabCommands: Commands {
             Divider()
             Button("Next Session Waiting for You") { model.selectNextWaiting() }
                 .keyboardShortcut("j")
+            Divider()
+            Button("Agents") { model.showAgentsOverview() }
             Divider()
         }
     }
