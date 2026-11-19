@@ -20983,6 +20983,16 @@
           }
         }
       }
+    },
+    "Simulators (File › Simulators…)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörler (Dosya › Simülatörler…)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

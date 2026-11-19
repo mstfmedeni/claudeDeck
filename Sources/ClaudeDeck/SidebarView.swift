@@ -193,6 +193,11 @@ struct SidebarView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.borderless)
+            if model.deck.settings.simulators {
+                Button { model.showSimulators() } label: { Image(systemName: "iphone") }
+                    .buttonStyle(.borderless)
+                    .help("Simulators (File › Simulators…)")
+            }
             Button { model.showAutomations() } label: { Image(systemName: "clock.arrow.circlepath") }
                 .buttonStyle(.borderless)
                 .help("Automations — scheduled prompts")
