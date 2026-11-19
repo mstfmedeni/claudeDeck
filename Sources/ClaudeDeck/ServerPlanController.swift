@@ -61,6 +61,12 @@ final class ServerPlanController {
     private(set) var refreshing = false
     /// Deploys whose "Fix with Claude" is fetching the log.
     private(set) var repairing: Set<Int> = []
+    /// The Namecheap balance (v1.4 panels); nil until fetched, or without Namecheap in the panel.
+    private(set) var registrarBalance: ServerPlanRegistrarBalance?
+    /// false: the panel answered 412 not_configured (no Namecheap): nothing about it is shown.
+    private(set) var registrarConfigured: Bool?
+    private(set) var registrarBalanceError: String?
+    private(set) var registrarBalanceLoading = false
     var sheet: ServerPlanSheet?
     var pendingConfirm: ServerPlanPendingConfirm?
     var actionError: String?
@@ -88,10 +94,15 @@ final class ServerPlanController {
     @ObservationIgnored private var startedHere: Set<Int> = []
     @ObservationIgnored private var healthAt: Date = .distantPast
     @ObservationIgnored private var capabilitiesAt: [Int: Date] = [:]
+    @ObservationIgnored private var balanceTask: Task<Void, Never>?
+    @ObservationIgnored private var registrarBalanceAt: Date = .distantPast
 
     static let refreshInterval: Duration = .seconds(30)
     static let healthInterval: TimeInterval = 60
     static let pollInterval: Duration = .seconds(60)
+    /// The Namecheap balance: every 30 min while a window is visible (the panel caches it 5 min).
+    static let balanceInterval: TimeInterval = 30 * 60
+    static let balanceNoticeID = "serverplan-registrar-balance"
 
     private init() {}
 
@@ -126,6 +137,8 @@ final class ServerPlanController {
         guard config != client?.config else { return }
         watchTask?.cancel()
         watchTask = nil
+        balanceTask?.cancel()
+        balanceTask = nil
         client = config.map { ServerPlanClient(config: $0) }
         me = nil
         servers = []
@@ -143,7 +156,14 @@ final class ServerPlanController {
         healthAt = .distantPast
         sheet = nil
         pendingConfirm = nil
-        if client != nil { watchTask = Task { [weak self] in await self?.watch() } }
+        registrarBalance = nil
+        registrarConfigured = nil
+        registrarBalanceError = nil
+        registrarBalanceAt = .distantPast
+        if client != nil {
+            watchTask = Task { [weak self] in await self?.watch() }
+            balanceTask = Task { [weak self] in await self?.balanceLoop() }
+        }
         model?.onCountsChanged?()
     }
 
@@ -176,10 +196,13 @@ final class ServerPlanController {
     /// Runs while the Servers section is on screen: a refresh now and every 30 s, paused (no
     /// timer, no request) while no window can be seen.
     func refreshLoop() async {
+        var opened = true
         while !Task.isCancelled, isConfigured {
             await AppVisibility.shared.waitUntilVisible()
             guard !Task.isCancelled else { return }
             await refresh()
+            // The section was just opened: the balance too (unless it was read a minute ago).
+            if opened { opened = false; await refreshBalance(maxAge: 60) }
             try? await Task.sleep(for: Self.refreshInterval)
         }
     }
@@ -214,6 +237,7 @@ final class ServerPlanController {
             await refreshHealth()
         }
         await refreshCapabilities(force: force)
+        if force { await refreshBalance(force: true) }
     }
 
     private func refreshContainers() async {
@@ -309,9 +333,123 @@ final class ServerPlanController {
             servers[index].reachable = event.kind == .serverRecovered
             if event.kind == .serverRecovered { forgetRecovered(panel: false, servers: [id]) }
             if event.kind == .serverUnreachable { notifyServerDown(servers[index].name, id: id) }
+        case .registrarLowBalance:
+            if let available = data.availableBalance { registrarBalance?.available = available }
+            registrarBalance?.low = true
+            var watch = balanceWatch
+            let notice = watch.lowEvent(available: data.availableBalance, currency: data.currency, threshold: data.lowThreshold,
+                                        localThreshold: localBalanceThreshold)
+            balanceWatch = watch
+            if let notice { notifyLowBalance(notice) }
+            model?.onCountsChanged?()
+        case .registrarBalanceOK:
+            if let available = data.availableBalance { registrarBalance?.available = available }
+            registrarBalance?.low = false
+            var watch = balanceWatch
+            if watch.okEvent() { onCleared?([Self.balanceNoticeID]) }
+            balanceWatch = watch
+            model?.onCountsChanged?()
         case .unknown:
             break
         }
+    }
+
+    // MARK: Namecheap balance (v1.4)
+
+    /// The panel serves the balance to this token.
+    var offersRegistrarBalance: Bool { me?.offersRegistrarBalance == true && registrarConfigured != false }
+
+    /// Settings › ServerPlan's "Namecheap balance alert (USD)": used when the panel has no threshold.
+    var localBalanceThreshold: Double { model?.deck.settings.serverPlanBalanceAlert ?? DeckSettings().serverPlanBalanceAlert }
+
+    /// The threshold in force (the panel's, else the local one), nil when off.
+    var balanceThreshold: Double? {
+        RegistrarBalanceWatch.threshold(panel: registrarBalance?.lowThreshold, local: localBalanceThreshold)
+    }
+
+    /// Under the threshold in force.
+    var balanceIsLow: Bool {
+        guard let balance = registrarBalance, let threshold = balanceThreshold else { return false }
+        return balance.available < threshold
+    }
+
+    /// Reads the balance unless it was read within `maxAge`; `force` also asks Namecheap again
+    /// (`?refresh=1`). A panel without Namecheap (412) stays quiet; other failures only show in
+    /// Settings (never as the sidebar's panel error).
+    func refreshBalance(force: Bool = false, maxAge: TimeInterval = ServerPlanController.balanceInterval) async {
+        guard let client, me?.offersRegistrarBalance == true, !registrarBalanceLoading else { return }
+        guard force || Date().timeIntervalSince(registrarBalanceAt) >= maxAge else { return }
+        registrarBalanceLoading = true
+        registrarBalanceAt = Date()
+        defer { registrarBalanceLoading = false }
+        do {
+            let balance = try await client.registrarBalance(refresh: force)
+            guard client.config == self.client?.config else { return }
+            registrarBalance = balance
+            registrarConfigured = true
+            registrarBalanceError = nil
+            var watch = balanceWatch
+            let wasLow = watch.notifiedLow
+            let notice = watch.observe(available: balance.available, currency: balance.currency, panelThreshold: balance.lowThreshold,
+                                       localThreshold: localBalanceThreshold)
+            balanceWatch = watch
+            if let notice { notifyLowBalance(notice) } else if wasLow, !watch.notifiedLow { onCleared?([Self.balanceNoticeID]) }
+        } catch ServerPlanError.http(let status, _, _) where status == 412 {
+            registrarBalance = nil
+            registrarConfigured = false
+            registrarBalanceError = nil
+        } catch {
+            registrarBalanceError = error.localizedDescription
+        }
+        model?.onCountsChanged?()  // the phone's snapshot carries it
+    }
+
+    /// The local threshold changed in Settings: the balance on hand is checked against it.
+    func balanceThresholdChanged() {
+        guard let balance = registrarBalance else { return }
+        var watch = balanceWatch
+        let wasLow = watch.notifiedLow
+        let notice = watch.observe(available: balance.available, currency: balance.currency, panelThreshold: balance.lowThreshold,
+                                   localThreshold: localBalanceThreshold)
+        balanceWatch = watch
+        if let notice { notifyLowBalance(notice) } else if wasLow, !watch.notifiedLow { onCleared?([Self.balanceNoticeID]) }
+        model?.onCountsChanged?()
+    }
+
+    /// Every 30 min while a window is visible (Settings and the Servers section read it sooner).
+    private func balanceLoop() async {
+        while !Task.isCancelled, let client {
+            await AppVisibility.shared.waitUntilVisible()
+            guard !Task.isCancelled else { return }
+            if me == nil { me = try? await client.me() }
+            await refreshBalance()
+            let due = registrarBalanceAt.addingTimeInterval(Self.balanceInterval).timeIntervalSinceNow
+            try? await Task.sleep(for: .seconds(me == nil ? 300 : max(60, due)))
+        }
+    }
+
+    /// Whether the owner was told the balance is low, per panel, kept across launches (window
+    /// state: a demo keeps its own).
+    private var balanceWatch: RegistrarBalanceWatch {
+        get {
+            guard let key = balanceWatchKey else { return RegistrarBalanceWatch() }
+            return RegistrarBalanceWatch(notifiedLow: UserDefaults.windowState.bool(forKey: key))
+        }
+        set {
+            guard let key = balanceWatchKey else { return }
+            if newValue.notifiedLow { UserDefaults.windowState.set(true, forKey: key) } else { UserDefaults.windowState.removeObject(forKey: key) }
+        }
+    }
+
+    private var balanceWatchKey: String? { panelURL.map { "serverPlan.registrarLowNotified.\($0.absoluteString)" } }
+
+    private func notifyLowBalance(_ notice: RegistrarBalanceWatch.Notice) {
+        let amount = ServerPlanRegistrarBalance.format(notice.available), threshold = ServerPlanRegistrarBalance.format(notice.threshold)
+        let currency = notice.currency
+        onNotice?(ServerPlanNotice(
+            title: String(localized: "Namecheap balance low"),
+            body: String(localized: "Namecheap balance is low: \(amount) \(currency) (threshold \(threshold) \(currency)). Top up for domain purchases: Namecheap › Billing › Add Funds."),
+            id: Self.balanceNoticeID, deploymentID: nil, isFailure: true))
     }
 
     /// Merges deploys (newest first) and notices the ones that just failed. An event always
@@ -445,6 +583,10 @@ final class ServerPlanController {
                                                lastDeployStatus: last?.status.rawValue, lastDeployAt: last?.finishedAt)
             if let last, isCleared(last) { row.lastDeployCleared = true }
             return row
+        }
+        if let balance = registrarBalance, registrarConfigured == true {
+            status.registrarBalance = RemoteServerPlan.Balance(available: balance.available, currency: balance.currency,
+                                                               threshold: balanceThreshold, low: balanceIsLow)
         }
         return status
     }

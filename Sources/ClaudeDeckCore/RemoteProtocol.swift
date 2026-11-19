@@ -416,11 +416,13 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let agentTree = "agentTree"
         /// `dismissServerIssues`; `RemoteServerPlan.Project.lastDeployCleared`.
         public static let dismissServerIssues = "dismissServerIssues"
+        /// `RemoteServerPlan.registrarBalance` (the Namecheap balance, ServerPlan 1.4).
+        public static let registrarBalance = "registrarBalance"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
-                                              changeDecisionAnswer, agentTree, dismissServerIssues]
+                                              changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -490,11 +492,28 @@ public struct RemoteServerPlan: Codable, Sendable, Equatable {
         }
     }
 
+    /// The Namecheap balance (hosts with `Feature.registrarBalance`, a 1.4 panel with Namecheap).
+    public struct Balance: Codable, Sendable, Equatable {
+        public var available: Double
+        public var currency: String
+        /// The threshold in force (the panel's, else the Mac's setting); nil: no alert.
+        public var threshold: Double?
+        public var low: Bool
+        public init(available: Double, currency: String, threshold: Double?, low: Bool) {
+            self.available = available
+            self.currency = currency
+            self.threshold = threshold
+            self.low = low
+        }
+    }
+
     public var servers: [Server]
     /// Running and recently failed deploys, newest first.
     public var deploys: [Deploy]
     /// nil from hosts without `Feature.serverPlanRepair`.
     public var projects: [Project]?
+    /// nil from older hosts, older panels, or a panel without Namecheap.
+    public var registrarBalance: Balance?
 
     public init(servers: [Server], deploys: [Deploy]) {
         self.servers = servers

@@ -45,6 +45,7 @@ struct ServerPlanSettingsSection: View {
                     get: { model.deck.settings.serverPlanProjectRows },
                     set: { value in model.mutate { $0.settings.serverPlanProjectRows = value } }
                 ))
+                if controller.offersRegistrarBalance { ServerPlanBalanceSettings() }
             }
         } header: {
             Text("ServerPlan")
@@ -52,6 +53,8 @@ struct ServerPlanSettingsSection: View {
             Text("Your servers, projects and deploys from a ServerPlan panel, in the sidebar: health, deploy status and notifications when a deploy fails, terminals on the servers (the panel does the SSH; no SSH key is stored here), and Fix with Claude for a failed deploy. Create the token in ServerPlan › Settings › API tokens.")
         }
         .onAppear { address = controller.address }
+        // A 1.4 panel: the Namecheap balance when Settings opens (unless read a minute ago).
+        .task(id: controller.me?.offersRegistrarBalance == true) { await controller.refreshBalance(maxAge: 60) }
     }
 
     private func connect() {
@@ -76,6 +79,89 @@ struct ServerPlanSettingsSection: View {
     static func describe(_ me: ServerPlanMe) -> String {
         let scopes = me.scopes.joined(separator: ", ")
         return String(localized: "Connected as \(me.user) (\(me.role ?? "user")) · \(scopes)")
+    }
+}
+
+/// Settings › ServerPlan on a 1.4 panel with Namecheap: the balance (refresh asks Namecheap
+/// again) and the low-balance alert's local threshold.
+private struct ServerPlanBalanceSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let controller = ServerPlanController.shared
+        let balance = controller.registrarBalance
+        LabeledContent("Namecheap balance") {
+            HStack(spacing: 6) {
+                if let balance {
+                    Text(verbatim: "\(ServerPlanRegistrarBalance.format(balance.available)) \(balance.currency)")
+                        .monospacedDigit()
+                        .foregroundStyle(controller.balanceIsLow ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+                } else if controller.registrarBalanceError == nil, !controller.registrarBalanceLoading {
+                    Text(verbatim: "—").foregroundStyle(.tertiary)
+                }
+                if controller.registrarBalanceLoading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button { Task { await controller.refreshBalance(force: true) } } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless)
+                        .help("Ask Namecheap for the balance now")
+                }
+            }
+        }
+        if let balance, let detail = Self.detail(balance, low: controller.balanceIsLow) {
+            Text(detail).font(.caption).foregroundStyle(controller.balanceIsLow ? .orange : .secondary)
+        }
+        if let error = controller.registrarBalanceError {
+            Text(error).font(.caption).foregroundStyle(.orange)
+        }
+        TextField("Namecheap balance alert (USD)", value: Binding(
+            get: { model.deck.settings.serverPlanBalanceAlert },
+            set: { value in
+                model.mutate { $0.settings.serverPlanBalanceAlert = max(0, value) }
+                controller.balanceThresholdChanged()
+            }
+        ), format: .number.precision(.fractionLength(0...2)))
+        Group {
+            if let panel = balance?.lowThreshold {
+                Text("ServerPlan's own threshold (\(ServerPlanRegistrarBalance.format(panel)) \(balance?.currency ?? "USD")) is used; this one applies when ServerPlan has none.")
+            } else {
+                Text("A notification on the Mac and the phone when the balance goes under this (once, until it's topped up). 0 turns it off.")
+            }
+        }
+        .font(.caption).foregroundStyle(.secondary)
+    }
+
+    static func detail(_ balance: ServerPlanRegistrarBalance, low: Bool) -> String? {
+        var parts: [String] = []
+        if let account = balance.account {
+            parts.append(String(localized: "Account balance \(ServerPlanRegistrarBalance.format(account)) \(balance.currency)"))
+        }
+        if let checked = balance.checkedAt {
+            parts.append(String(localized: "checked \(checked.formatted(.relative(presentation: .named)))"))
+        }
+        if low { parts.append(String(localized: "Low: top up in Namecheap › Billing › Add Funds")) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// The sidebar's Servers section: the Namecheap balance as a small line (orange when low).
+private struct ServerPlanBalanceLine: View {
+    var body: some View {
+        let controller = ServerPlanController.shared
+        if let balance = controller.registrarBalance, controller.registrarConfigured == true {
+            let low = controller.balanceIsLow
+            let amount = "\(ServerPlanRegistrarBalance.format(balance.available)) \(balance.currency)"
+            HStack(spacing: 4) {
+                Image(systemName: low ? "exclamationmark.triangle.fill" : "creditcard")
+                Text("Namecheap: \(amount)")
+            }
+            .sidebarFont(.caption)
+            .foregroundStyle(low ? AnyShapeStyle(.orange) : AnyShapeStyle(.tertiary))
+            .help(low
+                  ? String(localized: "Namecheap balance is low. Top up for domain purchases: Namecheap › Billing › Add Funds.")
+                  : String(localized: "Namecheap balance (for domain purchases)"))
+            .selectionDisabled()
+        }
     }
 }
 
@@ -128,6 +214,7 @@ struct ServerPlanSidebarSection: View {
                 .contextMenu { Button("Clear Error") { controller.actionError = nil } }
                 .selectionDisabled()
             }
+            ServerPlanBalanceLine()
         } header: {
             ServerPlanSidebarHeader(expanded: $expanded)
         }

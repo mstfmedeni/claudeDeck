@@ -116,6 +116,8 @@ public enum ServerPlanCLI {
             // v1.3 (ServerPlanCLIV13.swift). A purchase spends money: always the owner's dialog.
             Command("domain-check", "GET", v11: true, scope: "read", feature: "domain_check", minMinor: 3),
             Command("domain-buy", "POST", v11: true, scope: "domains_buy", gate: .owner, feature: "domain_purchase", minMinor: 3),
+            // v1.4: the Namecheap balance (read only).
+            Command("balance", "GET", v11: true, scope: "read", feature: ServerPlanContract.Feature.registrarBalance, minMinor: 4),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
@@ -144,7 +146,7 @@ public enum ServerPlanCLI {
         "branches", "refresh", "git-pull", "git-push", "switch-branch", "build", "pull-deploy", "diagnose", "diagnose-fix",
         "domain-set", "domain-apply", "domain-nginx", "domain-purge", "zone-purge", "ssl", "ssl-full",
         "pg-databases", "pg-users", "pg-user-add", "pg-clone", "server-env-get", "server-env-set",
-        "domain-check", "domain-buy",
+        "domain-check", "domain-buy", "balance",
     ]
 
     /// What the app sends back for one command.
@@ -460,7 +462,7 @@ public enum ServerPlanCLI {
                 let domain = try await domainID(form["domain"])
                 let data = try await gated(command, "POST", "/domains/\(domain.id)/namecheap/nameservers", target: domain.base)
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
-            case "domain-check", "domain-buy":
+            case "domain-check", "domain-buy", "balance":
                 return try await performV13(command, form: form)
             default:
                 return try await performV12(command, form: form)
