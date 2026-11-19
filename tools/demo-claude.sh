@@ -118,6 +118,22 @@ run_pending() {
   rm -f "$SCENE.running"
 }
 
+# A typed `/exit` ends it, as it ends Claude Code (restart, `claudedeck close`). Reading the
+# terminal for a second stands in for the old `sleep 1`; without a terminal it just sleeps.
+tick() {
+  if [ -t 0 ]; then
+    read -r -t 1 line 2>/dev/null
+    rc=$?
+    if [ "$rc" = 0 ]; then
+      case "$line" in */exit*) exit 0 ;; esac
+      return 0
+    fi
+    # Over 128: the second passed. Anything else (end of input): don't spin.
+    [ "$rc" -gt 128 ] && return 0
+  fi
+  sleep 1 & wait $!
+}
+
 while :; do
-  if streaming; then stream; else sleep 1 & wait $!; live; run_pending; fi
+  if streaming; then stream; else tick; live; run_pending; fi
 done

@@ -676,6 +676,17 @@ public struct SessionCLIClosed: Encodable, Sendable, Equatable {
         self.forced = forced
         self.pending = pending
     }
+
+    private enum CodingKeys: String, CodingKey { case closed, id, forced, pending }
+
+    /// `pending` only for `close self` (`{"closed":true,"id":…,"forced":false}` otherwise).
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(closed, forKey: .closed)
+        try c.encode(id, forKey: .id)
+        try c.encode(forced, forKey: .forced)
+        if pending { try c.encode(pending, forKey: .pending) }
+    }
 }
 
 /// `GET /v1/cli/sessions/{ref}/screen`.

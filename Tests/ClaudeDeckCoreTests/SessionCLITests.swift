@@ -830,6 +830,9 @@ import Testing
         let data = try JSONEncoder().encode(SessionCLIClosed(closed: true, id: id, forced: false))
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["closed"] as? Bool == true && object["forced"] as? Bool == false && object["id"] as? String == id.uuidString)
+        #expect(object.count == 3)
+        let pending = try JSONEncoder().encode(SessionCLIClosed(closed: false, id: id, forced: false, pending: true))
+        #expect(String(decoding: pending, as: UTF8.self).contains(#""pending":true"#))
         #expect(SessionCLI.closeGrace == 15)
     }
 
