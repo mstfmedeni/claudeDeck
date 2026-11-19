@@ -64,7 +64,17 @@ public enum DeployRepair {
     }
 
     static func normalize(_ path: String) -> String {
-        var p = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL.resolvingSymlinksInPath().path
+        var url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
+        // Symlinks resolve only on an existing path (and "/private/tmp/x" becomes "/tmp/x" only
+        // when it exists): resolve the deepest existing folder and keep the rest as written.
+        var rest: [String] = []
+        while url.path.count > 1, !FileManager.default.fileExists(atPath: url.path) {
+            rest.insert(url.lastPathComponent, at: 0)
+            url.deleteLastPathComponent()
+        }
+        url = url.resolvingSymlinksInPath()
+        for component in rest { url.appendPathComponent(component) }
+        var p = url.path
         while p.count > 1, p.hasSuffix("/") { p.removeLast() }
         return p
     }

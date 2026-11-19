@@ -363,6 +363,17 @@ private func json(_ request: URLRequest) -> [String: Any] {
         #expect(DeckSettings().serverPlanProjectRows)
     }
 
+    @Test func matchesASubfolderThatIsntOnDisk() throws {
+        // /tmp is a symlink to /private/tmp: an existing folder and a missing one under it must
+        // normalize the same way.
+        let root = "/private/tmp/claudedeck-match-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let project = Project(path: root)
+        let map = DeployRepair.projectsByDeckProject([ServerPlanProject(id: 1, name: "api", repoPath: root + "/not-cloned/api")], in: [project])
+        #expect(map[project.id]?.map(\.id) == [1])
+    }
+
     @Test func deckKeepsRepairRequestsAndTerminalTargets() throws {
         var deck = DeckData()
         let project = deck.addProject(path: "/tmp/a/blog")
