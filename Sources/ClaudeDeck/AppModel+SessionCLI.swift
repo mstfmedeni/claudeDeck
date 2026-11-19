@@ -102,6 +102,8 @@ extension AppModel {
             return cliDecisions(form: form, json: json)
         case .decision(let id):
             return cliDecision(id, json: json)
+        case .cancelDecision(let id):
+            return cliCancelDecision(caller, id: id, form: form, json: json)
         case .accounts:
             return cliAccounts(caller, json: json)
         case .currentAccount:

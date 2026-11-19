@@ -376,6 +376,8 @@ public final class RemoteServer: @unchecked Sendable {
     public var onRegisterPush: ((PushDevice) -> Void)?
     /// `answerDecision` (the answer cut to `Decisions.maxAnswer`).
     public var onAnswerDecision: ((_ id: String, _ answer: String) -> Void)?
+    /// `dismissDecision`.
+    public var onDismissDecision: ((_ id: String) -> Void)?
     /// The set of sessions any remote watches changed (the host taps only those).
     public var onWatchedChanged: ((Set<UUID>) -> Void)?
 
@@ -661,6 +663,8 @@ public final class RemoteServer: @unchecked Sendable {
                 }
             case .answerDecision(let decisionID, let answer) where Decisions.isValidID(decisionID):
                 onAnswerDecision?(decisionID, String(answer.prefix(Decisions.maxAnswer)))
+            case .dismissDecision(let decisionID) where Decisions.isValidID(decisionID):
+                onDismissDecision?(decisionID)
             case .browseFolder(let path):
                 let channel = peer.channel
                 onBrowseFolder?(path) { [queue] answer in queue.async { channel.send(answer) } }

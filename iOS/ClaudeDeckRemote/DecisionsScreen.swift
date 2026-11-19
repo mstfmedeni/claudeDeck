@@ -16,6 +16,16 @@ extension RemoteStore {
         guard snapshot?.supports(RemoteSnapshot.Feature.decisions) == true, !text.isEmpty else { return false }
         return send(.answerDecision(id: id, answer: String(text.prefix(Decisions.maxAnswer))))
     }
+
+    /// Whether the Mac takes `dismissDecision` (removing one without answering).
+    var canDismissDecisions: Bool { snapshot?.supports(RemoteSnapshot.Feature.dismissDecision) == true }
+
+    /// The owner removes a pending decision without answering; the Mac tells the asking session.
+    @discardableResult
+    func dismissDecision(_ id: String) -> Bool {
+        guard canDismissDecisions else { return false }
+        return send(.dismissDecision(id: id))
+    }
 }
 
 // MARK: - Decisions
@@ -56,7 +66,8 @@ struct DecisionsScreen: View {
     var body: some View {
         let all = store.decisions ?? []
         let pending = all.filter(\.isPending)
-        let answered = all.filter { !$0.isPending }
+        // Cancelled ones never come from the Mac; filtered anyway.
+        let answered = all.filter(\.isAnswered)
         Group {
             if all.isEmpty {
                 ContentUnavailableView("Nothing to Decide", systemImage: "signpost.right.and.left",
@@ -68,6 +79,15 @@ struct DecisionsScreen: View {
                             ForEach(pending) { decision in
                                 DecisionCardPhone(decision: decision, sending: sent[decision.id]) { answer in
                                     if store.answerDecision(decision.id, answer: answer) { sent[decision.id] = answer }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    if store.canDismissDecisions {
+                                        Button(role: .destructive) {
+                                            if store.dismissDecision(decision.id) { sent[decision.id] = nil }
+                                        } label: {
+                                            Label("Remove", systemImage: "xmark.circle")
+                                        }
+                                    }
                                 }
                             }
                         } header: {

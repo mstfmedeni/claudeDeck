@@ -7,7 +7,10 @@ import Foundation
 /// One question for the owner.
 public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     public enum Status: String, Codable, Sendable {
-        case pending, answered
+        /// `cancelled`: withdrawn by the asking session (or one that started it), superseded by
+        /// a newer one, or dismissed by the owner without an answer. Never sent to remotes (an
+        /// older phone reads an unknown status as pending): `DecisionBook.forRemote` leaves them out.
+        case pending, answered, cancelled
     }
 
     /// `d_` and 10 lowercase hex digits.
@@ -34,9 +37,17 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     /// `terminal` (a plain terminal asked: nothing is typed there) or `no_session` (the session
     /// is gone): only stored.
     public var delivery: String?
+    /// Why it was cancelled (`claudedeck decision cancel --reason`, "superseded by d_…",
+    /// "owner dismissed") and when.
+    public var cancelReason: String?
+    public var cancelledAt: Date?
+    /// The asking session's starters when it asked (its parent and up), so a parent may still
+    /// cancel it after the asking session is gone.
+    public var ancestors: [UUID]
 
     public init(id: String, question: String, options: [String], recommended: String?, context: String?,
-                projectID: UUID?, project: String, sessionID: UUID?, session: String, createdAt: Date = Date()) {
+                projectID: UUID?, project: String, sessionID: UUID?, session: String, ancestors: [UUID] = [],
+                createdAt: Date = Date()) {
         self.id = id
         self.question = question
         self.options = options
@@ -46,11 +57,16 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         self.project = project
         self.sessionID = sessionID
         self.session = session
+        self.ancestors = ancestors
         self.createdAt = createdAt
         status = .pending
     }
 
     public var isPending: Bool { status == .pending }
+    public var isAnswered: Bool { status == .answered }
+    public var isCancelled: Bool { status == .cancelled }
+    /// When it stopped waiting (answered or cancelled), else when it was asked.
+    public var resolvedAt: Date { answeredAt ?? cancelledAt ?? createdAt }
 
     /// "project · session", or one of them when the session is named after its project.
     public var origin: String {
@@ -61,7 +77,7 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, question, options, recommended, context, projectID = "projectId", project, sessionID = "sessionId", session
-        case createdAt, status, answer, answeredAt, answeredFrom, delivery
+        case createdAt, status, answer, answeredAt, answeredFrom, delivery, cancelReason, cancelledAt, ancestors
     }
 
     /// Every key is always there (null when unknown), as the command's other JSON.
@@ -82,6 +98,9 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         try c.encode(answeredAt, forKey: .answeredAt)
         try c.encode(answeredFrom, forKey: .answeredFrom)
         try c.encode(delivery, forKey: .delivery)
+        try c.encode(cancelReason, forKey: .cancelReason)
+        try c.encode(cancelledAt, forKey: .cancelledAt)
+        try c.encode(ancestors, forKey: .ancestors)
     }
 
     /// Tolerant: a later version's status reads as pending, missing keys as empty.
@@ -102,6 +121,9 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         answeredAt = try? c.decodeIfPresent(Date.self, forKey: .answeredAt)
         answeredFrom = try? c.decodeIfPresent(String.self, forKey: .answeredFrom)
         delivery = try? c.decodeIfPresent(String.self, forKey: .delivery)
+        cancelReason = try? c.decodeIfPresent(String.self, forKey: .cancelReason)
+        cancelledAt = try? c.decodeIfPresent(Date.self, forKey: .cancelledAt)
+        ancestors = (try? c.decodeIfPresent([UUID].self, forKey: .ancestors)) ?? []
     }
 }
 
@@ -176,6 +198,42 @@ public enum Decisions {
         return .success(Asked(question: question, options: options, recommended: recommended, context: context.isEmpty ? nil : context))
     }
 
+    /// `decision cancel --reason`: at most this many characters (cut, not refused).
+    public static let maxReason = 500
+    /// The reason when the owner dismisses one without answering.
+    public static let ownerDismissed = "owner dismissed"
+
+    /// A cancel reason as stored: on one line, cut at `maxReason`; nil when blank.
+    public static func cleanReason(_ reason: String) -> String? {
+        let text = oneLine(reason, max: maxReason)
+        return text.isEmpty ? nil : text
+    }
+
+    /// Who may cancel a decision (`decision cancel`, `decide --supersedes`): the session that asked,
+    /// or one in its `startedBy` ancestry (its parent and up), from the deck now (`startedBy`) or
+    /// as it was when it asked (`decision.ancestors`, for an asking session that's gone).
+    public static func mayCancel(caller: UUID, decision: OwnerDecision, startedBy: [UUID: UUID]) -> Bool {
+        guard let asker = decision.sessionID else { return false }
+        if decision.ancestors.contains(caller) { return true }
+        return SessionCLI.mayClose(caller: caller, target: asker, startedBy: startedBy)
+    }
+
+    /// The asking session's starters, parent first (bounded, like `SessionCLI.mayClose`).
+    public static func ancestors(of session: UUID, startedBy: [UUID: UUID]) -> [UUID] {
+        var out: [UUID] = []
+        var current = session
+        for _ in 0..<64 {
+            guard let parent = startedBy[current], !out.contains(parent), parent != session else { break }
+            out.append(parent)
+            current = parent
+        }
+        return out
+    }
+
+    /// `X-ClaudeDeck-Note` on a `decide` that went through: comma-separated codes without spaces
+    /// the script turns into warnings on stderr (`already_pending:d_…`, `not_turkish`).
+    public static let noteHeader = "X-ClaudeDeck-Note"
+
     /// An answer as given: trimmed, not empty, at most `maxAnswer` characters.
     public static func cleanAnswer(_ answer: String) -> String? {
         let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -185,17 +243,55 @@ public enum Decisions {
 
     /// What the asking session gets: one line (it's typed into Claude Code and sent with Return).
     public static func message(for decision: OwnerDecision) -> String {
-        func line(_ text: String, max: Int) -> String {
-            let flat = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-            return flat.count > max ? String(flat.prefix(max)) + "…" : flat
-        }
-        return "[ClaudeDeck decision \(decision.id)] The owner answered your question “\(line(decision.question, max: 300))”: "
-            + line(decision.answer ?? "", max: maxAnswer)
+        "[ClaudeDeck decision \(decision.id)] The owner answered your question “\(oneLine(decision.question, max: 300))”: "
+            + oneLine(decision.answer ?? "", max: maxAnswer)
     }
 
-    /// `claudedeck decision get` as text: the status first ("pending", "answered: …").
+    /// What the asking session gets when the owner dismisses its question without answering.
+    public static func dismissedMessage(for decision: OwnerDecision) -> String {
+        "[ClaudeDeck decision \(decision.id)] The owner dismissed your question “\(oneLine(decision.question, max: 300))” "
+            + "without answering. Don't wait for it; ask again only if it still matters."
+    }
+
+    /// Text on one line (line breaks and the spaces around them folded), cut at `max`.
+    static func oneLine(_ text: String, max: Int) -> String {
+        let flat = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        return flat.count > max ? String(flat.prefix(max)) + "…" : flat
+    }
+
+    /// A question as the duplicate guard compares it: trimmed, runs of white space as one space,
+    /// case folded (Turkish rules), trailing punctuation dropped: "Hangi DB?" and "hangi  db" match.
+    public static func normalizedQuestion(_ question: String) -> String {
+        let words = question.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        var folded = words.lowercased(with: Locale(identifier: "tr"))
+        while let last = folded.last, last.isPunctuation || last.isWhitespace { folded.removeLast() }
+        return folded
+    }
+
+    /// Letters only Turkish uses among the Latin alphabets (as composed characters).
+    static let turkishLetters = Set("çğıöşüÇĞİÖŞÜ")
+    /// Short words common in Turkish questions.
+    static let turkishWords: Set<String> = ["ve", "bir", "mi", "mı", "mu", "mü", "için", "ile", "bu", "ne", "hangi", "olsun"]
+
+    /// Whether the owner-facing text (the question and the options) reads as Turkish: a
+    /// Turkish-only letter, or one of a few common Turkish words. `decide` only warns when not.
+    public static func looksTurkish(question: String, options: [String]) -> Bool {
+        // Composed first: "ş" typed as "s" + combining cedilla is still "ş".
+        let text = ([question] + options).joined(separator: "\n").precomposedStringWithCanonicalMapping
+        if text.contains(where: { turkishLetters.contains($0) }) { return true }
+        return text.lowercased(with: Locale(identifier: "tr"))
+            .split(whereSeparator: { !$0.isLetter })
+            .contains { turkishWords.contains(String($0)) }
+    }
+
+    /// `claudedeck decision get` as text: the status first ("pending", "answered: …", "cancelled: …").
     public static func text(_ decision: OwnerDecision) -> String {
-        var lines = [decision.isPending ? "pending" : "answered: \(decision.answer ?? "")"]
+        let status = switch decision.status {
+        case .pending: "pending"
+        case .answered: "answered: \(decision.answer ?? "")"
+        case .cancelled: "cancelled: \(decision.cancelReason ?? "")"
+        }
+        var lines = [status]
         lines.append("id: \(decision.id)")
         lines.append("question: \(decision.question)")
         if !decision.options.isEmpty {
@@ -213,7 +309,10 @@ public enum Decisions {
             let flat = text.replacingOccurrences(of: "\n", with: " ")
             return flat.count > max ? String(flat.prefix(max - 1)) + "…" : flat
         }
-        let rows = decisions.map { [$0.id, $0.status.rawValue, cut($0.project, 24), cut($0.question, 60), cut($0.answer ?? "", 40)] }
+        let rows = decisions.map {
+            [$0.id, $0.status.rawValue, cut($0.project, 24), cut($0.question, 60),
+             cut($0.isCancelled ? "(\($0.cancelReason ?? ""))" : $0.answer ?? "", 40)]
+        }
         let all = [header] + rows
         let widths = (0..<(header.count - 1)).map { column in all.map { $0[column].count }.max() ?? 0 }
         return all.map { row in
@@ -272,26 +371,70 @@ public struct DecisionBook: Codable, Sendable, Equatable {
         return .answered(answered)
     }
 
+    public enum Cancelled: Equatable, Sendable {
+        case cancelled(OwnerDecision)
+        case alreadyAnswered(OwnerDecision)
+        case alreadyCancelled(OwnerDecision)
+        case unknown
+    }
+
+    /// What `cancel` would do now (`.cancelled` with the pending decision), without changing anything.
+    public func cancellable(_ id: String) -> Cancelled {
+        guard let decision = decision(id) else { return .unknown }
+        switch decision.status {
+        case .pending: return .cancelled(decision)
+        case .answered: return .alreadyAnswered(decision)
+        case .cancelled: return .alreadyCancelled(decision)
+        }
+    }
+
+    /// Withdraws a pending decision: it leaves the pending lists and stays in the history.
+    public mutating func cancel(_ id: String, reason: String, at date: Date = Date()) -> Cancelled {
+        guard let index = decisions.firstIndex(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else { return .unknown }
+        switch decisions[index].status {
+        case .answered: return .alreadyAnswered(decisions[index])
+        case .cancelled: return .alreadyCancelled(decisions[index])
+        case .pending: break
+        }
+        decisions[index].status = .cancelled
+        decisions[index].cancelReason = reason
+        decisions[index].cancelledAt = date
+        let cancelled = decisions[index]
+        prune()
+        return .cancelled(cancelled)
+    }
+
+    /// The session's own pending decision with the same question (`Decisions.normalizedQuestion`),
+    /// if any; `except` is left out (the one `--supersedes` replaces).
+    public func pendingDuplicate(session: UUID, question: String, except: String? = nil) -> OwnerDecision? {
+        let wanted = Decisions.normalizedQuestion(question)
+        return decisions.first {
+            $0.isPending && $0.sessionID == session && $0.id.caseInsensitiveCompare(except ?? "") != .orderedSame
+                && Decisions.normalizedQuestion($0.question) == wanted
+        }
+    }
+
     /// What became of the answer (after `answer`).
     public mutating func setDelivery(_ id: String, _ delivery: String) {
         guard let index = decisions.firstIndex(where: { $0.id == id }) else { return }
         decisions[index].delivery = delivery
     }
 
-    /// Pending ones stay; of the answered ones, the newest `maxAnswered`.
+    /// Pending ones stay; of the answered and cancelled ones, the newest `maxAnswered`.
     mutating func prune() {
         let answered = decisions.filter { !$0.isPending }
         guard answered.count > Decisions.maxAnswered else { return }
-        let keep = Set(answered.sorted { ($0.answeredAt ?? $0.createdAt) > ($1.answeredAt ?? $1.createdAt) }
+        let keep = Set(answered.sorted { $0.resolvedAt > $1.resolvedAt }
             .prefix(Decisions.maxAnswered).map(\.id))
         decisions.removeAll { !$0.isPending && !keep.contains($0.id) }
     }
 
     /// For a remote: every pending one and those answered in the last `recent` seconds (at most
-    /// `maxAnswered` of them), newest first.
+    /// `maxAnswered` of them), newest first. Cancelled ones are never sent: an older phone reads
+    /// a status it doesn't know as pending.
     public func forRemote(now: Date = Date(), recent: TimeInterval = 24 * 3600, maxAnswered: Int = 20) -> [OwnerDecision] {
         let pending = decisions.filter(\.isPending)
-        let answered = decisions.filter { !$0.isPending && now.timeIntervalSince($0.answeredAt ?? $0.createdAt) < recent }
+        let answered = decisions.filter { $0.isAnswered && now.timeIntervalSince($0.answeredAt ?? $0.createdAt) < recent }
             .suffix(maxAnswered)
         return (pending + answered).sorted { $0.createdAt > $1.createdAt }.map(Self.trimmed)
     }

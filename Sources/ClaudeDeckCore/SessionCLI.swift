@@ -127,6 +127,8 @@ public enum SessionCLI {
         case decisions
         /// `GET /v1/cli/decisions/{id}`.
         case decision(String)
+        /// `POST /v1/cli/decisions/{id}/cancel`: withdraw a pending one.
+        case cancelDecision(String)
         /// `GET /v1/cli/accounts`: the Claude accounts and their usage.
         case accounts
         /// `GET /v1/cli/accounts/current`: the caller's account.
@@ -159,7 +161,7 @@ public enum SessionCLI {
             case .addProject, .newSession, .presets, .showPreset, .setPreset, .queue, .queueItem, .cancelQueued: .start
             case .server: .server
             case .waitMany: .wait
-            case .decide, .decisions, .decision: .decide
+            case .decide, .decisions, .decision, .cancelDecision: .decide
             case .accounts, .currentAccount: .list
             case .switchAccount: .account
             case .simList, .simAcquire, .simRelease: .simulators
@@ -204,6 +206,7 @@ public enum SessionCLI {
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
         case 1 where rest[0] == "decisions": return method == "POST" ? .route(.decide) : expect("GET", .decisions)
         case 2 where rest[0] == "decisions": return expect("GET", .decision(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "decisions" && rest[2] == "cancel": return expect("POST", .cancelDecision(AgentHTTP.percentDecode(rest[1])))
         case 1 where rest[0] == "accounts": return expect("GET", .accounts)
         case 2 where rest[0] == "accounts" && rest[1] == "current": return expect("GET", .currentAccount)
         case 2 where rest[0] == "accounts" && rest[1] == "switch": return expect("POST", .switchAccount)

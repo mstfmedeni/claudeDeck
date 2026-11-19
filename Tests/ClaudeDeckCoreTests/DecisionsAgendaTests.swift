@@ -130,7 +130,160 @@ import Testing
         #expect((remote.last?.context?.count ?? 0) <= 2_001)
     }
 
+    // MARK: Cancelling
+
+    @Test func cancelPendingOnly() {
+        var book = DecisionBook()
+        book.add(decision("d_00000000a1"))
+        book.add(decision("d_00000000a2"))
+        #expect(book.cancellable("d_00000000a1") == .cancelled(book.decision("d_00000000a1")!))
+        guard case .cancelled(let cancelled) = book.cancel("D_00000000A1", reason: "obsolete") else { Issue.record("not cancelled"); return }
+        #expect(cancelled.status == .cancelled && cancelled.cancelReason == "obsolete" && cancelled.cancelledAt != nil)
+        #expect(book.pendingCount == 1 && book.pending.map(\.id) == ["d_00000000a2"])
+        // Again: already cancelled; an answered one: already answered; unknown.
+        guard case .alreadyCancelled = book.cancel("d_00000000a1", reason: "x") else { Issue.record("cancelled twice"); return }
+        _ = book.answer("d_00000000a2", with: "Redis", from: "mac")
+        guard case .alreadyAnswered(let kept) = book.cancel("d_00000000a2", reason: "x") else { Issue.record("answered one cancelled"); return }
+        #expect(kept.answer == "Redis" && kept.cancelReason == nil)
+        #expect(book.cancel("d_nope", reason: "x") == .unknown && book.cancellable("d_nope") == .unknown)
+        // A cancelled one can't be answered afterwards.
+        guard case .alreadyAnswered(let still) = book.answer("d_00000000a1", with: "SQLite", from: "phone") else { Issue.record("answered"); return }
+        #expect(still.isCancelled && still.answer == nil)
+        // Text, list and JSON.
+        #expect(Decisions.text(book.decision("d_00000000a1")!).hasPrefix("cancelled: obsolete\nid: d_00000000a1"))
+        #expect(Decisions.listText(book.newestFirst).contains("cancelled") && Decisions.listText(book.newestFirst).contains("(obsolete)"))
+    }
+
+    @Test func cancelledNeverGoToRemotes() throws {
+        var book = DecisionBook()
+        let now = Date()
+        book.add(decision("d_00000000b1", at: now.addingTimeInterval(-30)))
+        book.add(decision("d_00000000b2", at: now.addingTimeInterval(-20)))
+        book.add(decision("d_00000000b3", at: now.addingTimeInterval(-10)))
+        _ = book.cancel("d_00000000b1", reason: "superseded by d_00000000b3", at: now.addingTimeInterval(-5))
+        _ = book.answer("d_00000000b2", with: "x", from: "mac", at: now.addingTimeInterval(-2))
+        #expect(book.forRemote(now: now).map(\.id) == ["d_00000000b3", "d_00000000b2"])
+        // Why: an older phone reads the new status as pending.
+        let old = #"{"id":"d_00000000b1","question":"q","status":"cancelled"}"#
+        struct OldDecision: Decodable {
+            enum Status: String, Decodable { case pending, answered }
+            var status: Status
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                status = (try? c.decodeIfPresent(Status.self, forKey: .status)) ?? .pending
+            }
+            enum CodingKeys: String, CodingKey { case status }
+        }
+        #expect(try JSONDecoder().decode(OldDecision.self, from: Data(old.utf8)).status == .pending)
+    }
+
+    @Test func cancelledFieldsRoundTrip() throws {
+        var book = DecisionBook()
+        let parent = UUID()
+        book.add(OwnerDecision(id: "d_00000000c1", question: "q", options: [], recommended: nil, context: nil, projectID: nil,
+                               project: "p", sessionID: UUID(), session: "s", ancestors: [parent]))
+        _ = book.cancel("d_00000000c1", reason: "owner dismissed")
+        let back = try JSONDecoder().decode(DecisionBook.self, from: JSONEncoder().encode(book))
+        #expect(back == book && back.decisions.first?.ancestors == [parent] && back.decisions.first?.cancelReason == "owner dismissed")
+        // An older decisions.json (no new keys) still reads.
+        let older = try JSONDecoder().decode(DecisionBook.self, from: Data(#"{"decisions":[{"id":"d_x2","question":"q","status":"answered"}]}"#.utf8))
+        #expect(older.decisions.first?.ancestors == [] && older.decisions.first?.cancelReason == nil)
+        let object = try #require(try JSONSerialization.jsonObject(with: AgentJSON.encode(book.decisions[0])) as? [String: Any])
+        #expect(object["status"] as? String == "cancelled" && object["cancel_reason"] as? String == "owner dismissed")
+        #expect(object.keys.contains("cancelled_at") && object.keys.contains("ancestors"))
+    }
+
+    @Test func cancelledOnesArePrunedLikeAnswered() {
+        var book = DecisionBook()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        for index in 0..<(Decisions.maxAnswered + 3) {
+            book.add(decision(String(format: "d_%010x", index), at: base.addingTimeInterval(Double(index))))
+            _ = book.cancel(String(format: "d_%010x", index), reason: "r", at: base.addingTimeInterval(Double(index)))
+        }
+        book.add(decision("d_pending01"))
+        #expect(book.decisions.count == Decisions.maxAnswered + 1 && book.pendingCount == 1)
+        #expect(book.decision("d_0000000000") == nil && book.decision(String(format: "d_%010x", Decisions.maxAnswered + 2)) != nil)
+    }
+
+    @Test func whoMayCancel() {
+        let grand = UUID(), parent = UUID(), asker = UUID(), child = UUID(), stranger = UUID(), sibling = UUID()
+        let starters = [parent: grand, asker: parent, child: asker, sibling: parent]
+        let asked = OwnerDecision(id: "d_00000000d1", question: "q", options: [], recommended: nil, context: nil, projectID: nil,
+                                  project: "p", sessionID: asker, session: "s")
+        #expect(Decisions.mayCancel(caller: asker, decision: asked, startedBy: starters))
+        #expect(Decisions.mayCancel(caller: parent, decision: asked, startedBy: starters))
+        #expect(Decisions.mayCancel(caller: grand, decision: asked, startedBy: starters))
+        #expect(!Decisions.mayCancel(caller: child, decision: asked, startedBy: starters))
+        #expect(!Decisions.mayCancel(caller: sibling, decision: asked, startedBy: starters))
+        #expect(!Decisions.mayCancel(caller: stranger, decision: asked, startedBy: starters))
+        // The asking session is gone from the deck: the ancestry recorded when it asked still counts.
+        #expect(Decisions.ancestors(of: asker, startedBy: starters) == [parent, grand])
+        var gone = asked
+        gone.ancestors = Decisions.ancestors(of: asker, startedBy: starters)
+        #expect(Decisions.mayCancel(caller: grand, decision: gone, startedBy: [:]))
+        #expect(!Decisions.mayCancel(caller: parent, decision: asked, startedBy: [:]))
+        // No asking session recorded: nobody.
+        var orphan = asked
+        orphan.sessionID = nil
+        #expect(!Decisions.mayCancel(caller: asker, decision: orphan, startedBy: starters))
+        // A loop in a broken deck ends.
+        #expect(Decisions.ancestors(of: asker, startedBy: [asker: parent, parent: asker]) == [parent])
+    }
+
+    @Test func duplicateGuard() {
+        let session = UUID()
+        var book = DecisionBook()
+        var first = decision("d_00000000e1")
+        first.sessionID = session
+        first.question = "Hangi veritabanı?\n"
+        book.add(first)
+        #expect(Decisions.normalizedQuestion("  HANGİ   veritabanı ?? ") == Decisions.normalizedQuestion("hangi veritabanı"))
+        #expect(Decisions.normalizedQuestion("Which DB?") == "which db")
+        #expect(book.pendingDuplicate(session: session, question: "hangi  VERİTABANI")?.id == "d_00000000e1")
+        // Another session, another question, the one being superseded, or not pending: no duplicate.
+        #expect(book.pendingDuplicate(session: UUID(), question: "Hangi veritabanı?") == nil)
+        #expect(book.pendingDuplicate(session: session, question: "Hangi önbellek?") == nil)
+        #expect(book.pendingDuplicate(session: session, question: "Hangi veritabanı?", except: "d_00000000e1") == nil)
+        _ = book.cancel("d_00000000e1", reason: "x")
+        #expect(book.pendingDuplicate(session: session, question: "Hangi veritabanı?") == nil)
+    }
+
+    @Test func turkishGuard() {
+        #expect(Decisions.looksTurkish(question: "Hangi veritabanı?", options: []))
+        #expect(Decisions.looksTurkish(question: "Redis or SQLite", options: ["Ölçekle", "Bekle"]))
+        #expect(Decisions.looksTurkish(question: "İLK", options: []))
+        #expect(Decisions.looksTurkish(question: "Deploy now, ok mi?", options: []))
+        #expect(Decisions.looksTurkish(question: "Cache: Redis ve SQLite", options: []))
+        #expect(Decisions.looksTurkish(question: "s\u{0327}u an", options: []))  // ş decomposed
+        #expect(!Decisions.looksTurkish(question: "Which database for the cache?", options: ["Redis", "SQLite"]))
+        // Words, not pieces of words: "never", "milk", "bumper" aren't Turkish.
+        #expect(!Decisions.looksTurkish(question: "Never use milk or bumper?", options: []))
+        #expect(!Decisions.looksTurkish(question: "Café résumé naïve", options: []))
+    }
+
+    @Test func dismissedMessageIsOneLine() {
+        var asked = decision("d_00000000f1")
+        asked.question = "Line one\n  line two"
+        let message = Decisions.dismissedMessage(for: asked)
+        #expect(!message.contains("\n") && message.hasPrefix("[ClaudeDeck decision d_00000000f1] The owner dismissed your question “Line one line two”"))
+        #expect(Decisions.cleanReason("  a\nb ") == "a b" && Decisions.cleanReason("  ") == nil)
+        #expect((Decisions.cleanReason(String(repeating: "x", count: 900))?.count ?? 0) <= Decisions.maxReason + 1)
+    }
+
     // MARK: Routes
+
+    @Test func cancelRoute() {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/decisions/d_1234/cancel") == .route(.cancelDecision("d_1234")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/decisions/d_1234/cancel") == .methodNotAllowed)
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/decisions/d_1234/answer") == .notFound)
+        #expect(SessionCLI.Route.cancelDecision("x").scope == .decide)
+    }
+
+    @Test func dismissOnTheWire() throws {
+        let frame = try RemoteMessage.dismissDecision(id: "d_0000000099").frame()
+        #expect(try RemoteMessage.decode(frame) == .dismissDecision(id: "d_0000000099"))
+        #expect(RemoteSnapshot.Feature.all.contains(RemoteSnapshot.Feature.dismissDecision))
+    }
 
     @Test func routes() {
         #expect(SessionCLI.match(method: "POST", path: "/v1/cli/decisions") == .route(.decide))

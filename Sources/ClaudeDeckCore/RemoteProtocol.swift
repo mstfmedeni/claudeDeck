@@ -218,6 +218,9 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     /// snapshot; hosts with `Feature.decisions`). The next snapshot shows it answered; a decision
     /// answered elsewhere first keeps that answer.
     case answerDecision(id: String, answer: String)
+    /// Remote → host: the owner removes a pending decision without answering (hosts with
+    /// `Feature.dismissDecision`). The asking session is told; the next snapshot drops it.
+    case dismissDecision(id: String)
     /// Phone → host: send push notifications to this device (APNs.swift).
     case registerPush(token: Data, topic: String, environment: String, deviceName: String)
     case ping
@@ -392,10 +395,12 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let decisions = "decisions"
         /// `agendas` in the snapshot (read-only).
         public static let agenda = "agenda"
+        /// `dismissDecision`.
+        public static let dismissDecision = "dismissDecision"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
-                                              serverPlanRepair, dashboard, simulators, decisions, agenda]
+                                              serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
