@@ -180,7 +180,7 @@ struct AnsweredDecisionRow: View {
                 Text(decision.question).font(.callout).lineLimit(2).foregroundStyle(.secondary)
                 Text(decision.answer ?? "").font(.callout.weight(.semibold)).textSelection(.enabled)
                 HStack(spacing: 6) {
-                    Text([decision.project, decision.session].filter { !$0.isEmpty }.joined(separator: " · "))
+                    Text(decision.origin)
                     if let at = decision.answeredAt {
                         Text("·")
                         Text(at, format: .relative(presentation: .named))
@@ -190,6 +190,9 @@ struct AnsweredDecisionRow: View {
                     if decision.delivery == "queued" {
                         Text("·")
                         Text("sent to the session")
+                    } else if decision.delivery == "terminal" {
+                        Text("·")
+                        Text("kept for claudedeck decision get")
                     } else if decision.delivery == "no_session" {
                         Text("·")
                         Text("the session was gone").foregroundStyle(.orange)

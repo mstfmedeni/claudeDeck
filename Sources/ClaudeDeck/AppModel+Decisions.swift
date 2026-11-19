@@ -70,16 +70,21 @@ extension AppModel {
             logAgent("ClaudeDeck", inbound: false, "decision \(decision.id) was already answered; the answer from \(from) was ignored", ok: false)
             return
         case .answered(let decision):
+            // A plain terminal asked (a user's own shell): typing the answer there would run it.
             var delivery = "no_session"
-            if let sessionID = decision.sessionID, deck.session(sessionID)?.kind == .claude {
-                enqueue(sessionID, text: Decisions.message(for: decision))
-                delivery = "queued"
+            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+                if session.kind == .claude {
+                    enqueue(sessionID, text: Decisions.message(for: decision))
+                    delivery = "queued"
+                } else {
+                    delivery = "terminal"
+                }
             }
             decisions.setDelivery(decision.id, delivery)
             decisionsChanged(added: nil)
             let target = decision.session.isEmpty ? decision.project : decision.session
             logAgent(target, inbound: false, "decision \(decision.id) answered on the \(from == "phone" ? "phone" : "Mac") · "
-                + (delivery == "queued" ? "queued for the session" : "the session is gone; kept for claudedeck decision get"))
+                + (delivery == "queued" ? "queued for the session" : "kept for claudedeck decision get (\(delivery))"))
         }
     }
 

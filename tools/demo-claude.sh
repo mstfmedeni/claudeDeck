@@ -102,6 +102,14 @@ stream() {
   printf '%s[?1006l%s[?1000l%s[?1049l' "$ESC" "$ESC" "$ESC"
 }
 
+# Testing `claudedeck` from a Claude session: $DEMO/scenes/<terminal id>.run is run once with this
+# session's environment (as Claude's Bash tool would), its output in <terminal id>.run.out.
+run_pending() {
+  [ -f "$SCENE.run" ] || return 0
+  mv "$SCENE.run" "$SCENE.running" && sh "$SCENE.running" > "$SCENE.run.out" 2>&1
+  rm -f "$SCENE.running"
+}
+
 while :; do
-  if streaming; then stream; else sleep 1 & wait $!; live; fi
+  if streaming; then stream; else sleep 1 & wait $!; live; run_pending; fi
 done

@@ -129,6 +129,24 @@ TSX
 }
 checkout '' '' '' '' > "$D/src/checkout/Checkout.tsx"
 git -C "$D" commit -qam "Checkout page"
+# docs/AGENDA.md: the project's Agenda Board (project menu › Agenda Board; the phone's Agenda).
+mkdir -p "$D/docs"
+cat > "$D/docs/AGENDA.md" <<'EOF'
+# Agenda
+
+| id | title | track | owner | status | depends-on | evidence |
+|----|-------|-------|-------|--------|------------|----------|
+| C1 | Cart total with quantities | cart | cart-agent | done | — | [PR #41](https://example.com/pr/41) |
+| C2 | Coupon field (WELCOME10) | cart | cart-agent | doing | C1 | src/cart/coupons.ts |
+| K1 | Checkout page | checkout | checkout-agent | done | — | tests/checkout.test.ts |
+| K2 | Payment errors shown inline | checkout | checkout-agent | review | K1 | screenshot: checkout-error.png |
+| K3 | Apple Pay button | checkout | | blocked | K2 | waiting on merchant id |
+| P1 | Stripe webhooks retry with backoff | payments | api-agent | doing | | internal/webhooks/retry.go |
+| P2 | Refund endpoint | payments | api-agent | todo | P1 | |
+| R1 | Release 1.4 | release | owner | todo | C2, K2, P1 | |
+EOF
+git -C "$D" add docs/AGENDA.md
+git -C "$D" commit -qm "Agenda"
 printf 'export function CartSummary({ items, discount = 0 }) {\n  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0)\n  return subtotal - discount\n}\n' > "$D/src/cart/CartSummary.tsx"
 printf 'export function applyCoupon(code) { return code === "WELCOME10" ? 0.1 : 0 }\n' > "$D/src/cart/coupons.ts"
 checkout '

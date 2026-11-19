@@ -31,7 +31,8 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     /// Where it was answered: `mac` or `phone`.
     public var answeredFrom: String?
     /// What happened to the answer: `queued` (in the session's queue, typed at its turn),
-    /// `no_session` (the session is gone, or isn't a Claude session): only stored.
+    /// `terminal` (a plain terminal asked: nothing is typed there) or `no_session` (the session
+    /// is gone): only stored.
     public var delivery: String?
 
     public init(id: String, question: String, options: [String], recommended: String?, context: String?,
@@ -50,6 +51,13 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     }
 
     public var isPending: Bool { status == .pending }
+
+    /// "project · session", or one of them when the session is named after its project.
+    public var origin: String {
+        if session.isEmpty || session == project { return project }
+        if project.isEmpty { return session }
+        return "\(project) · \(session)"
+    }
 
     private enum CodingKeys: String, CodingKey {
         case id, question, options, recommended, context, projectID = "projectId", project, sessionID = "sessionId", session

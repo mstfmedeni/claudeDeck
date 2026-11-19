@@ -18700,6 +18700,16 @@
           }
         }
       }
+    },
+    "kept for claudedeck decision get": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck decision get için saklandı"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

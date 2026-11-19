@@ -292,7 +292,8 @@ can't ask.
   at its next "your turn" (at once when it's idle), never into a permission prompt or a question,
   and kept in the queue if the session isn't running until it is. It's one line:
   `[ClaudeDeck decision d_…] The owner answered your question "…": ANSWER`. `decision get` shows
-  it too (`delivery`: `queued`, or `no_session` when the session is gone or is a plain terminal).
+  it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
+  `no_session` when the session is gone).
   The first answer counts; one from the other device a moment later is ignored (Activity Log).
 - **JSON** (`--json`): `id, question, options, recommended, context, project_id, project,
   session_id, session, created_at, status` (`pending`/`answered`)`, answer, answered_at,

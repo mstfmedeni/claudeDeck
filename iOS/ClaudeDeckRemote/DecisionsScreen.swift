@@ -100,7 +100,7 @@ struct DecisionsScreen: View {
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(.primary)
             HStack(spacing: 4) {
-                Text([decision.project, decision.session].filter { !$0.isEmpty }.joined(separator: " · "))
+                Text(decision.origin)
                 if let at = decision.answeredAt {
                     Text("·")
                     Text(at, format: .relative(presentation: .named))
