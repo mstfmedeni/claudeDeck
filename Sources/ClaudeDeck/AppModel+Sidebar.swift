@@ -22,6 +22,8 @@ extension AppModel {
         case .program(let program):
             switch program.state {
             case .working: .running
+            // A dev server or watcher: open, but not working (not in the Working filter).
+            case .service: .shell
             case .blocked: .blocked
             case .finished, .failed: .idle(unseen: isUnseenIdle(session.id))
             }

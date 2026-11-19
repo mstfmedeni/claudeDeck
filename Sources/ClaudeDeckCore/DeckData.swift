@@ -76,6 +76,10 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     /// Shell sessions: show what the program in it is doing (OSC 7501 / shell integration, see
     /// ProgramStatus.swift). nil follows `DeckSettings.terminalProgramStatus`.
     public var showProgramStatus: Bool?
+    /// Shell sessions: whether the terminal runs a service (dev server, watcher), set by hand.
+    /// true: a running command shows as a service, never as working; false: never a service;
+    /// nil: decided by whether it listens on a TCP port (TerminalService.swift).
+    public var serviceOverride: Bool?
     /// Terminals a session opened with `claudedeck open`: that session (it may type into them).
     public var openedBy: UUID?
     /// Claude sessions another session started with `claudedeck new`: that session (it may type
@@ -136,6 +140,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         linkedWorkItem = try? c.decodeIfPresent(LinkedWorkItem.self, forKey: .linkedWorkItem)
         queue = (try? c.decodeIfPresent([QueuedPrompt].self, forKey: .queue)) ?? []
         showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
+        serviceOverride = try? c.decodeIfPresent(Bool.self, forKey: .serviceOverride)
         openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
         startedBy = try? c.decodeIfPresent(UUID.self, forKey: .startedBy)
         launchOptions = try? c.decodeIfPresent(ClaudeLaunchOptions.self, forKey: .launchOptions)

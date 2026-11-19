@@ -735,6 +735,17 @@ struct SessionMenu: View {
                 get: { model.deck.showsProgramStatus(session.id) },
                 set: { value in model.setShowProgramStatus(value == model.deck.settings.terminalProgramStatus ? nil : value, for: session.id) }
             ))
+            if model.deck.showsProgramStatus(session.id) {
+                // A dev server or watcher shows as a server, not as working (TerminalService.swift).
+                Picker("Server", selection: Binding(
+                    get: { model.deck.session(session.id)?.serviceOverride },
+                    set: { model.setServiceOverride($0, for: session.id) }
+                )) {
+                    Text("Automatic (Listens on a Port)").tag(Bool?.none)
+                    Text("Mark as Server").tag(Bool?.some(true))
+                    Text("Not a Server").tag(Bool?.some(false))
+                }
+            }
         }
         Divider()
         GitHubLinkMenuItems(session: session)

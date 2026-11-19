@@ -9,6 +9,8 @@ enum StatusStyle {
     static let inactive = Color.secondary.opacity(0.5)
     /// A terminal's command that failed.
     static let failed = Color.orange
+    /// A terminal serving (dev server, watcher).
+    static let service = Color.green.opacity(0.75)
 
     static func label(for display: DisplayState) -> String {
         switch display {
@@ -26,6 +28,7 @@ enum StatusStyle {
     static func programLabel(_ program: ProgramBadge) -> String {
         switch program.state {
         case .working: String(localized: "Running")
+        case .service: TerminalService.portsLabel(program.ports).map { String(localized: "Server · \($0)") } ?? String(localized: "Server")
         case .blocked:
             switch program.kind {
             case .permission?: String(localized: "Needs permission")
@@ -42,7 +45,7 @@ enum StatusStyle {
     /// green was unreadable in dark mode.
     static func pillText(for display: DisplayState) -> Color {
         display.program?.state == .failed ? .white
-            : display.isIdle || display.isRunning || display == .starting ? .black.opacity(0.8) : .white
+            : display.isIdle || display.isRunning || display == .starting || display.program?.state == .service ? .black.opacity(0.8) : .white
     }
 
     static func color(for display: DisplayState) -> Color {
@@ -55,6 +58,8 @@ enum StatusStyle {
         case .program(let program):
             switch program.state {
             case .working: running
+            // Calm green: running, but no pulse and no flowing dots (not "working").
+            case .service: service
             case .blocked: blocked
             case .finished: idle
             case .failed: failed

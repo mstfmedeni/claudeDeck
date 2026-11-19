@@ -287,6 +287,9 @@ public enum ShellMark: Equatable, Sendable {
 public struct ProgramStatus: Equatable, Sendable {
     public enum State: String, Sendable, Codable {
         case working, blocked, finished, failed
+        /// A long-running command that serves (listens on a TCP port, or the user marked the
+        /// terminal as a service): running, but not "working" (TerminalService.swift).
+        case service
     }
 
     public var state: State
@@ -298,17 +301,21 @@ public struct ProgramStatus: Equatable, Sendable {
     public var kind: ProgramStatusReport.Kind?
     /// The program's `app` id.
     public var app: String?
-    /// When the terminal entered this state (a new message doesn't move it).
+    /// When the terminal entered this state (a new message doesn't move it). A command that turns
+    /// into a service keeps the time it started.
     public var since: Date
+    /// `service`: the TCP ports its processes listen on (sorted; empty when only marked by hand).
+    public var ports: [Int]?
 
     public init(state: State, exitCode: Int32? = nil, message: String? = nil, kind: ProgramStatusReport.Kind? = nil,
-                app: String? = nil, since: Date) {
+                app: String? = nil, since: Date, ports: [Int]? = nil) {
         self.state = state
         self.exitCode = exitCode
         self.message = message
         self.kind = kind
         self.app = app
         self.since = since
+        self.ports = ports
     }
 
     /// Finished or failed: the result is ready (the "your turn" of a terminal).
@@ -346,6 +353,12 @@ public struct ProgramStatusTracker: Sendable {
     private var serial = 0
     /// Identity of the event behind `status` (moves `since` when it changes).
     private var statusToken = ""
+    /// TCP ports the running command's processes were seen listening on (`noteListening`);
+    /// dropped when the command ends. Sticky while it runs: a dev server that restarts (and
+    /// briefly listens on nothing) stays a service.
+    private var listeningPorts: [Int] = []
+    /// `status` comes from a command the shell runs (OSC 133), not from a program's own report.
+    public private(set) var statusFromCommand = false
 
     public init() {}
 
@@ -386,10 +399,12 @@ public struct ProgramStatusTracker: Sendable {
             serial += 1
             commandRunning = true
             commandStartSerial = serial
+            listeningPorts = []
         case .commandFinished(let exitCode):
             // `D` without a command (an empty line) changes nothing.
             guard commandRunning else { return false }
             commandRunning = false
+            listeningPorts = []
             serial += 1
             lastCommand = CommandResult(exitCode: exitCode, startSerial: commandStartSerial, serial: serial)
         }
@@ -404,22 +419,41 @@ public struct ProgramStatusTracker: Sendable {
         return update(now: now)
     }
 
+    /// The running command's processes listen on these TCP ports (a probe, see
+    /// TerminalService.swift): the command shows as a service. Only a command the shell runs
+    /// turns into one; what a program reports itself (OSC 7501) always wins. Empty ports keep a
+    /// command that already is a service as it is. True when `status` changed.
+    @discardableResult
+    public mutating func noteListening(_ ports: [Int], now: Date) -> Bool {
+        guard commandRunning else { return false }
+        let sorted = Array(Set(ports)).sorted()
+        guard !sorted.isEmpty, sorted != listeningPorts else { return false }
+        listeningPorts = sorted
+        return update(now: now)
+    }
+
     /// `working` and `blocked` records end with a new prompt or the process.
     private mutating func dropActive() {
         records = records.filter { $0.value.report.state != .working && $0.value.report.state != .blocked }
+        listeningPorts = []
     }
 
     private mutating func update(now: Date) -> Bool {
         let (next, token) = resolve()
         guard var next else {
             statusToken = ""
+            statusFromCommand = false
             guard status != nil else { return false }
             status = nil
             return true
         }
-        let sameEvent = token == statusToken && status?.state == next.state
+        // A running command that turns into a service (or back) is still the same event.
+        let running: Set<ProgramStatus.State> = [.working, .service]
+        let sameState = status.map { $0.state == next.state || (running.contains($0.state) && running.contains(next.state)) } ?? false
+        let sameEvent = token == statusToken && sameState
         next.since = sameEvent ? status!.since : now
         statusToken = token
+        statusFromCommand = token.hasPrefix("c:")
         guard next != status else { return false }
         status = next
         return true
@@ -442,6 +476,9 @@ public struct ProgramStatusTracker: Sendable {
         // The newest settled record: done, error or idle.
         let settled = newestFirst.first { [.done, .error, .idle].contains($0.value.report.state) }
         if commandRunning, settled.map({ $0.value.serial < commandStartSerial }) ?? true {
+            if !listeningPorts.isEmpty {
+                return (ProgramStatus(state: .service, since: .distantPast, ports: listeningPorts), "c:\(commandStartSerial)")
+            }
             return (ProgramStatus(state: .working, since: .distantPast), "c:\(commandStartSerial)")
         }
         // Reported during the last command (or after it, or with none run): it says more than the exit code.
@@ -509,4 +546,15 @@ public struct ProgramStatusMonitor: Sendable {
 
     @discardableResult
     public mutating func processExited(now: Date) -> Bool { tracker.processExited(now: now) }
+
+    /// See `ProgramStatusTracker.noteListening`.
+    @discardableResult
+    public mutating func noteListening(_ ports: [Int], now: Date) -> Bool { tracker.noteListening(ports, now: now) }
+
+    /// When the command now running started, if the status is a command the shell runs (working
+    /// or already a service): the only kind the service probe looks at.
+    public var commandSince: Date? {
+        guard tracker.statusFromCommand, let status, status.state == .working || status.state == .service else { return nil }
+        return status.since
+    }
 }

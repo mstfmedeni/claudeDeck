@@ -408,7 +408,8 @@ public enum SessionCLI {
         guard let program else { return fallback }
         switch program {
         case .blocked: return .blocked(blockedState)
-        case .working: return .running
+        // A server still runs: `wait` doesn't return for it.
+        case .working, .service: return .running
         case .finished, .failed:
             switch fallback {
             // Still starting, or a code of its own (the command `open` ran): that's newer.

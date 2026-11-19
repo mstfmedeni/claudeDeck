@@ -768,6 +768,51 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         guard programStatuses[id] != status else { return }
         programStatuses[id] = status
         onProgramStatus?(id)
+        if status?.state == .working || status?.state == .service { startServiceProbe() }
+    }
+
+    // MARK: Service probe (TerminalService.swift)
+
+    /// The user's service mark for a terminal (set by the app): false is never probed.
+    @ObservationIgnored var serviceOverride: ((UUID) -> Bool?)?
+    @ObservationIgnored private var serviceProbeTask: Task<Void, Never>?
+
+    /// Every `TerminalService.pollInterval` while some terminal runs a command: commands running
+    /// for `minimumRunTime` are checked for listening TCP ports (libproc, off the main thread),
+    /// and turn into services when they listen. Stops by itself when no command runs.
+    private func startServiceProbe() {
+        guard serviceProbeTask == nil else { return }
+        serviceProbeTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(TerminalService.pollInterval))
+                guard let self, await self.probeServices() else { break }
+            }
+            self?.serviceProbeTask = nil
+        }
+    }
+
+    /// One round; false when no terminal runs a command any more.
+    private func probeServices() async -> Bool {
+        let now = Date()
+        var anyRunning = false
+        var probes: [(id: UUID, pid: pid_t, since: Date)] = []
+        for (id, view) in views {
+            guard let since = view.programMonitor?.commandSince else { continue }
+            anyRunning = true
+            guard TerminalService.shouldProbe(commandSince: since, override: serviceOverride?(id), now: now) else { continue }
+            let pid = pid(for: id)
+            if pid > 0 { probes.append((id, pid, since)) }
+        }
+        guard !probes.isEmpty else { return anyRunning }
+        let roots = probes.map(\.pid)
+        let found = await Task.detached(priority: .utility) { ListeningPorts.scan(roots: roots) }.value
+        for probe in probes {
+            // Still the same command (it may have ended while the scan ran).
+            guard let ports = found[probe.pid], let view = views[probe.id], view.programMonitor?.commandSince == probe.since,
+                  view.programMonitor?.noteListening(ports, now: Date()) == true else { continue }
+            programStatusChanged(probe.id)
+        }
+        return true
     }
 
     /// Whether something other than the shell has the terminal: a command is running in it
