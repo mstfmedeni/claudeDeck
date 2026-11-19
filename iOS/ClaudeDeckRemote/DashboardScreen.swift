@@ -187,6 +187,9 @@ struct DashboardScreen: View {
                         waiting
                         usage
                     }
+                    if let projects = dashboard.projects, !projects.isEmpty {
+                        ProjectUsageCard(projects: projects)
+                    }
                 }
                 .padding()
                 .frame(maxWidth: 1000)
@@ -340,6 +343,49 @@ private struct UsageCard: View {
                     if let window = dashboard.fiveHour { UsageGauge(title: "5 hours", window: window) }
                     if let window = dashboard.week { UsageGauge(title: "Week", window: window) }
                 }
+            }
+        }
+    }
+}
+
+/// Each project's part of the plan's usage (sent by Macs that know it).
+private struct ProjectUsageCard: View {
+    let projects: [RemoteDashboard.ProjectShare]
+    @State private var week = false
+
+    var body: some View {
+        Card(title: "Usage by project", systemImage: "chart.bar.xaxis") {
+            Picker("Window", selection: $week) {
+                Text("5 hours").tag(false)
+                Text("Week").tag(true)
+            }
+            .pickerStyle(.segmented)
+            let rows = projects.filter { (week ? $0.weekTokens : $0.fiveHourTokens) > 0 }
+            if rows.isEmpty {
+                Text(week ? "Nothing this week" : "Nothing in this 5-hour window").font(.callout).foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(rows) { project in
+                        let share = week ? project.weekShare : project.fiveHourShare
+                        let percent = week ? project.weekPercent : project.fiveHourPercent
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(project.name).font(.callout.weight(.medium)).lineLimit(1)
+                                Spacer(minLength: 8)
+                                if let percent {
+                                    Text(verbatim: String(format: "%.1f%%", percent)).font(.callout.weight(.semibold)).monospacedDigit()
+                                }
+                                Text(verbatim: "\(Int((share * 100).rounded()))%")
+                                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            }
+                            ProgressView(value: min(1, max(0, share)))
+                            Text("\((week ? project.weekTokens : project.fiveHourTokens).formatted(.number.notation(.compactName))) tokens")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("A project's share of the estimated cost in its transcripts, applied to the plan's percent.")
+                    .font(.caption2).foregroundStyle(.tertiary)
             }
         }
     }

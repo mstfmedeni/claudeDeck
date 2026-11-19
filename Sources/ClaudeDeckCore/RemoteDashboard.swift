@@ -20,11 +20,16 @@ public struct RemoteDashboard: Codable, Sendable, Equatable {
     public var moreWaiting: Int
     public var fiveHour: Window?
     public var week: Window?
+    /// Each project's share of the usage windows (biggest first, at most `maxProjects`); nil from
+    /// Macs that don't send it.
+    public var projects: [ProjectShare]?
 
     public static let maxWaiting = 5
+    public static let maxProjects = 8
 
     public init(working: Int, waiting: Int, yourTurn: Int, linesAdded: Int?, linesRemoved: Int?,
-                waitingList: [Waiting], moreWaiting: Int = 0, fiveHour: Window?, week: Window?) {
+                waitingList: [Waiting], moreWaiting: Int = 0, fiveHour: Window?, week: Window?, projects: [ProjectShare]? = nil) {
+        self.projects = projects
         self.working = working
         self.waiting = waiting
         self.yourTurn = yourTurn
@@ -86,6 +91,47 @@ public struct RemoteDashboard: Codable, Sendable, Equatable {
         }
     }
 
+    /// One project's part of the plan's usage (ProjectUsage.swift on the Mac), rounded so small
+    /// changes don't resend the snapshot.
+    public struct ProjectShare: Codable, Sendable, Equatable, Identifiable {
+        public var projectID: UUID
+        public var name: String
+        /// Percent points of the window this project used (its share × the window's percent);
+        /// nil when the plan's usage isn't known.
+        public var fiveHourPercent: Double?
+        public var weekPercent: Double?
+        /// Its share of the tracked cost in the window, 0–1.
+        public var fiveHourShare: Double
+        public var weekShare: Double
+        /// Tokens in the window (cache reads included).
+        public var fiveHourTokens: Int
+        public var weekTokens: Int
+        /// Estimated cost this week at API prices, in dollars.
+        public var weekCost: Double
+        public var id: UUID { projectID }
+
+        public init(projectID: UUID, name: String, fiveHourPercent: Double?, weekPercent: Double?, fiveHourShare: Double,
+                    weekShare: Double, fiveHourTokens: Int, weekTokens: Int, weekCost: Double) {
+            self.projectID = projectID
+            self.name = name
+            self.fiveHourPercent = fiveHourPercent.map { ($0 * 10).rounded() / 10 }
+            self.weekPercent = weekPercent.map { ($0 * 10).rounded() / 10 }
+            self.fiveHourShare = (fiveHourShare * 1000).rounded() / 1000
+            self.weekShare = (weekShare * 1000).rounded() / 1000
+            self.fiveHourTokens = Self.round(fiveHourTokens)
+            self.weekTokens = Self.round(weekTokens)
+            self.weekCost = (weekCost * 100).rounded() / 100
+        }
+
+        /// To 3 significant digits.
+        static func round(_ n: Int) -> Int {
+            guard n >= 1000 else { return n }
+            var scale = 1
+            while n / scale >= 1000 { scale *= 10 }
+            return (n + scale / 2) / scale * scale
+        }
+    }
+
     /// Sorts the waiting sessions like the Mac's "Waiting on you" card (blocked first, then the
     /// longest wait) and keeps the first `maxWaiting`.
     public static func top(_ waiting: [Waiting]) -> (list: [Waiting], more: Int) {
@@ -106,9 +152,13 @@ public struct RemoteSimulator: Codable, Sendable, Equatable, Identifiable {
     public var memoryBytes: UInt64?
     /// The sessions seen using it (latest first).
     public var sessionIDs: [UUID]
+    /// The session that reserved it (`claudedeck sim acquire`); nil from older Macs.
+    public var heldBy: UUID?
     public var id: String { udid }
 
-    public init(udid: String, name: String, runtime: String, state: String, memoryBytes: UInt64? = nil, sessionIDs: [UUID] = []) {
+    public init(udid: String, name: String, runtime: String, state: String, memoryBytes: UInt64? = nil, sessionIDs: [UUID] = [],
+                heldBy: UUID? = nil) {
+        self.heldBy = heldBy
         self.udid = udid
         self.name = name
         self.runtime = runtime

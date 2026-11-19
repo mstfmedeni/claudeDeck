@@ -88,6 +88,13 @@ final class AppModel {
     @ObservationIgnored var askLimiter = AgentAskLimiter()
     /// `claudedeck` (AppModel+SessionCLI): each session's token and scopes, and what `wait` goes by.
     @ObservationIgnored var cli = SessionCLIBook()
+    /// `claudedeck sim`: the simulators sessions hold (AppModel+SessionCLISimulators).
+    var simHolds = SimulatorHoldBook()
+    /// One `sim acquire` at a time, so two sessions never pick the same device.
+    @ObservationIgnored var simAcquireChain: Task<Void, Never>?
+    /// Stall watch (AppModel+StallWatch): what is known per session, and the checking loop.
+    @ObservationIgnored var stallTrackers: [UUID: StallTracker] = [:]
+    @ObservationIgnored var stallTask: Task<Void, Never>?
     /// The command asked for a notification (AttentionCenter shows it).
     @ObservationIgnored var onSessionNotice: ((UUID, String) -> Void)?
     @ObservationIgnored var agentPromptSeen: [UUID: Date] = [:]
@@ -224,6 +231,8 @@ final class AppModel {
         agentAPI.start(model: self) // no-op unless the agents' API is on
         installAskScript()
         installCLIScript() // only while the command-line tool is on
+        loadSimulatorHolds()
+        startStallWatch() // only checks while the setting is on
         loadAgentNotes()
         usage.start()
         trackMenuBarCounts()
@@ -408,6 +417,7 @@ final class AppModel {
         if next != previous { hookStatuses = next }
 
         for (id, status) in next where previous[id] != status {
+            stallProgress(id, at: status.updatedAt)
             if deck.session(id)?.claudeSessionID != status.sessionID || deck.session(id)?.lastActivityAt != status.updatedAt {
                 deck.updateSession(id) {
                     $0.claudeSessionID = status.sessionID
@@ -457,7 +467,10 @@ final class AppModel {
         tailers[id]?.stop()
         tailers[id] = nil
         let tailer = FileTailer(url: URL(fileURLWithPath: path)) { [weak self] chunk in
-            MainActor.assumeIsolated { self?.onTranscriptChanged?(id) }
+            MainActor.assumeIsolated {
+                self?.onTranscriptChanged?(id)
+                self?.stallTranscriptGrew(id, chunk: chunk)
+            }
             // Only look for limit events when the chunk may hold one or a hit is waiting to be cleared.
             let mayMatter = chunk.contains(#""rate_limit""#) || chunk.contains(#""isApiErrorMessage":true"#)
                 || MainActor.assumeIsolated { self?.usageLimitHits[id] != nil }
@@ -762,6 +775,9 @@ final class AppModel {
         usageLimitHits[id] = nil
         // On quit, prepareForQuit already recorded which sessions were open and working.
         guard !isQuitting else { return }
+        // A restart (the user's, or the stall watch's) keeps the session's simulators.
+        if !restartingSessions.contains(id) { releaseSimulators(of: id, reason: "the session ended") }
+        stallTrackers[id] = nil
         deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil }
         scheduleSave()
         onCountsChanged?()
@@ -888,6 +904,8 @@ final class AppModel {
         pendingCompact.remove(id)
         pendingContinue.remove(id)
         usageLimitHits[id] = nil
+        releaseSimulators(of: id, reason: "the session was closed")
+        stallTrackers[id] = nil
         cli.forget(id)
         scheduleSave()
         onCountsChanged?()

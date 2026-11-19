@@ -70,12 +70,16 @@ public enum SessionCLI {
         case start
         /// ServerPlan through the app (also needs "Sessions may use ServerPlan").
         case server
+        /// Reserving simulators of its own (`claudedeck sim`; also needs "Sessions may reserve simulators").
+        case simulators
+        /// Token and cost usage per project (`claudedeck usage`; read-only).
+        case usage
     }
 
     /// Claude sessions and the user's own terminals.
     public static let fullScopes: Set<Scope> = Set(Scope.allCases)
     /// A terminal a session opened runs what that session wrote: it may look and tell, not act.
-    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify]
+    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify, .usage]
 
     public static func scopes(openedBy: UUID?) -> Set<Scope> { openedBy == nil ? fullScopes : openedScopes }
 
@@ -95,6 +99,16 @@ public enum SessionCLI {
         case newSession(String)
         /// `/v1/cli/server/{command}`: one of `ServerPlanCLI.commands` (any method; the table checks it).
         case server(String)
+        /// `GET /v1/cli/sim`: the simulators sessions hold.
+        case simList
+        /// `POST /v1/cli/sim/acquire`.
+        case simAcquire
+        /// `POST /v1/cli/sim/release`.
+        case simRelease
+        /// `GET /v1/cli/usage`.
+        case usage
+        /// `GET /v1/cli/sessions/{ref}/status`: state, who started it, stall watch, simulators.
+        case status(String)
 
         public var scope: Scope {
             switch self {
@@ -108,6 +122,9 @@ public enum SessionCLI {
             case .projects: .projects
             case .addProject, .newSession: .start
             case .server: .server
+            case .simList, .simAcquire, .simRelease: .simulators
+            case .usage: .usage
+            case .status: .list
             }
         }
     }
@@ -136,12 +153,17 @@ public enum SessionCLI {
         case 1 where rest[0] == "projects": return method == "POST" ? .route(.addProject) : expect("GET", .projects)
         case 3 where rest[0] == "projects" && rest[2] == "sessions": return expect("POST", .newSession(AgentHTTP.percentDecode(rest[1])))
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
+        case 1 where rest[0] == "sim": return expect("GET", .simList)
+        case 2 where rest[0] == "sim" && rest[1] == "acquire": return expect("POST", .simAcquire)
+        case 2 where rest[0] == "sim" && rest[1] == "release": return expect("POST", .simRelease)
+        case 1 where rest[0] == "usage": return expect("GET", .usage)
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {
             case "send": return expect("POST", .send(ref))
             case "screen": return expect("GET", .capture(ref))
             case "wait": return expect("GET", .wait(ref))
+            case "status": return expect("GET", .status(ref))
             default: return .notFound
             }
         default: return .notFound

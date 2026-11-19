@@ -31,8 +31,21 @@ extension SessionCLI {
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
           A question for the user, as a note beside this session (or for an agent you may ask).
+      claudedeck status ID [--json]
+          A session's state, who started it, the stall watch and the simulators it holds.
+      claudedeck usage [--project ID|NAME|PATH] [--json]
+          Each project's share of the plan's 5-hour and weekly usage (tokens, estimated cost).
       claudedeck skill setup [--user|--project] [--force]
           Installs the Claude Code skill that explains this command.
+
+    Simulators (Settings > Agents: "Sessions may reserve simulators"):
+      claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--json]
+          Simulators of this session's own, booted: prints "UDID  NAME" per device. --duo adds an
+          iPhone Duo. No other session gets them until they're released.
+      claudedeck sim release [UDID] [--json]
+          Releases one (or, without UDID, all of this session's). Also when the session ends.
+      claudedeck sim list [--json]
+          The held simulators (and their holders) and ClaudeDeck's free ones.
 
     Projects and sessions (Settings > Agents: "Sessions may add projects and start Claude sessions"):
       claudedeck projects [--json]
@@ -134,6 +147,11 @@ extension SessionCLI {
               ambiguous) hint=" (give more of the id)" ;;
               not_running) hint=" (it isn't running)" ;;
               blocked) hint=" (a permission or a question is on screen)" ;;
+              too_many_simulators) hint=" (at most 4 per session; release some first)" ;;
+              unknown_device) hint=" (no such simulator device type; see xcrun simctl list devicetypes)" ;;
+              no_runtime) hint=" (no installed runtime runs that device type)" ;;
+              not_held) hint=" (no session holds that simulator)" ;;
+              simctl_failed) hint="" ;;
               *) hint="" ;;
             esac
             printf 'claudedeck: %s%s%s (HTTP %s)\n' "${reason:-$body}" "${message:+: $message}" "$hint" "$http" >&2
@@ -311,6 +329,74 @@ extension SessionCLI {
       done
       need_session
       call /projects -G --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_status() {
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "status: unknown option $1" ;;
+          *) [ -z "$id" ] || die "status: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      [ -n "$id" ] || id=self
+      check_id "$id" status
+      need_session
+      call "/sessions/$id/status" -G --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_usage() {
+      project=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --project) [ $# -ge 2 ] || die "usage: --project needs an id, name or path"; project=$2; shift ;;
+          --project=*) project=${1#*=} ;;
+          --json) json=1 ;;
+          *) die "usage: unknown argument $1" ;;
+        esac
+        shift
+      done
+      case "$project" in ./*|../*) project=$(abs_path "$project") ;; esac
+      need_session
+      max_time=120
+      call /usage -G --data-urlencode "project=$project" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_sim() {
+      sub=${1:-}; [ $# -gt 0 ] && shift
+      device=""; duo=0; udid=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --device) [ $# -ge 2 ] || die "sim: --device needs a device type (\"iPhone 17 Pro\")"; device=$2; shift ;;
+          --device=*) device=${1#*=} ;;
+          --duo) duo=1 ;;
+          --json) json=1 ;;
+          -*) die "sim: unknown option $1" ;;
+          *) [ -z "$udid" ] || die "sim: one UDID only"; udid=$1 ;;
+        esac
+        shift
+      done
+      case "$sub" in
+        acquire)
+          [ -z "$udid" ] || die "sim acquire: no arguments besides --device and --duo"
+          need_session
+          # Creating and booting a simulator can take minutes.
+          max_time=600
+          call /sim/acquire --data-urlencode "device=$device" --data-urlencode "duo=$duo" --data-urlencode "format=$(fmt)" ;;
+        release)
+          case "$udid" in *[!A-Fa-f0-9-]*) die "sim release: not a UDID: $udid" ;; esac
+          need_session
+          call /sim/release --data-urlencode "udid=$udid" --data-urlencode "format=$(fmt)" ;;
+        list)
+          need_session
+          call /sim -G --data-urlencode "format=$(fmt)" ;;
+        *) die "sim: acquire, release or list (claudedeck help)" ;;
+      esac
       finish
     }
 
@@ -643,6 +729,9 @@ extension SessionCLI {
       project) cmd_project "$@" ;;
       new) cmd_new "$@" ;;
       server) cmd_server "$@" ;;
+      sim) cmd_sim "$@" ;;
+      usage) cmd_usage "$@" ;;
+      status) cmd_status "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
     """# + "\n"
@@ -687,6 +776,30 @@ extension SessionCLI {
     `ID` is a full id from `list`, its first 8 characters, or `self`. Add `--json` for
     machine-readable output.
 
+    ```sh
+    claudedeck status ID                           # state, who started it, stall watch, simulators
+    claudedeck usage [--project P]                 # each project's share of the 5-hour / weekly usage
+    ```
+
+    ### Simulators
+
+    Only when the user turned on "Sessions may reserve simulators" (otherwise exit 4,
+    `setting_off`). Use your own simulator instead of `booted` or a shared device name, so
+    parallel sessions never drive the same one.
+
+    ```sh
+    udid=$(claudedeck sim acquire | head -1 | cut -d ' ' -f 1)   # booted iPhone 17 Pro of your own
+    claudedeck sim acquire --device "iPad Pro 13-inch (M5)"      # another device type
+    claudedeck sim acquire --duo          # an iPhone 17 Pro and an iPhone Duo (two lines)
+    xcodebuild … -destination "id=$udid"                          # always by UDID
+    claudedeck sim release [UDID]         # when done (also happens when your session ends)
+    claudedeck sim list                   # who holds what
+    ```
+
+    - ClaudeDeck creates its own devices ("ClaudeDeck · iPhone 17 Pro · 1") and reuses free ones;
+      the user's simulators are never handed out. At most 4 per session (exit 4 `too_many_simulators`).
+    - Acquiring can take a minute or two (create + boot). `--json` gives `udid`, `name`, `runtime`.
+
     ### Projects and Claude sessions
 
     Only when the user turned on "Sessions may add projects and start Claude sessions"
@@ -711,6 +824,9 @@ extension SessionCLI {
       started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it.
     - The user gets a notification for each and can see them in the activity log. Start
       sessions only when parallel work really helps, and say why in the prompt.
+    - If the user turned on the stall watch, a session you started that makes no progress for a
+      while (or repeats the same error) may be nudged or restarted by ClaudeDeck, and the user
+      gets a note beside your session; `claudedeck status ID` shows the watch's state.
 
     ### ServerPlan
 
