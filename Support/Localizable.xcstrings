@@ -19690,6 +19690,46 @@
           }
         }
       }
+    },
+    "Quit, Keep Sessions Running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çık, Oturumlar Çalışsın"
+          }
+        }
+      }
+    },
+    "Just Close the Window": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sadece Pencereyi Kapat"
+          }
+        }
+      }
+    },
+    "The new language shows after ClaudeDeck restarts.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni dil ClaudeDeck yeniden başlayınca görünür."
+          }
+        }
+      }
+    },
+    "Restart Now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şimdi Yeniden Başlat"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

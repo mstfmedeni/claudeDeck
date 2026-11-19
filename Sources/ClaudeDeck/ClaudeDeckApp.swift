@@ -82,6 +82,7 @@ struct ClaudeDeckApp: App {
                 .environment(delegate.model)
                 .preferredColorScheme(delegate.model.deck.settings.theme.colorScheme)
         }
+        .windowResizability(.contentMinSize)
     }
 }
 
@@ -181,6 +182,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             detail += String(localized: ". Quitting closes them all (Claude sessions resume where they left off next launch). Keep running in the background to close the window while everything keeps working.")
         }
         alert.informativeText = detail
+        // With sessions in the helper, quitting is what keeps them running: offer that first, and
+        // call the other choice what it is (the window closes, ClaudeDeck stays).
+        if kept > 0 {
+            alert.addButton(withTitle: String(localized: "Quit, Keep Sessions Running"))
+            alert.addButton(withTitle: String(localized: "Just Close the Window"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
+            switch alert.runAsSheet() {
+            case .alertFirstButtonReturn:
+                return .terminateNow
+            case .alertSecondButtonReturn:
+                sendToBackground()
+                return .terminateCancel
+            default:
+                return .terminateCancel
+            }
+        }
         alert.addButton(withTitle: String(localized: "Keep Running in Background"))
         alert.addButton(withTitle: String(localized: "Quit"))
         alert.addButton(withTitle: String(localized: "Cancel"))

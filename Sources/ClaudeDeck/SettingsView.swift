@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var installed = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var language = AppLanguage.current
+    @State private var languageChanged = false
 
     var body: some View {
         Form {
@@ -18,6 +20,20 @@ struct SettingsView: View {
                     ForEach(AppTheme.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                Picker("Language", selection: Binding(
+                    get: { language },
+                    set: { language = $0; $0.apply(); languageChanged = true }
+                )) {
+                    ForEach(AppLanguage.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                if languageChanged {
+                    HStack {
+                        Text("The new language shows after ClaudeDeck restarts.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Restart Now") { AppLanguage.relaunch() }
+                    }
+                }
                 Toggle("Ask before quitting (⌘Q while terminals are open)", isOn: setting(\.confirmQuit))
                 Toggle("Hide from the Dock when the window is closed (menu bar only)", isOn: setting(\.hideDockWhenClosed))
                 Text("Closing the window (X) doesn't stop any session; the app keeps running in the menu bar.")
@@ -132,7 +148,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
+        // Roomy by default (the agent and account sections are long); the window can be resized.
+        .frame(minWidth: 620, idealWidth: 720, maxWidth: .infinity, minHeight: 560, idealHeight: 820, maxHeight: .infinity)
         .onAppear { installed = model.hooksInstalled }
     }
 
@@ -151,5 +168,44 @@ struct SettingsView: View {
             get: { model.deck.settings[keyPath: keyPath] },
             set: { value in model.mutate { $0.settings[keyPath: keyPath] = value } }
         )
+    }
+}
+
+/// The app's own language (Settings › General), independent of the system's: stored as the
+/// app's `AppleLanguages` default, which macOS reads at launch.
+enum AppLanguage: String, CaseIterable {
+    case system, english = "en", turkish = "tr"
+
+    static var current: AppLanguage {
+        guard let first = (UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"] as? [String])?.first
+        else { return .system }
+        return first.hasPrefix("tr") ? .turkish : first.hasPrefix("en") ? .english : .system
+    }
+
+    var title: String {
+        switch self {
+        case .system: String(localized: "System")
+        case .english: "English"
+        case .turkish: "Türkçe"
+        }
+    }
+
+    func apply() {
+        if self == .system {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.set([rawValue], forKey: "AppleLanguages")
+        }
+    }
+
+    /// Quits and opens the app again. Sessions in the session helper keep running; the others
+    /// resume next launch, as with any quit.
+    static func relaunch() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 }
