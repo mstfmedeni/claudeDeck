@@ -35,6 +35,46 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             if let project = UUID(uuidString: String(file.dropLast(6))) { model.newShell(in: project) }
         }
+        // Screenshots of things only a scroll or a right click shows (the app need not be in front):
+        // `settings.scroll`: "Y" scrolls the Settings window's form to Y points from its top;
+        // `rightclick`: "X Y" right-clicks the main window at X, Y points from its top left.
+        for file in files where file == "settings.scroll" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let y = Double(contents(path).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            try? FileManager.default.removeItem(atPath: path)
+            let settings = NSApp.windows.first { $0.isVisible && $0.contentView.map { firstScrollView(in: $0) != nil } == true && $0.frame.width < 700 }
+            if let scroll = settings?.contentView.flatMap(firstScrollView) {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+        }
+        for file in files where file == "rightclick" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            // "X Y PREFIX": the submenu whose item title starts with PREFIX instead of the whole menu.
+            let words = contents(path).split(whereSeparator: \.isWhitespace).map(String.init)
+            let parts = words.prefix(2).compactMap { Double($0) }
+            let submenuPrefix = words.count > 2 ? words[2...].joined(separator: " ") : nil
+            try? FileManager.default.removeItem(atPath: path)
+            guard parts.count == 2, let window = NSApp.windows.filter({ $0.isVisible }).max(by: { $0.frame.width < $1.frame.width }),
+                  let content = window.contentView else { continue }
+            let point = NSPoint(x: parts[0], y: content.bounds.height - parts[1])
+            // Only the down: the menu stays open (as after a quick click) until something else is clicked.
+            if let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                DispatchQueue.main.async {
+                    // The view under the point that has a menu for it (SwiftUI's context menus).
+                    var view = content.hitTest(point)
+                    while let current = view, current.menu(for: event) == nil { view = current.superview }
+                    if let view, let menu = view.menu(for: event) {
+                        menu.update()
+                        let sub = submenuPrefix.flatMap { prefix in menu.items.first { $0.title.hasPrefix(prefix) }?.submenu }
+                        NSMenu.popUpContextMenu(sub ?? menu, with: event, for: view)
+                    } else {
+                        window.sendEvent(event)
+                    }
+                }
+            }
+        }
         // `<decision-id>.decide`: answers that decision with the file's text, as a click in Your
         // Decisions does.
         for file in files where file.hasSuffix(".decide") {
@@ -345,6 +385,12 @@ enum DebugSnapshot {
                   let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
             model.terminals.type(text.replacingOccurrences(of: "<ESC>", with: "\u{1b}").replacingOccurrences(of: "<CR>", with: "\r"), into: id)
         }
+    }
+
+    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        for sub in view.subviews { if let found = firstScrollView(in: sub) { return found } }
+        return nil
     }
 
     private static func contents(_ path: String) -> String {

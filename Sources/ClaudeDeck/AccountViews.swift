@@ -104,6 +104,7 @@ struct AccountsSettingsSection: View {
             if !isDefault {
                 Button(email == nil ? String(localized: "Log In…") : String(localized: "Log In Again…")) { model.openAccountLogin(id) }
                     .controlSize(.small)
+                    .fixedSize()
             }
             ControlGroup {
                 Button { model.moveAccount(id, by: -1) } label: { Image(systemName: "chevron.up") }
