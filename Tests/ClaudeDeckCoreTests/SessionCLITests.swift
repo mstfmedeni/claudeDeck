@@ -208,7 +208,8 @@ import Testing
         #expect(SessionCLI.Progress.blocked("needsAnswer").exit == .blocked)
         #expect(SessionCLI.Progress.running.exit == .timeout)
         // Stable numbers: documented in docs/agents.md and the skill.
-        #expect(SessionCLI.Exit.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 124])
+        #expect(SessionCLI.Progress.limited(nil).exit == .limited)
+        #expect(SessionCLI.Exit.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 6, 124])
         #expect(SessionCLI.exit(status: 200, header: "124") == .timeout)
         #expect(SessionCLI.exit(status: 200, header: nil) == .ok)
         #expect(SessionCLI.exit(status: 400, header: nil) == .usage)
@@ -362,6 +363,30 @@ import Testing
         #expect(try run(["ask"]).code == 2)
         // None of these reached the API.
         #expect(try run(["send", "abcd"]).curlCalls.isEmpty)
+    }
+
+    /// `claudedeck account …` and `new --account` (Settings › Accounts).
+    @Test func accountCommands() throws {
+        let list = try run(["account", "list", "--json"], answers: [("[]", "200 0")])
+        #expect(list.code == 0 && list.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/accounts")
+        #expect(try run(["account"], answers: [("x", "200 0")]).curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/accounts")
+        let current = try run(["account", "current"], answers: [("work", "200 0")])
+        #expect(current.out == "work\n" && current.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/accounts/current")
+        let move = try run(["account", "switch", "--to", "work-2"], answers: [("switching", "200 0")])
+        let call = try #require(move.curlCalls.first)
+        #expect(call.contains("to=work-2") && !call.contains("-G") && call.last == "http://127.0.0.1:47832/v1/cli/accounts/switch")
+        let none = try run(["account", "switch"], answers: [(#"{"error":"no_account"}"#, "409 1")])
+        #expect(none.code == 1 && none.err.contains("no other account has room"))
+        // Bad names and options never reach the API.
+        #expect(try run(["account", "switch", "--to", "Work Account"]).code == 2)
+        #expect(try run(["account", "list", "--to", "x"]).code == 2)
+        #expect(try run(["account", "frob"]).code == 2)
+        let new = try run(["new", "--account", "auto", "--prompt", "hi"], answers: [("id", "200 0")])
+        #expect(new.curlCalls.first?.contains("account=auto") == true)
+        #expect(try run(["new", "--account", "../x"]).code == 2)
+        #expect(try run(["help"]).out.contains("claudedeck account switch"))
+        // wait: 6 when the session waits for its usage limit to reset.
+        #expect(try run(["wait", "abcd1234"], answers: [("limited: usage limit reached", "200 6")]).code == 6)
     }
 
     @Test func requestsAndExitCodes() throws {

@@ -191,6 +191,40 @@ import Testing
         #expect(AccountPolicy.pickForNew(order: order, standings: ["default": AccountStanding(id: "default", limitedUntil: later), "a": AccountStanding(id: "a", limitedUntil: soon)], threshold: 95, now: now) == "a")
     }
 
+    // MARK: claudedeck account
+
+    @Test func routesAndWaitStates() {
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/accounts") == .route(.accounts))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/accounts/current") == .route(.currentAccount))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/accounts/switch") == .route(.switchAccount))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/accounts/switch") == .methodNotAllowed)
+        #expect(SessionCLI.Route.accounts.scope == .list)
+        #expect(SessionCLI.Route.switchAccount.scope == .account)
+        // A terminal a session opened may look, not move anything.
+        #expect(!SessionCLI.openedScopes.contains(.account) && SessionCLI.fullScopes.contains(.account))
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(SessionCLI.Progress.limited(reset).result == "limited")
+        #expect(SessionCLI.waitText(.limited(reset), detail: nil).hasPrefix("limited"))
+        // --all: a limited one ends the wait with 6 (after anything that needs the user).
+        #expect(SessionCLI.combine([(false, .ok), (false, .limited)], mode: .all) == (true, .limited, nil))
+        #expect(SessionCLI.combine([(false, .blocked), (false, .limited)], mode: .all) == (true, .blocked, nil))
+        #expect(SessionCLI.resultName(.limited) == "limited")
+    }
+
+    @Test func accountListText() throws {
+        let now = Date()
+        let infos = [
+            SessionCLIAccountInfo(name: "default", label: "Default", priority: 1, active: true, current: false, loggedIn: true,
+                                  fiveHour: 99.6, weekly: 40, limited: true, nearLimit: true, resetAt: now.addingTimeInterval(3600), sessions: 2),
+            SessionCLIAccountInfo(name: "work", label: "Work", priority: 2, active: false, current: true, loggedIn: true,
+                                  fiveHour: nil, weekly: nil, limited: false, nearLimit: false, resetAt: nil, sessions: 0),
+        ]
+        let text = ClaudeAccounts.listText(infos, now: now)
+        #expect(text.contains("100%") && text.contains("limited") && text.contains("active") && text.contains("current"))
+        let json = try #require(JSONSerialization.jsonObject(with: AgentJSON.encode(infos[1])) as? [String: Any])
+        #expect(json["five_hour"] is NSNull && json["near_limit"] as? Bool == false && json["name"] as? String == "work" && json["current"] as? Bool == true)
+    }
+
     // MARK: Saved data
 
     @Test func decodesOldDecksAndKeepsNewFields() throws {

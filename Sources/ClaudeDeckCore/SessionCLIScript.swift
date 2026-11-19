@@ -9,7 +9,8 @@ extension SessionCLI {
     #!/bin/sh
     # claudedeck: ClaudeDeck from inside the terminals it starts. `claudedeck help` for usage.
     # Exit codes: 0 ok/finished, 1 failed or error, 2 usage, 3 blocked, 4 refused, 5 unknown id,
-    # 124 timeout (docs/agents.md in the ClaudeDeck repository).
+    # 6 limited (wait: the session waits for its usage limit to reset), 124 timeout
+    # (docs/agents.md in the ClaudeDeck repository).
 
     usage() {
       cat <<'EOF'
@@ -28,6 +29,8 @@ extension SessionCLI {
       claudedeck wait ID [--timeout SECONDS] [--json]
           Until the terminal's command finishes, or a Claude session is idle or needs the user.
           ID may be a queue id (new --queue): it waits for the start, then for the session.
+          A Claude session at its usage limit: 6 while it waits for the reset; one moving to
+          another account (Settings > Accounts) keeps running, so wait keeps waiting.
       claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
           --all: until every one stopped running (3 if any needs the user, else 1 if any
           failed, else 0). --any: until the first one does, with its code.
@@ -37,6 +40,16 @@ extension SessionCLI {
           A question for the user, as a note beside this session (or for an agent you may ask).
       claudedeck skill setup [--user|--project] [--force]
           Installs the Claude Code skill that explains this command.
+
+    Claude accounts (Settings > Accounts):
+      claudedeck account list [--json]
+          Every account: priority, 5-hour and weekly usage, limited / near its limit, reset,
+          sessions; "active" is where new sessions start, "current" is this session's.
+      claudedeck account current [--json]
+          This session's account.
+      claudedeck account switch [--to NAME] [--json]
+          Moves this session to another account (default: the first with room): it ends and
+          resumes the same conversation there a moment after this prints. Nothing else to do.
 
     Decisions for the owner (don't wait: the answer comes later as a message):
       claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
@@ -55,13 +68,15 @@ extension SessionCLI {
           only under your home folder. Prints the project id.
       claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME]
                      [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
-                     [--skill NAME] [--queue] [--json]
+                     [--skill NAME] [--account NAME|auto] [--queue] [--json]
           Starts a Claude session (in this session's project by default) and types TEXT once
           Claude is up. Prints the session id; wait, capture and send work on it.
           MODE: default, acceptEdits, plan, auto, dontAsk, manual, bypassPermissions (needs its
           own setting, as does a rule allowing every shell command: Bash, "Bash(*)"). RULE: a tool rule for claude --allowedTools ("Bash(git *)", Edit).
           LEVEL: low, medium, high, xhigh, max. --skill starts with /NAME (TEXT as its arguments).
           --queue: over the cap or rate limit, waits in a queue instead; prints a queue id (q_...).
+          --account: the Claude account (account list); auto: the first with room. Default: the
+          project's pinned account, else the one new sessions use.
       claudedeck preset show [PROJECT] [--json]
       claudedeck preset set PROJECT [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
       claudedeck preset clear PROJECT
@@ -113,7 +128,7 @@ extension SessionCLI {
 
     ID: an id from `claudedeck list`, its first 8 characters, or "self".
     Exit codes: 0 ok/finished, 1 failed (or another error), 2 usage, 3 blocked (needs the user),
-    4 refused, 5 unknown id, 124 timeout.
+    4 refused, 5 unknown id, 6 limited (waits for its usage limit to reset), 124 timeout.
     EOF
     }
 
@@ -192,6 +207,13 @@ extension SessionCLI {
               too_many_options) hint=" (at most 10 options)" ;;
               too_many_pending|too_many) hint=" (too many questions waiting; wait for answers)" ;;
               unknown_decision) hint=" (see claudedeck decisions)" ;;
+              unknown_account) hint=" (see claudedeck account list)" ;;
+              no_account) hint=" (no other account has room; see claudedeck account list)" ;;
+              account_limited) hint=" (that account is at its usage limit)" ;;
+              not_logged_in) hint=" (nobody is logged in on that account: Settings > Accounts)" ;;
+              pinned) hint=" (this session or its project is pinned to its account)" ;;
+              same_account) hint=" (already on that account)" ;;
+              switching) hint=" (already moving)" ;;
               *) hint="" ;;
             esac
             printf 'claudedeck: %s%s%s (HTTP %s)\n' "${reason:-$body}" "${message:+: $message}" "$hint" "$http" >&2
@@ -529,13 +551,15 @@ extension SessionCLI {
     }
 
     cmd_new() {
-      cmd=new; project=self; name=""; prompt=""; worktree=""; mode=""; allow=""; model=""; effort=""; skill=""; queue=0
+      cmd=new; project=self; name=""; prompt=""; worktree=""; mode=""; allow=""; model=""; effort=""; skill=""; queue=0; account=""
       while [ $# -gt 0 ]; do
         if launch_option "$@"; then shift "$taken"; continue; fi
         case "$1" in
           --skill) [ $# -ge 2 ] || die "new: --skill needs a skill name"; skill=$2; shift ;;
           --skill=*) skill=${1#*=} ;;
           --queue) queue=1 ;;
+          --account) [ $# -ge 2 ] || die "new: --account needs a name or auto"; account=$2; shift ;;
+          --account=*) account=${1#*=} ;;
           --project) [ $# -ge 2 ] || die "new: --project needs an id, name or path"; project=$2; shift ;;
           --project=*) project=${1#*=} ;;
           --name) [ $# -ge 2 ] || die "new: --name needs a name"; name=$2; shift ;;
@@ -554,12 +578,13 @@ extension SessionCLI {
       check_launch_options
       skill=${skill#/}
       case "$skill" in *[!A-Za-z0-9._:-]*) die "new: --skill is a skill name (letters, digits, . _ - and plugin:name)" ;; esac
+      case "$account" in *[!a-z0-9-]*) die "new: --account is an account name (see claudedeck account list) or auto" ;; esac
       ref=$(project_ref "$project")
       need_session
       call "/projects/$ref/sessions" --data-urlencode "name=$name" --data-urlencode "prompt=$prompt" \
         --data-urlencode "worktree=$worktree" --data-urlencode "permission_mode=$mode" --data-urlencode "allow=$allow" \
         --data-urlencode "model=$model" --data-urlencode "effort=$effort" --data-urlencode "skill=$skill" \
-        --data-urlencode "queue=$queue" --data-urlencode "format=$(fmt)"
+        --data-urlencode "queue=$queue" --data-urlencode "account=$account" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -613,6 +638,30 @@ extension SessionCLI {
         show) check_id "$id" "queue show"; need_session; call "/queue/$id" -G --data-urlencode "format=$(fmt)" ;;
         cancel) check_id "$id" "queue cancel"; need_session; call "/queue/$id/cancel" --data-urlencode "format=$(fmt)" ;;
         *) die "queue: try claudedeck queue list | show QID | cancel QID" ;;
+      esac
+      finish
+    }
+
+    cmd_account() {
+      action=${1:-list}
+      [ $# -gt 0 ] && shift
+      to=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --to) [ "$action" = switch ] && [ $# -ge 2 ] || die "account: --to NAME goes with switch"; to=$2; shift ;;
+          --to=*) [ "$action" = switch ] || die "account: --to goes with switch"; to=${1#*=} ;;
+          --json) json=1 ;;
+          *) die "account $action: unknown argument $1" ;;
+        esac
+        shift
+      done
+      case "$to" in *[!a-z0-9-]*) die "account switch: --to is an account name (see claudedeck account list)" ;; esac
+      need_session
+      case "$action" in
+        list) call /accounts -G --data-urlencode "format=$(fmt)" ;;
+        current) call /accounts/current -G --data-urlencode "format=$(fmt)" ;;
+        switch) call /accounts/switch --data-urlencode "to=$to" --data-urlencode "format=$(fmt)" ;;
+        *) die "account: try claudedeck account list | current | switch [--to NAME]" ;;
       esac
       finish
     }
@@ -1039,6 +1088,7 @@ extension SessionCLI {
       decide) cmd_decide "$@" ;;
       decision) cmd_decision "$@" ;;
       decisions) cmd_decisions "$@" ;;
+      account|accounts) cmd_account "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
     """# + "\n"
@@ -1236,7 +1286,31 @@ extension SessionCLI {
     | 3 | `wait`: the Claude session needs the user (permission or question) |
     | 4 | Refused: not allowed, the setting is off, a rate limit, or the user said no |
     | 5 | Unknown id, project, server or deployment |
+    | 6 | `wait`: the Claude session stopped on its usage limit and waits for the reset |
     | 124 | `wait` timed out; the process is still running |
+
+    ## Claude accounts and usage limits
+
+    The owner may have several Claude accounts (Settings > Accounts). When a session hits its
+    plan's usage limit, ClaudeDeck can end it and resume the same conversation (same session id,
+    folder, options and pane) on another account, then type
+    `[ClaudeDeck] Account switched after a usage limit. Continue exactly where you left off: ...`.
+    Nothing to do for you except one habit: **keep your durable state in files** -
+    `docs/AGENDA.md` (what's done, what's next) and `HANDOFF.md` for anything mid-flight - so a
+    resumed session (or another one) can pick up from them.
+
+    ```sh
+    claudedeck account list [--json]          # name, 5h %, weekly %, limited, reset, priority, active/current
+    claudedeck account current                # this session's account
+    claudedeck account switch [--to NAME]     # move yourself now (you end and resume there)
+    claudedeck new --account NAME|auto ...    # start a session on an account (auto: first with room)
+    ```
+
+    - In `list --json`, a Claude session at its limit has state `limit_reached` (and
+      `limit_resets_at`), or `switching_account` while it moves. `wait` exits 6 only for
+      `limit_reached`; a session that is moving keeps counting as running.
+    - Don't `account switch` in a loop; if it says `no_account`, every account is at its limit and
+      the session continues on its own when one resets.
 
     ## Rules
 
