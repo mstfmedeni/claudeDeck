@@ -379,6 +379,12 @@ final class AppModel {
         return SessionStatus(display: .activity(resolved.activity), detail: resolved.detail, updatedAt: resolved.updatedAt)
     }
 
+    /// When the running process of a session started (nil while it isn't running). Not observed
+    /// on its own: it changes with `terminals.isRunning`, which is.
+    func runningSince(_ id: UUID) -> Date? {
+        terminals.isRunning(id) ? launchedAt[id] : nil
+    }
+
     /// Idle and not yet looked at since it became idle.
     func isUnseenIdle(_ id: UUID) -> Bool {
         let s = status(of: id)

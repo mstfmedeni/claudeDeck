@@ -373,6 +373,7 @@ struct SessionListView: View {
             // A Mac that sends decisions: the row once a session has asked something.
             if let decisions = store.decisions, !decisions.isEmpty { DecisionsRow(decisions: decisions) }
             if let agendas = store.agendas, !agendas.isEmpty { AgendaRow(agendas: agendas) }
+            if let groups = store.agentGroups, !groups.isEmpty { AgentTreeRow(groups: groups) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
                store.snapshot?.supports(RemoteSnapshot.Feature.agentApproval) == true {
                 PendingAgentsSection(agents: pending)
@@ -552,6 +553,7 @@ struct SessionListView: View {
             case "simulators": selection = MacScreen.simulators
             case "decisions": selection = MacScreen.decisions
             case "agenda": selection = MacScreen.agenda
+            case "agents": selection = MacScreen.agents
             case "newsession": newSessionProject = nil; newSessionKind = .claude; showNewSession = true
             default: debugSheet = DebugSheet(id: screen)
             }

@@ -28,6 +28,9 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     case decisions
     /// A project's `docs/AGENDA.md` as a board. Not restored at launch.
     case agenda(UUID)
+    /// Every agent tree (`claudedeck new`) by project. Not restored at launch: older versions
+    /// can't decode it.
+    case agentsOverview
 
     public var fileURL: URL? {
         if case .file(let url) = self { url } else { nil }
@@ -130,7 +133,7 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
         copy.tabs = tabs.filter {
             switch $0 {
             case .sessions, .file, .automations, .inbox, .search, .skills, .dashboard: true
-            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda: false
+            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda, .agentsOverview: false
             }
         }
         if !copy.tabs.contains(selected) { copy.selected = .sessions }

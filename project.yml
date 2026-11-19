@@ -180,6 +180,7 @@ targets:
       - Sources/ClaudeDeckCore/Agents.swift
       - Sources/ClaudeDeckCore/Decisions.swift
       - Sources/ClaudeDeckCore/AgendaBoard.swift
+      - Sources/ClaudeDeckCore/AgentTree.swift
       - Support/Localizable.xcstrings
     dependencies:
       - package: SwiftTerm

@@ -684,6 +684,52 @@ jq -n --argjson now "$NOW" \
 # Opt-in: CLAUDEDECK_DEMO_LIVE=1 makes the stand-in sessions change state every so often.
 if [ -n "${CLAUDEDECK_DEMO_LIVE:-}" ]; then touch "$ROOT/live"; fi
 
+# Opt-in: CLAUDEDECK_DEMO_AGENTS=1 seeds agent trees for the Agents tab (as if sessions had run
+# `claudedeck new`): acme-storefront's first session leads, its second one started a helper in
+# the same project, and it started payments-api's session, which started mobile-app's and a
+# helper of its own. Plus launch options, a pending decision, a held simulator and a queued start.
+if [ -n "${CLAUDEDECK_DEMO_AGENTS:-}" ]; then
+  S9=C0000000-0000-0000-0000-000000000009
+  S10=C0000000-0000-0000-0000-000000000010
+  scene $S9 'running|PostToolUse|Read|Read: internal/webhooks/backoff.go' <<'EOF'
+[1m> [0mWrite table tests for the webhook backoff schedule.
+
+[1m●[0m [1mRead[0m(internal/webhooks/backoff.go)
+  [2m⎿  Read 64 lines[0m
+
+[38;5;208m✻ Writing tests… [2m(21s · esc to interrupt)[0m
+EOF
+  scene $S10 'idle|Stop||Done — the coupon form validates codes and shows the discount inline.' <<'EOF'
+[1m> [0mAdd a coupon input to the cart page.
+
+[1m●[0m Done — the coupon form validates codes and shows the discount inline.
+
+[1m> [0m[7m [0m
+EOF
+  jq --arg s1 "$S1" --arg s2 "$S2" --arg s3 "$S3" --arg s5 "$S5" --arg s9 "$S9" --arg s10 "$S10" \
+     --arg p1 "$P1" --arg p2 "$P2" --argjson now "$NOW" '
+    .sessions |= map(
+        if .id == $s2 then . + {startedBy: $s1, launchOptions: {model: "opus", effort: "high", permissionMode: "acceptEdits", allowedTools: []}}
+        elif .id == $s3 then . + {startedBy: $s1, launchOptions: {model: "sonnet", effort: "medium", permissionMode: "dontAsk", allowedTools: ["Bash(go test *)"]}}
+        elif .id == $s5 then . + {startedBy: $s3, launchOptions: {model: "opus", permissionMode: "acceptEdits", allowedTools: []}}
+        else . end)
+    | .sessions += [
+        {id: $s9, projectID: $p2, name: "payments-api · backoff tests", kind: "claude", createdAt: $now, isOpen: true, startedBy: $s3,
+         launchOptions: {model: "haiku", effort: "low", allowedTools: []}},
+        {id: $s10, projectID: $p1, name: "acme-storefront · coupon form", kind: "claude", createdAt: $now, isOpen: true, startedBy: $s2}]
+    | .cliQueue = [{id: "q_00000000a001", caller: $s1, callerName: "acme-storefront", projectID: $p1, name: "acme-storefront · e2e",
+                    prompt: "Run the e2e suite", worktree: "", options: {allowedTools: []}, queuedAt: ($now - 60), status: "queued"}]
+    | .settings.maxStartedSessions = 5' "$ROOT/data/deck.json" > "$ROOT/data/deck.json.tmp" && mv "$ROOT/data/deck.json.tmp" "$ROOT/data/deck.json"
+  # decisions.json and simulator-holds.json use Foundation's default dates (seconds since 2001).
+  REF=$((NOW - 978307200))
+  jq -n --arg s3 "$S3" --arg p2 "$P2" --argjson at "$((REF - 240))" '{decisions: [{
+      id: "d_00000000a1", question: "Retry webhooks for 24 h or 6 h?", options: ["24 h", "6 h"], recommended: "24 h",
+      projectId: $p2, project: "payments-api", sessionId: $s3, session: "payments-api", createdAt: $at, status: "pending",
+      ancestors: [], answerHistory: []}]}' > "$ROOT/data/decisions.json"
+  jq -n --arg s5 "$S5" --argjson at "$((REF - 600))" '{holds: [{udid: "D3M0D3M0-0000-0000-0000-000000000001", name: "ClaudeDeck · iPhone 17",
+      session: $s5, at: $at, created: true}], created: ["D3M0D3M0-0000-0000-0000-000000000001"]}' > "$ROOT/data/simulator-holds.json"
+fi
+
 # --- ServerPlan: CLAUDEDECK_SERVERPLAN_DEMO=1 starts tools/serverplan-mock.py (made-up servers, a
 # local /bin/sh as their terminals) on :5099 and points the demo at it. Or set CLAUDEDECK_SERVERPLAN_URL
 # and CLAUDEDECK_SERVERPLAN_TOKEN yourself (demo mode only reads them).

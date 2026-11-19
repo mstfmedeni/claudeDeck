@@ -737,11 +737,19 @@ final class RemoteController {
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
         snapshot.decisions = model.decisions.forRemote()
         snapshot.agendas = AgendaController.shared.remoteAgendas
+        snapshot.agentsRunning = model.cliRunningStarted
+        snapshot.agentsCap = model.deck.settings.maxStartedSessions
+        snapshot.agentsQueued = model.deck.cliQueue.filter { $0.status == .queued }.count
         RemotePhoneFeeds.shared.apply(to: &snapshot, model: model)
         server.snapshot = snapshot
     }
 
     private static func makeSnapshot(_ model: AppModel) -> RemoteSnapshot {
+        // Sessions in an agent tree: they started a session, or a session started them.
+        let starters = Set(model.deck.sessions.compactMap(\.startedBy))
+        let multipleAccounts = !model.deck.settings.accounts.isEmpty
+        let pendingDecisions = Dictionary(grouping: model.decisions.pending.compactMap(\.sessionID), by: { $0 }).mapValues(\.count)
+        let queued = model.deck.cliQueue.filter { $0.status == .queued }
         let sessions: [RemoteSession] = model.deck.sessions.compactMap { session in
             let status = model.status(of: session.id)
             guard let state = RemoteSession.State(status.display) else { return nil }
@@ -759,6 +767,19 @@ final class RemoteController {
             )
             remote.queue = session.queue.isEmpty ? nil : session.queue
             remote.notesRevision = model.agentNotesRevision[session.id]
+            if session.kind == .claude, session.startedBy != nil || starters.contains(session.id) {
+                let options = session.launchOptions
+                let state = model.cliState(session)
+                let sims = model.simHolds.held(by: session.id).count
+                let starts = queued.filter { $0.caller == session.id }.count
+                remote.agent = RemoteAgentInfo(
+                    startedBy: session.startedBy, model: options?.model, effort: options?.effort, permissionMode: options?.permissionMode,
+                    account: multipleAccounts ? model.accountLabel(model.accountID(of: session)) : nil,
+                    limitState: state == "limit_reached" || state == "switching_account" ? state : nil,
+                    runningSince: model.runningSince(session.id),
+                    simulators: sims > 0 ? sims : nil, pendingDecisions: pendingDecisions[session.id],
+                    queuedStarts: starts > 0 ? starts : nil)
+            }
             if let program = status.display.program {
                 // "service" is new: older remotes don't know it and show a plain terminal.
                 remote.program = RemoteProgramStatus(state: program.state.rawValue, exitCode: program.exitCode, kind: program.kind?.rawValue,
