@@ -40,6 +40,12 @@ struct ServerPlanSettingsSection: View {
             } else if let me = controller.me {
                 Text(Self.describe(me)).font(.caption).foregroundStyle(.secondary)
             }
+            if controller.isConfigured {
+                Toggle("Show matching server projects under their project", isOn: Binding(
+                    get: { model.deck.settings.serverPlanProjectRows },
+                    set: { value in model.mutate { $0.settings.serverPlanProjectRows = value } }
+                ))
+            }
         } header: {
             Text("ServerPlan")
         } footer: {
@@ -75,10 +81,16 @@ struct ServerPlanSettingsSection: View {
 
 // MARK: - Sidebar › Servers
 
+/// Window UI state: whether the Servers section is open (its rows, and the refresh loop).
+enum ServerPlanSidebar {
+    static let expandedKey = "sidebar.serversExpanded"
+}
+
 /// Servers with health dots, the projects deployed to each with their last deploy, and the
-/// containers of an expanded server. Fetched only while this section is on screen.
+/// containers of an expanded server. The last section of the sidebar; its header opens and
+/// closes it.
 struct ServerPlanSidebarSection: View {
-    @AppStorage("sidebar.serversExpanded", store: .windowState) private var expanded = true
+    @AppStorage(ServerPlanSidebar.expandedKey, store: .windowState) private var expanded = true
 
     var body: some View {
         let controller = ServerPlanController.shared
@@ -100,52 +112,112 @@ struct ServerPlanSidebarSection: View {
                 Text(error).sidebarFont(.caption).foregroundStyle(.orange).lineLimit(3).selectionDisabled()
             }
         } header: {
-            ServerPlanSidebarHeader(expanded: expanded)
+            ServerPlanSidebarHeader(expanded: $expanded)
         }
     }
 }
 
 private struct ServerPlanSidebarHeader: View {
-    let expanded: Bool
+    @Binding var expanded: Bool
 
     var body: some View {
         let controller = ServerPlanController.shared
-        @Bindable var bindable = controller
         HStack(spacing: 4) {
+            // Always shown (the list's own chevron only appears on hover).
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .rotationEffect(.degrees(expanded ? 90 : 0))
+                .frame(width: 10)
             Image(systemName: "server.rack")
             Text("Servers")
             Text("\(controller.servers.count)").foregroundStyle(.tertiary)
             Spacer()
-            if controller.refreshing {
-                ProgressView().controlSize(.mini)
-            } else {
-                Button { Task { await controller.refresh(force: true) } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .help("Refresh from ServerPlan")
+            if expanded {
+                if controller.refreshing {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Button { Task { await controller.refresh(force: true) } } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless)
+                        .help("Refresh from ServerPlan")
+                }
             }
             if controller.lastError != nil {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     .help(controller.lastError ?? "")
             }
         }
-        // Lists, health and capabilities only while the section is open and a window visible.
-        .task(id: expanded) {
-            guard expanded else { return }
-            await controller.refreshLoop()
-        }
-        .sheet(item: $bindable.sheet) { sheet in
-            switch sheet {
-            case .deploy(let id, let title): ServerPlanDeploySheet(deploymentID: id, title: title)
-            case .logs(let serverID, let server, let container): ServerPlanLogsSheet(serverID: serverID, server: server, container: container)
+        // The whole header opens and closes the section.
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+        .help(expanded ? Text("Hide servers") : Text("Show servers"))
+    }
+}
+
+/// On the sidebar list, not on the Servers header: the header is the last row and may never be
+/// drawn (a long list), and project rows higher up open the same sheets.
+/// The refresh loop (lists, health, containers, capabilities) runs while the Servers section is
+/// open and a window visible. Closed, the deploy watch keeps deploy statuses current; the
+/// project rows under ClaudeDeck projects get the lists once, if nothing was loaded yet.
+struct ServerPlanSidebarSupport: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @AppStorage(ServerPlanSidebar.expandedKey, store: .windowState) private var expanded = true
+
+    func body(content: Content) -> some View {
+        let controller = ServerPlanController.shared
+        @Bindable var bindable = controller
+        let configured = controller.isConfigured
+        let rows = model.deck.settings.serverPlanProjectRows
+        content
+            .task(id: "\(configured)-\(expanded)-\(rows)") {
+                guard configured else { return }
+                if expanded {
+                    await controller.refreshLoop()
+                } else if rows, controller.lastRefresh == nil {
+                    await AppVisibility.shared.waitUntilVisible()
+                    await controller.refresh(listsOnly: true)
+                }
+            }
+            .sheet(item: $bindable.sheet) { sheet in
+                switch sheet {
+                case .deploy(let id, let title): ServerPlanDeploySheet(deploymentID: id, title: title)
+                case .logs(let serverID, let server, let container): ServerPlanLogsSheet(serverID: serverID, server: server, container: container)
+                }
+            }
+            .alert(item: $bindable.pendingConfirm) { pending in
+                Alert(
+                    title: Text(ServerPlanActionText.title(pending.action)),
+                    message: Text(pending.preview.summary ?? ServerPlanActionText.fallbackSummary(pending.action)),
+                    primaryButton: .destructive(Text(ServerPlanActionText.button(pending.action))) { controller.confirm(pending) },
+                    secondaryButton: .cancel()
+                )
+            }
+    }
+}
+
+/// View menu: open or close the sidebar's Servers section (only with ServerPlan set up).
+struct ServerPlanSidebarToggle: View {
+    @AppStorage(ServerPlanSidebar.expandedKey, store: .windowState) private var expanded = true
+
+    var body: some View {
+        if ServerPlanController.shared.isConfigured {
+            if expanded {
+                Button("Hide Servers") { expanded = false }
+            } else {
+                Button("Show Servers") { expanded = true }
             }
         }
-        .alert(item: $bindable.pendingConfirm) { pending in
-            Alert(
-                title: Text(ServerPlanActionText.title(pending.action)),
-                message: Text(pending.preview.summary ?? ServerPlanActionText.fallbackSummary(pending.action)),
-                primaryButton: .destructive(Text(ServerPlanActionText.button(pending.action))) { controller.confirm(pending) },
-                secondaryButton: .cancel()
-            )
+    }
+}
+
+/// The ServerPlan projects in a ClaudeDeck project's folder, under the project's sessions.
+struct ServerPlanProjectRows: View {
+    let projects: [ServerPlanProject]
+
+    var body: some View {
+        let controller = ServerPlanController.shared
+        ForEach(projects) { project in
+            ServerPlanProjectRow(project: project, serverName: controller.server(project.defaultServerID)?.name, showsServer: true)
+                .selectionDisabled()
         }
     }
 }
@@ -272,6 +344,8 @@ private struct ServerPlanProjectRow: View {
     @Environment(AppModel.self) private var model
     let project: ServerPlanProject
     let serverName: String?
+    /// Under a ClaudeDeck project: which server it deploys to, after a server icon.
+    var showsServer = false
 
     var body: some View {
         let controller = ServerPlanController.shared
@@ -283,6 +357,15 @@ private struct ServerPlanProjectRow: View {
                     Text(project.name).lineLimit(1)
                     if let branch = project.branch, branch != "main", branch != "master" {
                         Text(branch).sidebarFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if showsServer {
+                        HStack(spacing: 2) {
+                            Image(systemName: "server.rack")
+                            if let serverName { Text(serverName).lineLimit(1) }
+                        }
+                        .sidebarFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .help(serverName.map { String(localized: "ServerPlan · \($0)") } ?? "ServerPlan")
                     }
                 }
                 if let deploy {
@@ -325,7 +408,8 @@ private struct ServerPlanProjectRow: View {
             Button("Show Deploy Log") { controller.sheet = .deploy(id: deploy.id, title: project.name) }
             if deploy.status == .failed { Button("Fix with Claude") { controller.fixWithClaude(deploy.id) } }
         }
-        if let deckProject = controller.deckProject(for: project) {
+        // Under its project already: no "Show Project".
+        if !showsServer, let deckProject = controller.deckProject(for: project) {
             Button("Show Project") { model.openProject(deckProject.id) }
         }
         if controller.allows(.deploy) {

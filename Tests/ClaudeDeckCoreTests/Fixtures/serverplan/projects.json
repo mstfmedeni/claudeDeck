@@ -8,6 +8,6 @@
   { "id": 13, "display_name": "blog", "path": "/tmp/ClaudeDeckDemo/projects/blog", "branch": "main",
     "git_remote": null, "default_server_id": 2, "domain": null,
     "last_deploy": { "id": 208, "status": "building", "finished_at": null } },
-  { "id": 14, "display_name": "internal-tools", "path": "/Users/someone/elsewhere/internal-tools", "branch": "dev",
+  { "id": 14, "display_name": "internal-tools", "path": "/tmp/ClaudeDeckDemo/projects/mobile-app/internal-tools", "branch": "dev",
     "git_remote": null, "default_server_id": null, "domain": null, "last_deploy": null }
 ]
