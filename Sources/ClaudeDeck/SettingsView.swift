@@ -61,6 +61,7 @@ struct SettingsView: View {
                 Text("A session that stopped on the Claude plan's usage limit gets this message once, when the limit resets.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            AccountsSettingsSection()
             Section("Terminals") {
                 Toggle("Show Program Status in terminals", isOn: Binding(
                     get: { model.deck.settings.terminalProgramStatus },

@@ -682,11 +682,13 @@ struct SessionMenu: View {
             }
             .disabled(!model.canRestart(session.id))
             Button(session.kind == .shell ? String(localized: "Close Terminal") : String(localized: "End Session")) { model.stop(session.id) }
+            SessionAccountMenu(session: session)
         } else if session.kind == .shell {
             Button("Reopen") { model.launch(session.id, resume: false); model.selectedSessionID = session.id }
         } else {
             Button("Resume") { model.launch(session.id, resume: true); model.selectedSessionID = session.id }
             Button("Start Fresh") { model.launch(session.id, resume: false); model.selectedSessionID = session.id }
+            SessionAccountMenu(session: session)
         }
         if session.kind == .shell {
             Divider()
@@ -759,6 +761,7 @@ struct ProjectMenu: View {
         Button(project.pinned ? String(localized: "Unpin") : String(localized: "Pin")) {
             model.mutate { $0.updateProject(project.id) { $0.pinned.toggle() } }
         }
+        ProjectAccountMenu(project: project)
         Menu("Move to Group") {
             ForEach(model.deck.groups) { group in
                 Button(group.name) { model.mutate { $0.updateProject(project.id) { $0.groupID = group.id } } }
@@ -980,6 +983,7 @@ struct NewSessionItems: View {
             Label("New Claude Session (Separate Worktree)…", systemImage: "arrow.triangle.branch")
         }
         .disabled(!model.isGitRepository(project))
+        NewSessionOnAccountMenu(project: project)
         Button {
             showResume = true
         } label: {

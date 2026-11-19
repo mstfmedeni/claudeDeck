@@ -113,12 +113,16 @@ struct UsageDetailsView: View {
                     Text("Usage isn't available. Sign in to Claude Code with a Claude plan to see it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                OtherAccountsUsage(now: now)
                 waitingSessions(now: now)
             }
         }
         .padding(14)
         .frame(width: 280)
-        .task { await model.usage.refresh() }
+        .task {
+            await model.usage.refresh()
+            for monitor in model.accountUsage.values { await monitor.refresh() }
+        }
     }
 
     private func section(_ title: LocalizedStringKey, _ window: UsageWindow, now: Date) -> some View {
