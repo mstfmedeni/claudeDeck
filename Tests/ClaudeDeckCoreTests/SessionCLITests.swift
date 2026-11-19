@@ -599,4 +599,42 @@ import Testing
         #expect(try run(["server", "env", "set", "web", "NOTANASSIGNMENT"]).code == 2)
         #expect(try run(["server", "env", "get", "web"], answers: [("KEY", "200 0")]).curlCalls.first?.contains("-G") == true)
     }
+
+    // MARK: Decisions in the script
+
+    @Test func decideArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/decisions"
+        let asked = try run(["decide", "Which DB?", "--options", "Redis,SQLite", "--recommend", "Redis", "--context", "why", "--project", "shop"],
+                            answers: [("d_0123456789", "200 0")])
+        #expect(asked.code == 0 && asked.out == "d_0123456789\n")
+        let call = try #require(asked.curlCalls.first)
+        #expect(call.last == base && !call.contains("-G"))
+        #expect(call.contains("question=Which DB?") && call.contains("options=Redis,SQLite") && call.contains("recommend=Redis"))
+        #expect(call.contains("context=why") && call.contains("project=shop") && call.contains("format=text"))
+        // Options before the question, --json, a question after --.
+        let json = try run(["decide", "--json", "--options=A,B", "--", "-starts with a dash"], answers: [("{}", "200 0")])
+        #expect(json.curlCalls.first?.contains("question=-starts with a dash") == true && json.curlCalls.first?.contains("format=json") == true)
+        #expect(try run(["decide"]).code == 2)
+        #expect(try run(["decide", "a", "b"]).code == 2)
+        #expect(try run(["decide", "q", "--bogus"]).code == 2)
+        #expect(try run(["decide", "q"], session: false).code == 2)
+        let bad = try run(["decide", "q", "--options", "A,B", "--recommend", "C"], answers: [(#"{"error":"bad_recommend"}"#, "400 2")])
+        #expect(bad.code == 2 && bad.err.contains("--recommend"))
+        let limited = try run(["decide", "q"], answers: [(#"{"error":"too_many"}"#, "429 4")])
+        #expect(limited.code == 4)
+
+        let get = try run(["decision", "get", "d_0123456789"], answers: [("answered: Redis", "200 0")])
+        #expect(get.code == 0 && get.out == "answered: Redis\n")
+        #expect(get.curlCalls.first?.last == base + "/d_0123456789" && get.curlCalls.first?.contains("-G") == true)
+        #expect(try run(["decision", "get", "1234"]).curlCalls.isEmpty)
+        #expect(try run(["decision", "get", "d_../x"]).code == 2)
+        #expect(try run(["decision", "get"]).code == 2)
+        #expect(try run(["decision", "show", "d_1"]).code == 2)
+        #expect(try run(["decision", "get", "d_404"], answers: [(#"{"error":"unknown_decision"}"#, "404 5")]).code == 5)
+
+        let list = try run(["decisions", "--pending"], answers: [("ID  STATUS", "200 0")])
+        #expect(list.curlCalls.first?.last == base && list.curlCalls.first?.contains("pending=1") == true)
+        #expect(try run(["decisions", "--all"]).code == 2)
+        #expect(SessionCLI.skill.contains("claudedeck decide") && SessionCLI.skill.contains("keep working"))
+    }
 }

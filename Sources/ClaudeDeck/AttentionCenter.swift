@@ -47,6 +47,12 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         model.onCountsChanged = { [weak self] in self?.updateBadge() }
         model.onAgentRegistered = { [weak self] record in self?.agentRegistered(record) }
         model.onSessionNotice = { [weak self] id, text in self?.sessionNotice(id, text) }
+        let previousDecisions = model.onDecisionsChanged
+        model.onDecisionsChanged = { [weak self] added in
+            previousDecisions?(added)
+            if let added { self?.decisionAsked(added) }
+            self?.updateBadge()
+        }
         ServerPlanController.shared.onNotice = { [weak self, weak model] notice in
             self?.serverPlanNotice(notice)
             model?.remote.pushNotice(title: notice.title, body: notice.body, collapseID: notice.id)
@@ -64,6 +70,19 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["sessionID": sessionID.uuidString]
         content.threadIdentifier = sessionID.uuidString
         center.add(UNNotificationRequest(identifier: "cli-\(UUID().uuidString)", content: content, trigger: nil))
+    }
+
+    /// `claudedeck decide`: a decision waits for the owner (clicking opens Your Decisions).
+    private func decisionAsked(_ decision: OwnerDecision) {
+        if model.deck.settings.bounceDock, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        guard model.deck.settings.notifications, let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = decision.project.isEmpty ? String(localized: "Decision needed") : String(localized: "Decision needed — \(decision.project)")
+        content.body = decision.question
+        content.sound = .default
+        content.userInfo = ["decision": decision.id]
+        content.threadIdentifier = "decisions"
+        center.add(UNNotificationRequest(identifier: "decision-\(decision.id)", content: content, trigger: nil))
     }
 
     /// A ServerPlan deploy failed or a server went away (clicking shows the deploy log).
@@ -173,6 +192,14 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                     NSApp.activate()
                     self.model.agentSheet = .approve(id)
                 }
+            }
+            return
+        }
+        if userInfo["decision"] is String {
+            await MainActor.run {
+                self.model.openMainWindow?()
+                NSApp.activate()
+                self.model.showDecisions()
             }
             return
         }

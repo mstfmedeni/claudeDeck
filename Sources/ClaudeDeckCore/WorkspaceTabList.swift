@@ -24,6 +24,10 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     /// The Simulators page (Settings › Simulators). Not restored at launch: an older version
     /// couldn't decode the saved tab list with it.
     case simulators
+    /// Decisions sessions left for the owner (`claudedeck decide`). Not restored at launch.
+    case decisions
+    /// A project's `docs/AGENDA.md` as a board. Not restored at launch.
+    case agenda(UUID)
 
     public var fileURL: URL? {
         if case .file(let url) = self { url } else { nil }
@@ -126,7 +130,7 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
         copy.tabs = tabs.filter {
             switch $0 {
             case .sessions, .file, .automations, .inbox, .search, .skills, .dashboard: true
-            case .diff, .repository, .remoteTerminal, .simulators: false
+            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda: false
             }
         }
         if !copy.tabs.contains(selected) { copy.selected = .sessions }

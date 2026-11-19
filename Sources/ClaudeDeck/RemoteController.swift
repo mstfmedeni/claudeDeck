@@ -165,6 +165,18 @@ final class RemoteController {
         // A note came, was answered or went: the snapshot says so, and a phone with that
         // conversation open fetches the page with the notes at once.
         model.onAgentNotesChanged = { [weak self] in self?.publishSnapshot() }
+        // A decision asked or answered: the phones' lists; a new one is also pushed.
+        let previousDecisions = model.onDecisionsChanged
+        model.onDecisionsChanged = { [weak self] added in
+            previousDecisions?(added)
+            self?.publishSnapshot()
+            if let added { self?.pushDecision(added) }
+        }
+        let previousAgenda = AgendaController.shared.onChange
+        AgendaController.shared.onChange = { [weak self] in
+            previousAgenda?()
+            self?.publishSnapshot()
+        }
         let previousSaved = model.onSaved
         model.onSaved = { [weak self] in
             previousSaved?()
@@ -316,6 +328,9 @@ final class RemoteController {
                     self.connectedRemotes = names
                     RemotePhoneFeeds.shared.setConnected(!names.isEmpty, model: self.model) { [weak self] in self?.publishSnapshot() }
                 }
+            }
+            server.onAnswerDecision = { [weak self] id, answer in
+                MainActor.assumeIsolated { self?.model?.answerDecision(id, answer: answer, from: "phone") }
             }
             server.onServerPlanRepair = { deploymentID, reply in
                 MainActor.assumeIsolated { ServerPlanController.shared.fixWithClaude(deploymentID) { reply($0, $1) } }
@@ -714,6 +729,8 @@ final class RemoteController {
         snapshot.addressesOrdered = model.deck.settings.remoteAddresses.isEmpty ? nil : true
         snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
+        snapshot.decisions = model.decisions.forRemote()
+        snapshot.agendas = AgendaController.shared.remoteAgendas
         RemotePhoneFeeds.shared.apply(to: &snapshot, model: model)
         server.snapshot = snapshot
     }
@@ -1117,10 +1134,24 @@ final class RemoteController {
 
     /// A notice that isn't about a session (a failed ServerPlan deploy): to every paired phone,
     /// connected or not, since older phones don't show anything for it from the snapshot.
-    func pushNotice(title: String, body: String, collapseID: String) {
+    func pushNotice(title: String, body: String, collapseID: String, threadID: String = "serverplan") {
         guard model?.deck.settings.remoteHost == true, let credentials = local.apns, !local.pushDevices.isEmpty else { return }
-        let payload = APNs.noticePayload(title: title, subtitle: Self.hostName, body: body, threadID: "serverplan", sound: true)
+        let payload = APNs.noticePayload(title: title, subtitle: Self.hostName, body: body, threadID: threadID, sound: true)
         send(payload, to: local.pushDevices, credentials: credentials, collapseID: collapseID)
+    }
+
+    /// A session left the owner a decision: every paired phone that isn't connected right now (a
+    /// connected one shows it in its list) gets a notice, while notifications are on.
+    private func pushDecision(_ decision: OwnerDecision) {
+        guard model?.deck.settings.notifications == true, model?.deck.settings.remoteHost == true,
+              let credentials = local.apns, !local.unreadSecrets.contains(.apnsKey) else { return }
+        let connected = server?.pushTokensHeard(within: RemoteServer.pushSilence) ?? []
+        let devices = local.pushDevices.filter { !connected.contains($0.token) }
+        guard !devices.isEmpty else { return }
+        let title = decision.project.isEmpty ? String(localized: "Decision needed") : String(localized: "Decision needed — \(decision.project)")
+        let payload = APNs.noticePayload(title: title, subtitle: Self.hostName, body: String(decision.question.prefix(300)),
+                                         threadID: "decisions", sound: true)
+        send(payload, to: devices, credentials: credentials, collapseID: decision.id)
     }
 
     func sendTestPush() {

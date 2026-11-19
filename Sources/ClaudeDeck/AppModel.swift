@@ -94,6 +94,10 @@ final class AppModel {
     @ObservationIgnored var agentTypedPrompts: [UUID: [String]] = [:]
     /// A note was added, answered or removed (remotes refresh the conversation).
     @ObservationIgnored var onAgentNotesChanged: (() -> Void)?
+    /// Decisions sessions left for the owner (`claudedeck decide`; AppModel+Decisions.swift).
+    var decisions = DecisionBook()
+    /// A decision was added or answered (remotes get the snapshot, phones a push for a new one).
+    @ObservationIgnored var onDecisionsChanged: ((_ added: OwnerDecision?) -> Void)?
     /// An agent signed itself up through the local API and waits for approval (a notification).
     @ObservationIgnored var onAgentRegistered: ((AgentRegistration) -> Void)?
     /// Last time the user looked at a session while it was idle (clears the yellow "unseen" badge).
@@ -225,6 +229,7 @@ final class AppModel {
         installAskScript()
         installCLIScript() // only while the command-line tool is on
         loadAgentNotes()
+        loadDecisions()
         usage.start()
         trackMenuBarCounts()
         menuBarCountsObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in

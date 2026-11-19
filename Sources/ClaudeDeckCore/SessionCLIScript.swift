@@ -34,6 +34,15 @@ extension SessionCLI {
       claudedeck skill setup [--user|--project] [--force]
           Installs the Claude Code skill that explains this command.
 
+    Decisions for the owner (don't wait: the answer comes later as a message):
+      claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
+          Asks the owner and returns at once with the decision's id (d_...). Keep working.
+          --context - reads stdin. --project: id, name or path (default: this session's).
+      claudedeck decision get ID [--json]
+          pending, or answered: ANSWER.
+      claudedeck decisions [--pending] [--json]
+          Every decision, newest first.
+
     Projects and sessions (Settings > Agents: "Sessions may add projects and start Claude sessions"):
       claudedeck projects [--json]
           The deck's projects: id, sessions, group, name, path.
@@ -134,6 +143,10 @@ extension SessionCLI {
               ambiguous) hint=" (give more of the id)" ;;
               not_running) hint=" (it isn't running)" ;;
               blocked) hint=" (a permission or a question is on screen)" ;;
+              bad_recommend) hint=" (--recommend must be one of --options, or its number)" ;;
+              too_many_options) hint=" (at most 10 options)" ;;
+              too_many_pending|too_many) hint=" (too many questions waiting; wait for answers)" ;;
+              unknown_decision) hint=" (see claudedeck decisions)" ;;
               *) hint="" ;;
             esac
             printf 'claudedeck: %s%s%s (HTTP %s)\n' "${reason:-$body}" "${message:+: $message}" "$hint" "$http" >&2
@@ -298,6 +311,78 @@ extension SessionCLI {
       [ $# -gt 0 ] || die "ask: what's the question?"
       need_session
       call /ask --data-urlencode "agent=$agent" --data-urlencode "question=$*"
+      finish
+    }
+
+    cmd_decide() {
+      question=""; options=""; recommend=""; context=""; project=""; have_q=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --options) [ $# -ge 2 ] || die "decide: --options needs \"A,B,C\""; options=$2; shift ;;
+          --options=*) options=${1#*=} ;;
+          --recommend) [ $# -ge 2 ] || die "decide: --recommend needs one of the options"; recommend=$2; shift ;;
+          --recommend=*) recommend=${1#*=} ;;
+          --context) [ $# -ge 2 ] || die "decide: --context needs text (- reads stdin)"; context=$2; shift ;;
+          --context=*) context=${1#*=} ;;
+          --project) [ $# -ge 2 ] || die "decide: --project needs an id, name or path"; project=$2; shift ;;
+          --project=*) project=${1#*=} ;;
+          --json) json=1 ;;
+          --) shift
+              if [ $# -gt 0 ]; then
+                [ "$have_q" = 0 ] || die "decide: one QUESTION only (quote it)"
+                question=$1; have_q=1; shift
+              fi
+              [ $# -eq 0 ] || die "decide: one QUESTION only (quote it)"
+              break ;;
+          -?*) die "decide: unknown option $1" ;;
+          *) [ "$have_q" = 0 ] || die "decide: one QUESTION only (quote it)"; question=$1; have_q=1 ;;
+        esac
+        shift
+      done
+      [ -n "$question" ] || die "decide: what's the question?"
+      [ "$context" = "-" ] && context=$(cat)
+      case "$project" in
+        /*|./*|../*) project=$(abs_path "$project") ;;
+      esac
+      need_session
+      call /decisions --data-urlencode "question=$question" --data-urlencode "options=$options" \
+        --data-urlencode "recommend=$recommend" --data-urlencode "context=$context" --data-urlencode "project=$project" \
+        --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_decision() {
+      [ "${1:-}" = get ] || die "decision: try claudedeck decision get ID"
+      shift
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "decision get: unknown option $1" ;;
+          *) [ -z "$id" ] || die "decision get: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      [ -n "$id" ] || die "decision get: which one? See claudedeck decisions."
+      case "$id" in d_*) ;; *) die "decision get: not a decision id: $id (they start with d_)" ;; esac
+      case "$id" in *[!A-Za-z0-9_]*) die "decision get: not a decision id: $id" ;; esac
+      need_session
+      call "/decisions/$id" -G --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_decisions() {
+      pending=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --pending) pending=1 ;;
+          --json) json=1 ;;
+          *) die "decisions: unknown option $1" ;;
+        esac
+        shift
+      done
+      need_session
+      call /decisions -G --data-urlencode "pending=$pending" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -643,6 +728,9 @@ extension SessionCLI {
       project) cmd_project "$@" ;;
       new) cmd_new "$@" ;;
       server) cmd_server "$@" ;;
+      decide) cmd_decide "$@" ;;
+      decision) cmd_decision "$@" ;;
+      decisions) cmd_decisions "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
     """# + "\n"
@@ -651,7 +739,7 @@ extension SessionCLI {
     public static let skill = #"""
     ---
     name: claudedeck
-    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user; add projects and start other Claude sessions; list, deploy and watch ServerPlan servers, containers and deployments. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool, or when work needs a new project, a parallel Claude session or a deploy.
+    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user, or leave the owner a decision to make without waiting for it; add projects and start other Claude sessions; list, deploy and watch ServerPlan servers, containers and deployments. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool, or when work needs a new project, a parallel Claude session or a deploy.
     ---
 
     # claudedeck
@@ -683,6 +771,28 @@ extension SessionCLI {
     claudedeck notify "TEXT"
     claudedeck ask "QUESTION"                      # or: ask --agent NAME "QUESTION"
     ```
+
+    ### Decisions for the owner (non-blocking)
+
+    When a choice belongs to the owner (product direction, a trade-off, spending, anything you'd
+    otherwise stop and ask about), ask with `decide` and **keep working** on what doesn't depend
+    on it. It returns at once with an id; the owner answers on the Mac or the phone whenever they
+    get to it, and **the answer arrives in this session as a normal message** starting with
+    `[ClaudeDeck decision d_…]`.
+
+    ```sh
+    claudedeck decide "Which database for the cache?" --options "Redis,SQLite,None" \
+      --recommend Redis --context "Redis adds a container; SQLite is enough below 1k rps."
+                                                   # prints d_1a2b3c4d5e
+    claudedeck decision get d_1a2b3c4d5e           # "pending" or "answered: Redis"
+    claudedeck decisions --pending                 # everything still waiting
+    ```
+
+    - Don't wait, poll or sleep for the answer. Don't ask the same thing twice: `decisions` lists
+      what's already waiting.
+    - Give 2-5 short options and recommend one; put the facts the owner needs in `--context`.
+      The owner may also answer in their own words.
+    - At most 10 questions per 10 minutes per session (exit 4 `too_many`).
 
     `ID` is a full id from `list`, its first 8 characters, or `self`. Add `--json` for
     machine-readable output.

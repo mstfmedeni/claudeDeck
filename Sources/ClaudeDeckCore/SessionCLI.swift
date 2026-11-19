@@ -70,6 +70,8 @@ public enum SessionCLI {
         case start
         /// ServerPlan through the app (also needs "Sessions may use ServerPlan").
         case server
+        /// A question for the owner that doesn't block (`claudedeck decide`), and reading the answers.
+        case decide
     }
 
     /// Claude sessions and the user's own terminals.
@@ -95,6 +97,12 @@ public enum SessionCLI {
         case newSession(String)
         /// `/v1/cli/server/{command}`: one of `ServerPlanCLI.commands` (any method; the table checks it).
         case server(String)
+        /// `POST /v1/cli/decisions`: a new decision for the owner.
+        case decide
+        /// `GET /v1/cli/decisions`.
+        case decisions
+        /// `GET /v1/cli/decisions/{id}`.
+        case decision(String)
 
         public var scope: Scope {
             switch self {
@@ -108,6 +116,7 @@ public enum SessionCLI {
             case .projects: .projects
             case .addProject, .newSession: .start
             case .server: .server
+            case .decide, .decisions, .decision: .decide
             }
         }
     }
@@ -136,6 +145,8 @@ public enum SessionCLI {
         case 1 where rest[0] == "projects": return method == "POST" ? .route(.addProject) : expect("GET", .projects)
         case 3 where rest[0] == "projects" && rest[2] == "sessions": return expect("POST", .newSession(AgentHTTP.percentDecode(rest[1])))
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
+        case 1 where rest[0] == "decisions": return method == "POST" ? .route(.decide) : expect("GET", .decisions)
+        case 2 where rest[0] == "decisions": return expect("GET", .decision(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {
@@ -485,6 +496,8 @@ public struct SessionCLIBook: Sendable {
     public var starts = SessionCLILimiter(max: 5, window: 10 * 60)
     /// `claudedeck project add`: at most 10 new projects an hour per calling session.
     public var projectAdds = SessionCLILimiter(max: 10, window: 60 * 60)
+    /// `claudedeck decide`: at most 10 questions in 10 minutes per calling session.
+    public var decisions = SessionCLILimiter(max: 10, window: 10 * 60)
     /// "Session X started session Y" notices waiting to go out together (a burst is one notification).
     public var startNotices: [UUID: [String]] = [:]
 

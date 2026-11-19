@@ -229,6 +229,10 @@ enum DebugSnapshot {
                 model.showSimulators()
             } else if parts == ["dashboard"] {
                 model.showDashboard()
+            } else if parts == ["decisions"] {
+                model.showDecisions()
+            } else if parts.count == 2, parts[0] == "agenda", let project = model.deck.projects.first(where: { $0.name == parts[1] }) {
+                model.showAgenda(project.id)
             } else if parts.count == 3, parts[0] == "search" {
                 model.showHistorySearch()
                 HistorySearchController.shared.scope = parts[2] == "1" ? .all : .project

@@ -80,6 +80,12 @@ extension AppModel {
             return await cliNewSession(caller, project: ref, form: form, json: json)
         case .server(let command):
             return await cliServer(caller, command: command, method: request.method, form: form, json: json)
+        case .decide:
+            return cliDecide(caller, form: form, json: json)
+        case .decisions:
+            return cliDecisions(form: form, json: json)
+        case .decision(let id):
+            return cliDecision(id, json: json)
         }
     }
 
