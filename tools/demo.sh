@@ -15,6 +15,8 @@
 # app's 47647; it and the command-line tool for sessions (claudedeck) are on with CLAUDEDECK_DEMO_CLI=1.
 # CLAUDEDECK_DEMO_SHELL_COMMAND adds a terminal to acme-storefront that runs that command at launch
 # (in the second pane).
+# CLAUDEDECK_DEMO_AGENTS=1 seeds agent trees (startedBy links, launch options, a decision, a held
+# simulator, a queued start) for the Agents tab.
 #
 # The demo turns the newer opt-in features on so they show (Simulators, Program Status on the
 # payments-api dev server). CLAUDEDECK_DEMO_DEFAULTS=1 leaves every one of them at its default

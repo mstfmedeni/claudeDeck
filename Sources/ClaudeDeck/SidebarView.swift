@@ -52,7 +52,7 @@ struct SidebarView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 if !agentGroups.isEmpty {
-                    AgentsOverviewTray(running: model.runningAgentSessions(in: agentGroups))
+                    AgentsOverviewTray(running: model.cliRunningStarted)
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }

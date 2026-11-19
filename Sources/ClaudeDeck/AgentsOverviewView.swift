@@ -13,13 +13,6 @@ extension AppModel {
         let order = (deck.projects.filter(\.pinned) + deck.projects.filter { !$0.pinned }).map(\.id.uuidString)
         return AgentTree.build(members, groupOrder: order)
     }
-
-    /// Sessions in these agent trees with a running process (the sidebar's Agents row).
-    func runningAgentSessions(in groups: [AgentTree.Group]) -> Int {
-        groups.reduce(0) { total, group in
-            total + group.rows { terminals.isRunning($0) }.filter(\.matches).count
-        }
-    }
 }
 
 struct AgentsOverviewView: View {
@@ -376,7 +369,8 @@ private struct AgentTime: View {
     }
 }
 
-/// Under the sidebar's decisions row while agent trees exist: how many of their sessions run;
+/// Under the sidebar's decisions row while agent trees exist: how many sessions started by
+/// sessions run (the tab header's count);
 /// a click opens the Agents tab.
 struct AgentsOverviewTray: View {
     @Environment(AppModel.self) private var model

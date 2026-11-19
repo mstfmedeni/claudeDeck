@@ -66,8 +66,9 @@ struct AgentTreeScreen: View {
     private func matches(_ id: UUID) -> Bool {
         guard let session = store.snapshot?.session(id) else { return false }
         switch filter {
-        case "working": return session.state == .running || session.state == .starting || session.state.isBlocked
-        case "waiting": return session.needsAttention || session.agent?.limitState != nil
+        // Like the Mac's sidebar filter: working or blocked; blocked or an unseen "your turn".
+        case "working": return session.state == .running || session.state.isBlocked
+        case "waiting": return session.needsAttention
         default: return true
         }
     }
