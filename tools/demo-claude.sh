@@ -10,6 +10,8 @@ ESC=$(printf '\033')
 # happens until it's answered. Trust lives in the demo's home ($DEMO/home/.claude.json,
 # projects[<folder>].hasTrustDialogAccepted; a folder above it counts too). Enter trusts it.
 CONFIG="$DEMO/home/.claude.json"
+# On another account (Settings › Accounts) its own config, as Claude Code does.
+[ -n "${CLAUDE_CONFIG_DIR:-}" ] && CONFIG="$CLAUDE_CONFIG_DIR/.claude.json"
 trusted() {
   [ -f "$CONFIG" ] || return 0
   dir=$(pwd -P)
@@ -32,6 +34,13 @@ fi
 [ -f "$SCENE.txt" ] && sed "s/\[\([0-9;]*m\)/$ESC[\1/g" "$SCENE.txt"
 
 TRANSCRIPT=""; [ -f "$SCENE.jsonl" ] && TRANSCRIPT="$SCENE.jsonl"
+# Several Claude accounts: a session on another account runs with CLAUDE_CONFIG_DIR. A session
+# without a scene gets a transcript too, so it can be resumed (moved to another account).
+ACCOUNT="${CLAUDE_CONFIG_DIR:+$(basename "$CLAUDE_CONFIG_DIR")}"
+if [ -z "$TRANSCRIPT" ]; then
+  TRANSCRIPT="$SCENE.jsonl"
+  [ -f "$TRANSCRIPT" ] || jq -nc '{type: "user", timestamp: (now | strftime("%Y-%m-%dT%H:%M:%S.000Z")), message: {role: "user", content: "hello"}}' > "$TRANSCRIPT"
+fi
 report() { # state, event, tool, detail
   jq -n --arg sid "demo-$ID" --arg tid "$ID" --argjson pid $$ --arg cwd "$PWD" --arg tp "$TRANSCRIPT" \
         --arg state "$1" --arg event "$2" --arg tool "$3" --arg detail "$4" \
@@ -52,7 +61,7 @@ else
   # prompt like Claude Code does (idle), so `claudedeck wait` and the typed prompt have a target.
   printf 'demo claude, started with:'
   for arg in "$@"; do printf ' [%s]' "$arg"; done
-  printf '\n\n> '
+  printf '\naccount: %s\n\n> ' "${ACCOUNT:-default}"
   sleep 1
   report idle Stop "" ""
 fi
@@ -118,6 +127,19 @@ run_pending() {
   rm -f "$SCENE.running"
 }
 
+# Testing accounts: touching $DEMO/scenes/<terminal id>.limit makes the session stop on the usage
+# limit as Claude Code does (the limit message in its transcript, then idle). Working at the time
+# when $DEMO/scenes/<terminal id>.limit holds "busy" (it reports running first).
+hit_limit() {
+  [ -f "$SCENE.limit" ] || return 0
+  how=$(cat "$SCENE.limit"); rm -f "$SCENE.limit"
+  [ "$how" = busy ] && { report running UserPromptSubmit "" ""; sleep 1; }
+  jq -nc --arg acct "${ACCOUNT:-default}" '{type: "assistant", isApiErrorMessage: true, timestamp: (now | strftime("%Y-%m-%dT%H:%M:%S.000Z")),
+    message: {role: "assistant", content: [{type: "text", text: "You'\''ve hit your session limit · resets 11:50pm (demo account \($acct))"}]}}' >> "$TRANSCRIPT"
+  printf '\n  ⎿  You'\''ve hit your session limit · resets 11:50pm\n\n> '
+  report idle StopFailure "" ""
+}
+
 while :; do
-  if streaming; then stream; else sleep 1 & wait $!; live; run_pending; fi
+  if streaming; then stream; else sleep 1 & wait $!; live; run_pending; hit_limit; fi
 done

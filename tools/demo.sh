@@ -350,6 +350,17 @@ fi
 # CLAUDEDECK_DEMO_PERSIST=1: start with "Keep sessions running when ClaudeDeck quits" on (ignored
 # with CLAUDEDECK_DEMO_DEFAULTS=1, like the other opt-in features).
 KEEP_SESSIONS=false; [ -n "${CLAUDEDECK_DEMO_PERSIST:-}" ] && [ "$DEFAULTS" = false ] && KEEP_SESSIONS=true
+# CLAUDEDECK_DEMO_ACCOUNTS=auto|notify: two more Claude accounts (Settings › Accounts): "work" (its
+# demo usage starts at 97 %, near its limit) and "spare" (18 %), and that mode for sessions that
+# hit the usage limit. Touch $ROOT/scenes/<session id>.limit to make one hit it.
+ACCOUNTS=""
+if [ -n "${CLAUDEDECK_DEMO_ACCOUNTS:-}" ] && [ "$DEFAULTS" = false ]; then
+  ACCOUNTS=$(jq -rn --arg dir "$ROOT/data/accounts" --arg mode "$CLAUDEDECK_DEMO_ACCOUNTS" --argjson now "$NOW" \
+    '{accounts: [{id: "work", label: "Work", configDir: ($dir + "/work"), addedAt: $now},
+                 {id: "spare", label: "Spare", configDir: ($dir + "/spare"), addedAt: $now}],
+      accountSwitchMode: $mode} | tostring | .[1:-1]')
+  ACCOUNTS=", $ACCOUNTS"
+fi
 A1=D0000000-0000-0000-0000-000000000001
 A2=D0000000-0000-0000-0000-000000000002
 A3=D0000000-0000-0000-0000-000000000003
@@ -416,7 +427,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
                 "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY,
-                "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS }
+                "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS$ACCOUNTS }
 }
 EOF
 
