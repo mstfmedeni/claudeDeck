@@ -93,6 +93,22 @@ import Testing
         #expect(bypass.effective(bypassAllowed: false) == ClaudeLaunchOptions(model: "opus"))
         let plan = ClaudeLaunchOptions(permissionMode: "plan")
         #expect(plan.effective(bypassAllowed: false) == plan)
+        #expect(!plan.skipsPermissions && bypass.skipsPermissions)
+    }
+
+    /// Allowing every shell command is as good as skipping permissions: the same setting.
+    @Test func blanketShellRulesNeedTheBypassSetting() {
+        for rule in ["Bash", "bash", "Bash(*)", "Bash(:*)", "Bash( * )", "PowerShell", "PowerShell(*)"] {
+            #expect(SessionCLI.isBlanketShellRule(rule), "\(rule)")
+        }
+        for rule in ["Bash(git *)", "Bash(npm run test:*)", "Edit", "Read(*)", "BashOutput", "mcp__bash__run"] {
+            #expect(!SessionCLI.isBlanketShellRule(rule), "\(rule)")
+        }
+        let wide = ClaudeLaunchOptions(permissionMode: "acceptEdits", allowedTools: ["Edit", "Bash(*)", "Bash(git *)"])
+        #expect(wide.skipsPermissions)
+        #expect(wide.effective(bypassAllowed: true) == wide)
+        #expect(wide.effective(bypassAllowed: false) == ClaudeLaunchOptions(permissionMode: "acceptEdits", allowedTools: ["Edit", "Bash(git *)"]))
+        #expect(!ClaudeLaunchOptions(allowedTools: ["Bash(git *)"]).skipsPermissions)
     }
 
     // MARK: Routes

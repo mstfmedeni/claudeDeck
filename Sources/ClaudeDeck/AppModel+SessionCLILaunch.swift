@@ -13,7 +13,7 @@ extension AppModel {
         guard session.kind == .claude, let options = session.launchOptions, !options.isEmpty else { return [] }
         let effective = options.effective(bypassAllowed: deck.settings.sessionsMayBypassPermissions)
         if effective != options {
-            logAgent(session.name, inbound: false, "bypassPermissions is off in Settings: \(session.name) starts in the default permission mode", ok: false)
+            logAgent(session.name, inbound: false, "bypassPermissions is off in Settings: \(session.name) starts without it (default mode, no blanket Bash rule)", ok: false)
         }
         return effective.arguments(cliCommand: deck.settings.sessionCLIEnabled ? cliScriptURL.path : nil)
     }
@@ -22,9 +22,9 @@ extension AppModel {
         deck.cliPresets.first { $0.projectID == project }
     }
 
-    /// `bypassPermissions` needs its own setting.
+    /// `bypassPermissions`, and rules that allow every shell command, need their own setting.
     func cliLaunchRefusal(_ options: ClaudeLaunchOptions) -> SessionCLI.LaunchRefusal? {
-        options.permissionMode == SessionCLI.bypassMode && !deck.settings.sessionsMayBypassPermissions ? .bypassOff : nil
+        options.skipsPermissions && !deck.settings.sessionsMayBypassPermissions ? .bypassOff : nil
     }
 
     /// `--skill`: a skill (or command) Claude Code would find for a session in this project.

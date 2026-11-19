@@ -226,7 +226,6 @@ final class AppModel {
         agentAPI.start(model: self) // no-op unless the agents' API is on
         installAskScript()
         installCLIScript() // only while the command-line tool is on
-        resumeCLIQueue() // `claudedeck new --queue` left from the last run
         loadAgentNotes()
         usage.start()
         trackMenuBarCounts()
@@ -248,6 +247,9 @@ final class AppModel {
                 guard let self else { return }
                 self.launchDeferred = false
                 self.launchInitialSessions()
+                // `claudedeck new --queue` left from the last run: after the sessions it would
+                // count against the running cap are back.
+                self.resumeCLIQueue()
                 if !Self.isDemo { self.automations?.start() } // 30 s schedule check + on wake
                 if !Self.isDemo { self.githubEvents?.start() } // GitHub trigger poll every 2 min
             }

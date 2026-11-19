@@ -213,7 +213,7 @@ claudedeck skill setup [--user|--project] [--force]
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
-| 5 | Unknown id, project, server, container or deployment |
+| 5 | Unknown id, project, server, container, deployment, skill or queue id |
 | 124 | `wait` timed out; still running |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
@@ -330,6 +330,9 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   - `--allow RULE` (repeatable): `claude --allowedTools RULE…`. A rule is a tool name, with a
     pattern in parentheses if wanted: `Edit`, `"Bash(git *)"`, `WebFetch(domain:example.com)`,
     `mcp__server__tool`. One line, at most 300 characters, never starting with `-`; at most 50.
+    A rule that allows every shell command (`Bash`, `Bash(*)`, `Bash(:*)`, the same for
+    `PowerShell`) is as good as skipping permissions, so it needs the bypass setting too
+    (`bypass_off`), and is left out when the session starts after the setting was turned off.
   - `--model MODEL`: `claude --model` (an alias like `opus` / `sonnet` or a full id; letters,
     digits and `. _ - [ ] : / @`). `--effort LEVEL`: `claude --effort` (`low`, `medium`, `high`,
     `xhigh`, `max`).
@@ -378,7 +381,8 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   - `wait QID` (and `--all|--any`) waits for the start and then for the session; `send` and
     `capture` take a started queue id too (`409 queued` before).
 - **Guardrails:** per calling session at most 5 `new` in 10 minutes and 10 new projects an hour;
-  at most 8 sessions started this way running at once (all callers). Over a limit: `429`, exit 4.
+  at most 8 sessions started this way running at once (all callers). Over a limit: `429`, exit 4
+  (`new --queue` waits for room instead).
   Every action is in the agent Activity Log, and the owner gets a notification "started Y in Z"
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).

@@ -45,12 +45,19 @@ public struct ClaudeLaunchOptions: Codable, Sendable, Equatable {
                                    model: model ?? preset.model, effort: effort ?? preset.effort)
     }
 
-    /// `bypassPermissions` only while the owner allows it (Settings › Agents); otherwise the
-    /// session falls back to Claude Code's own default mode.
+    /// As good as skipping permissions: `bypassPermissions`, or a rule that allows every shell
+    /// command (`Bash`, `Bash(*)`). Needs the same setting.
+    public var skipsPermissions: Bool {
+        permissionMode == SessionCLI.bypassMode || allowedTools.contains(where: SessionCLI.isBlanketShellRule)
+    }
+
+    /// `bypassPermissions` (and blanket shell rules) only while the owner allows it (Settings ›
+    /// Agents); otherwise the session falls back to Claude Code's own default mode, without them.
     public func effective(bypassAllowed: Bool) -> ClaudeLaunchOptions {
-        guard permissionMode == SessionCLI.bypassMode, !bypassAllowed else { return self }
+        guard skipsPermissions, !bypassAllowed else { return self }
         var copy = self
-        copy.permissionMode = nil
+        if copy.permissionMode == SessionCLI.bypassMode { copy.permissionMode = nil }
+        copy.allowedTools.removeAll(where: SessionCLI.isBlanketShellRule)
         return copy
     }
 
@@ -364,6 +371,15 @@ extension SessionCLI {
             name = Substring(rule)
         }
         return !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
+    }
+
+    /// A rule that allows any shell command: `Bash` (or `PowerShell`) with no pattern, or one
+    /// that's only wildcards (`Bash(*)`, `Bash(:*)`, `Bash( * )`).
+    public static func isBlanketShellRule(_ rule: String) -> Bool {
+        let name = rule.split(separator: "(", maxSplits: 1).first.map(String.init) ?? rule
+        guard ["bash", "powershell"].contains(name.trimmingCharacters(in: .whitespaces).lowercased()) else { return false }
+        guard let open = rule.firstIndex(of: "(") else { return true }
+        return rule[rule.index(after: open)...].allSatisfy { "*: )".contains($0) }
     }
 
     /// A model alias or id: `opus`, `claude-opus-5-5`, `claude-sonnet-4-5[1m]`, `us.anthropic.…`.

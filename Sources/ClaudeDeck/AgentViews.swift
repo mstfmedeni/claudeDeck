@@ -135,7 +135,7 @@ struct AgentsSettingsSection: View {
                     get: { model.deck.settings.sessionsMayBypassPermissions },
                     set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayBypassPermissions = on } }
                 ))
-                Text("claudedeck new --permission-mode bypassPermissions (or a project preset with it). Such a session runs every command and edit without asking. Off: refused; sessions started that way earlier start in the default mode.")
+                Text("claudedeck new --permission-mode bypassPermissions or --allow Bash (every shell command), also from a project preset. Such a session runs commands without asking. Off: refused; sessions started that way earlier start without it.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Toggle("Sessions may use ServerPlan", isOn: Binding(

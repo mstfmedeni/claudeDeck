@@ -50,7 +50,7 @@ extension SessionCLI {
           Starts a Claude session (in this session's project by default) and types TEXT once
           Claude is up. Prints the session id; wait, capture and send work on it.
           MODE: default, acceptEdits, plan, auto, dontAsk, manual, bypassPermissions (needs its
-          own setting). RULE: a tool rule for claude --allowedTools ("Bash(git *)", Edit).
+          own setting, as does a rule allowing every shell command: Bash, "Bash(*)"). RULE: a tool rule for claude --allowedTools ("Bash(git *)", Edit).
           LEVEL: low, medium, high, xhigh, max. --skill starts with /NAME (TEXT as its arguments).
           --queue: over the cap or rate limit, waits in a queue instead; prints a queue id (q_...).
       claudedeck preset show [PROJECT] [--json]
