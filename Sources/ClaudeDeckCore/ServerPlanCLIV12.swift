@@ -30,7 +30,7 @@ extension ServerPlanCLI.Runner {
             guard let id = Int(form["id"] ?? ""), id > 0 else {
                 throw Refusal(outcome: .error(400, "bad_id", "an env row id (see server env get)", exit: .usage))
             }
-            let data = try await gated(command, "DELETE", "/projects/\(project)/env/\(id)", target: "env #\(id)", timeout: 60)
+            let data = try await gated(command, "DELETE", "/projects/\(project)/env/\(id)", target: "env #\(id)")
             let object = ServerPlanCLI.object(data) ?? [:]
             let key = ServerPlanCLI.value(object, "key") ?? "env #\(id)"
             let remaining = ServerPlanCLI.int(object["remaining_copies"]) ?? 0
