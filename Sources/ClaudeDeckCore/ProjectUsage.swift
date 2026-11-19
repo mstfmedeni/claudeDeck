@@ -125,23 +125,57 @@ public struct TranscriptUsage: Sendable {
     private static let usageMarker = Data(#""usage""#.utf8)
 
     mutating func append(_ data: Data, since: Date, seen: inout [String: Date]) {
-        var start = data.startIndex
-        while start < data.endIndex {
-            let end = data[start...].firstIndex(of: 0x0A) ?? data.endIndex
-            // Only assistant replies carry usage: other lines (tool results, the bulk) aren't parsed.
-            if end > start, data[start..<end].range(of: Self.assistantMarker) != nil, data[start..<end].range(of: Self.usageMarker) != nil {
-                line(data[start..<end], since: since, seen: &seen)
+        // Only assistant replies carry usage: other lines (tool results, the bulk) are skipped with
+        // a byte search (memchr/memmem; transcripts run to gigabytes a week).
+        var lines: [Range<Int>] = []
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress else { return }
+            let count = raw.count
+            Self.assistantMarker.withUnsafeBytes { assistant in
+                Self.usageMarker.withUnsafeBytes { usage in
+                    var start = 0
+                    while start < count {
+                        let rest = count - start
+                        let end = memchr(base + start, 0x0A, rest).map { UnsafeRawPointer($0) - base } ?? count
+                        let length = end - start
+                        if length > 0, memmem(base + start, length, assistant.baseAddress, assistant.count) != nil,
+                           memmem(base + start, length, usage.baseAddress, usage.count) != nil {
+                            lines.append(start..<end)
+                        }
+                        start = end + 1
+                    }
+                }
             }
-            start = end + 1
+        }
+        let origin = data.startIndex
+        for range in lines {
+            line(data[(origin + range.lowerBound)..<(origin + range.upperBound)], since: since, seen: &seen)
         }
     }
 
+    private static let idMarker = Data(#""id":"msg_"#.utf8)
+    private static let requestMarker = Data(#""requestId":""#.utf8)
+
+    /// The string after `marker` up to the next quote (`marker` ends with the opening quote, or
+    /// with a prefix of the value that is kept: `msg_`).
+    static func field(_ marker: Data, keep: Int = 0, in bytes: Data) -> String? {
+        guard let found = bytes.range(of: marker) else { return nil }
+        let from = found.upperBound - keep
+        guard let end = bytes[found.upperBound...].firstIndex(of: 0x22) else { return nil }
+        return String(decoding: bytes[from..<end], as: UTF8.self)
+    }
+
     private mutating func line(_ bytes: Data, since: Date, seen: inout [String: Date]) {
+        // A content block of a reply already counted: no need to decode it (most lines).
+        if let id = Self.field(Self.idMarker, keep: 4, in: bytes) {
+            let key = id + "|" + (Self.field(Self.requestMarker, in: bytes) ?? "")
+            if counted.contains(key) || seen[key] != nil { return }
+        }
         guard let object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               object["type"] as? String == "assistant",
               let message = object["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any],
-              let stamp = object["timestamp"] as? String, let date = Transcript.parseDate(stamp), date >= since else { return }
+              let stamp = object["timestamp"] as? String, let date = Self.date(stamp), date >= since else { return }
         if let id = message["id"] as? String {
             let key = id + "|" + ((object["requestId"] as? String) ?? "")
             guard !counted.contains(key), seen[key] == nil else { return }
@@ -160,6 +194,20 @@ public struct TranscriptUsage: Sendable {
         let slot = Date(timeIntervalSince1970: (date.timeIntervalSince1970 / Self.slot).rounded(.down) * Self.slot)
         slots[slot, default: UsageTotals()] += UsageTotals(input: input, output: output, cacheWrite: write, cacheRead: read,
                                                           costMicros: cost, messages: 1)
+    }
+
+    /// One formatter for every line (making one per line dominated the scan).
+    nonisolated(unsafe) private static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let lock = NSLock()
+
+    static func date(_ stamp: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return iso.date(from: stamp) ?? Transcript.parseDate(stamp)
     }
 
     public mutating func prune(before cutoff: Date) {

@@ -393,7 +393,7 @@ Checked every 30 s (an error loop right away). The action (**When a session stal
 |---|---|
 | Notify only (default) | A notification |
 | Nudge it | Types the **nudge message** (default "Continue", "Devam et" in Turkish) into the session, and notifies; a permission or question on screen: notification only |
-| Restart it, then nudge | Restarts it into the same conversation (Restart Session, no dialog; it keeps its simulators), types the nudge once Claude is up, and notifies |
+| Restart it, then nudge | Restarts it into the same conversation (Restart Session, no dialog; it keeps its simulators), types the nudge once Claude is up, and notifies; a permission or question on screen: notification only |
 
 - After an action the watch starts over: the next one comes N minutes later at the earliest.
 - **At most 3 nudges and restarts per session an hour**; after that it only notifies (and logs

@@ -64,8 +64,9 @@ extension AppModel {
         let working = status(of: id).display.isRunning
         guard let reason = StallWatch.check(tracker, working: working, startedBySession: true, settings: settings, now: now) else { return }
         var (action, capped) = StallWatch.action(for: settings, tracker: tracker, now: now)
-        // A nudge can't go in while a permission or question is on screen.
-        if action == .nudge, status(of: id).display.isBlocked { action = .notify }
+        // Neither a nudge nor a restart while a permission or question is on screen (a restart
+        // would lose it): the user decides.
+        if action != .notify, status(of: id).display.isBlocked { action = .notify }
         StallWatch.acted(&stallTrackers[id]!, action: action, reason: reason, now: now)
         let count = stallTrackers[id]?.interventions.count ?? 0
         let nudge = stallNudgeText

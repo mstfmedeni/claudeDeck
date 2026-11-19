@@ -163,8 +163,14 @@ public enum StallWatch {
         var out: [(String?, String?)] = []
         for line in chunk.split(separator: "\n") {
             let isAPIError = line.contains(#""isApiErrorMessage":true"#)
-            guard line.contains(#""tool_result""#) || isAPIError,
-                  let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+            guard line.contains(#""tool_result""#) || isAPIError, !line.contains(#""isSidechain":true"#) else { continue }
+            // Runs on the main actor as the transcript grows: only error lines are decoded (tool
+            // outputs can be large); a success only ends a run of errors.
+            if !isAPIError, !line.contains(#""is_error":true"#) {
+                out.append((nil, nil))
+                continue
+            }
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                   object["isSidechain"] as? Bool != true,
                   let message = object["message"] as? [String: Any] else { continue }
             if isAPIError, object["type"] as? String == "assistant" {
