@@ -129,7 +129,7 @@ public struct AgendaBoard: Codable, Sendable, Equatable {
     /// tables are skipped). Columns may come in any order; unknown ones are ignored; a row with
     /// fewer cells leaves the rest empty. nil when there's no such table.
     public static func parse(_ markdown: String) -> AgendaBoard? {
-        let lines = markdown.components(separatedBy: .newlines)
+        let lines = markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
         var items: [AgendaItem] = []
         var found = false
         var index = 0

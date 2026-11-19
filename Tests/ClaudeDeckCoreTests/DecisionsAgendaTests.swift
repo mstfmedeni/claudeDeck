@@ -276,6 +276,8 @@ import Testing
         #expect(AgendaBoard.parse("```\n| id | status |\n|---|---|\n| A | todo |\n```\n") == nil)
         // The header and separator alone: a board with no items yet.
         #expect(AgendaBoard.parse("| id | status |\n|---|---|\n")?.items.isEmpty == true)
+        // Windows line endings.
+        #expect(AgendaBoard.parse("| id | status |\r\n|---|---|\r\n| A | doing |\r\n")?.items.first?.status == .doing)
     }
 
     @Test func statusWords() {

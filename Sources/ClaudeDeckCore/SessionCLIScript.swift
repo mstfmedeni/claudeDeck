@@ -792,6 +792,8 @@ extension SessionCLI {
       what's already waiting.
     - Give 2-5 short options and recommend one; put the facts the owner needs in `--context`.
       The owner may also answer in their own words.
+    - Options are separated by commas; when one contains a comma, put one option per line
+      instead: `--options $'Yes, behind a flag\nNo, ship it on'`.
     - At most 10 questions per 10 minutes per session (exit 4 `too_many`).
 
     `ID` is a full id from `list`, its first 8 characters, or `self`. Add `--json` for
