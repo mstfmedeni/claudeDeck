@@ -236,11 +236,16 @@ extension AppModel {
         var me = controller.me
         if me == nil || ServerPlanCLI.commands[command]?.v11 == true { me = (try? await client.me()) ?? me }
         let runner = ServerPlanCLI.Runner(client: client, me: me, approve: { [weak self] command, target, summary in
-            await self?.ownerApproves(caller, command: command, target: target, summary: summary) ?? false
+            // A purchase spends money: its own dialog, whatever any setting says.
+            if command == "domain-buy" { return await self?.ownerApprovesPurchase(caller, domain: target, summary: summary) ?? false }
+            return await self?.ownerApproves(caller, command: command, target: target, summary: summary) ?? false
         }, log: { [weak self] line in
             Task { @MainActor in self?.logAgent(callerName, inbound: true, "claudedeck server \(line)") }
+        }, decision: { [weak self] id in
+            await MainActor.run { self?.decisions.decision(id) }
         })
         let outcome = await runner.run(command, method: method, form: form)
+        if command == "domain-buy", (200..<300).contains(outcome.status) { domainBoughtNotice(outcome.json) }
         // Reads are many (`--wait` polls): only what changes something, or fails, is logged.
         if ServerPlanCLI.commands[command]?.method != "GET" || outcome.exit != .ok && outcome.exit != .timeout {
             logAgent(callerName, inbound: true, "claudedeck server \(command)" + (outcome.status >= 300 ? ": \(outcome.text)" : ""), ok: outcome.status < 300)
@@ -274,5 +279,57 @@ extension AppModel {
         }
         timeout.cancel()
         return answer == .alertFirstButtonReturn
+    }
+
+    /// The owner's dialog for `server domain buy`: the panel's price summary and a plain "this is
+    /// a real purchase". Cancel is the default (Return) and Escape; only "Buy" says yes; no
+    /// answer in 2 minutes is a no.
+    func ownerApprovesPurchase(_ caller: UUID, domain: String, summary: String?) async -> Bool {
+        let callerName = deck.session(caller)?.name ?? "claudedeck"
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
+            return false
+        }
+        onSessionNotice?(caller, String(localized: "Asks to buy the domain \(domain) in ServerPlan. Answer in ClaudeDeck."))
+        NSApp.requestUserAttention(.criticalRequest)
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = String(localized: "\(callerName) wants to buy the domain \(domain)")
+        alert.informativeText = (summary.map { $0 + "\n\n" } ?? "")
+            + String(localized: "This is a real purchase: it's charged to the Namecheap balance and can't be undone.")
+            + "\n\n" + String(localized: "A session asks through claudedeck server. Without an answer in 2 minutes it's refused.")
+        let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
+        let buy = alert.addButton(withTitle: String(localized: "Buy"))
+        cancel.keyEquivalent = "\r"
+        buy.keyEquivalent = ""
+        buy.hasDestructiveAction = true
+        // Escape is Cancel too.
+        let escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53, event.window === alert.window else { return event }
+            window.endSheet(alert.window, returnCode: .alertFirstButtonReturn)
+            return nil
+        }
+        let timeout = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(120))
+            if !Task.isCancelled, alert.window.isVisible { window.endSheet(alert.window, returnCode: .abort) }
+        }
+        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
+            alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+        }
+        timeout.cancel()
+        if let escape { NSEvent.removeMonitor(escape) }
+        return answer == .alertSecondButtonReturn
+    }
+
+    /// A Mac (and phone) notification once a session bought a domain.
+    private func domainBoughtNotice(_ json: Data) {
+        let object = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]
+        let domain = object["domain"] as? String ?? "?"
+        let charged = (object["charged_amount"] as? NSNumber).map { String(format: "%.2f", $0.doubleValue) } ?? "?"
+        let currency = object["currency"] as? String ?? ""
+        let years = (object["years"] as? NSNumber)?.intValue ?? 1
+        ServerPlanController.shared.onNotice?(ServerPlanNotice(
+            title: String(localized: "Domain bought: \(domain)"),
+            body: String(localized: "\(years) year(s), charged \(charged) \(currency) to the Namecheap balance."),
+            id: "serverplan-domain-\(domain)", deploymentID: nil, isFailure: false))
     }
 }

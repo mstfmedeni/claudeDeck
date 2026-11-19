@@ -20453,6 +20453,66 @@
           }
         }
       }
+    },
+    "Asks to buy the domain %@ in ServerPlan. Answer in ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'da %@ alan adını satın almak istiyor. ClaudeDeck'te yanıtlayın."
+          }
+        }
+      }
+    },
+    "%@ wants to buy the domain %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ alan adını satın almak istiyor"
+          }
+        }
+      }
+    },
+    "This is a real purchase: it's charged to the Namecheap balance and can't be undone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu gerçek bir satın alma: ücret Namecheap bakiyesinden düşülür ve geri alınamaz."
+          }
+        }
+      }
+    },
+    "Buy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satın Al"
+          }
+        }
+      }
+    },
+    "Domain bought: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alan adı satın alındı: %@"
+          }
+        }
+      }
+    },
+    "%lld year(s), charged %@ %@ to the Namecheap balance.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld yıl, Namecheap bakiyesinden %2$@ %3$@ düşüldü."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

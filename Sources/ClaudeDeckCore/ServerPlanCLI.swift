@@ -26,13 +26,20 @@ public enum ServerPlanCLI {
         /// A v1.1 token scope; a panel whose `/me` lacks it doesn't offer the command (yet).
         public var scope: String?
         public var gate: Gate
+        /// v1.3 and later: offered only when `/me` names this feature or says it's at least
+        /// 1.`minMinor` (never on an unknown version: these spend money).
+        public var feature: String?
+        public var minMinor: Int
 
-        init(_ name: String, _ method: String, v11: Bool = false, scope: String? = nil, gate: Gate = .none) {
+        init(_ name: String, _ method: String, v11: Bool = false, scope: String? = nil, gate: Gate = .none,
+             feature: String? = nil, minMinor: Int = 1) {
             self.name = name
             self.method = method
             self.v11 = v11
             self.scope = scope
             self.gate = gate
+            self.feature = feature
+            self.minMinor = minMinor
         }
     }
 
@@ -106,6 +113,9 @@ public enum ServerPlanCLI {
             Command("pg-clone", "POST", v11: true, scope: "databases"),
             Command("server-env-get", "GET", v11: true),
             Command("server-env-set", "POST", v11: true, scope: "projects_write"),
+            // v1.3 (ServerPlanCLIV13.swift). A purchase spends money: always the owner's dialog.
+            Command("domain-check", "GET", v11: true, scope: "read", feature: "domain_check", minMinor: 3),
+            Command("domain-buy", "POST", v11: true, scope: "domains_buy", gate: .owner, feature: "domain_purchase", minMinor: 3),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
@@ -114,11 +124,13 @@ public enum ServerPlanCLI {
     /// It also needs a panel that says it's 1.1 or later (an unknown version is tried): `deploy`
     /// is a v1 scope, so a scope alone doesn't tell.
     public static func offers(_ command: Command, me: ServerPlanMe?) -> Bool {
-        guard command.v11, let me else { return true }
+        guard command.v11 else { return true }
+        guard let me else { return command.feature == nil }
         if let scope = command.scope, !me.scopes.contains(scope) { return false }
-        guard let version = me.serverVersion, let major = Int(version.split(separator: ".").first ?? "") else { return true }
+        if let feature = command.feature, me.features.contains(feature) { return true }
+        guard let version = me.serverVersion, let major = Int(version.split(separator: ".").first ?? "") else { return command.feature == nil }
         let minor = version.split(separator: ".").dropFirst().first.flatMap { Int($0) } ?? 0
-        return major > 1 || major == 1 && minor >= 1
+        return major > 1 || major == 1 && minor >= command.minMinor
     }
 
     static let notAvailable = "not available: ServerPlan doesn't offer this yet"
@@ -132,6 +144,7 @@ public enum ServerPlanCLI {
         "branches", "refresh", "git-pull", "git-push", "switch-branch", "build", "pull-deploy", "diagnose", "diagnose-fix",
         "domain-set", "domain-apply", "domain-nginx", "domain-purge", "zone-purge", "ssl", "ssl-full",
         "pg-databases", "pg-users", "pg-user-add", "pg-clone", "server-env-get", "server-env-set",
+        "domain-check", "domain-buy",
     ]
 
     /// What the app sends back for one command.
@@ -196,12 +209,16 @@ public enum ServerPlanCLI {
         public let me: ServerPlanMe?
         public let approve: Approve
         public let log: @Sendable (String) -> Void
+        /// An owner decision by id (ClaudeDeck's decisions book): `domain buy --approval`.
+        public let decision: @Sendable (String) async -> OwnerDecision?
 
-        public init(client: ServerPlanClient, me: ServerPlanMe?, approve: @escaping Approve, log: @escaping @Sendable (String) -> Void = { _ in }) {
+        public init(client: ServerPlanClient, me: ServerPlanMe?, approve: @escaping Approve, log: @escaping @Sendable (String) -> Void = { _ in },
+                    decision: @escaping @Sendable (String) async -> OwnerDecision? = { _ in nil }) {
             self.client = client
             self.me = me
             self.approve = approve
             self.log = log
+            self.decision = decision
         }
 
         public func run(_ name: String, method: String, form: [String: String]) async -> Outcome {
@@ -443,6 +460,8 @@ public enum ServerPlanCLI {
                 let domain = try await domainID(form["domain"])
                 let data = try await gated(command, "POST", "/domains/\(domain.id)/namecheap/nameservers", target: domain.base)
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
+            case "domain-check", "domain-buy":
+                return try await performV13(command, form: form)
             default:
                 return try await performV12(command, form: form)
             }
