@@ -154,7 +154,7 @@ running ones.
 ```sh
 claudedeck list [--json]
 claudedeck open [--split right|left|down|none] [--cwd DIR] [--name NAME] [--json] [--] [COMMAND...]
-claudedeck send ID TEXT [--enter] [--json]
+claudedeck send ID TEXT [--enter|--no-enter] [--json]
 claudedeck capture ID [--lines N] [--trim] [--json]
 claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
@@ -188,7 +188,9 @@ claudedeck skill setup [--user|--project] [--force]
   side; `none` never shows it). Your selection stays where it was. Otherwise it runs in the sidebar
   only (`"shown": false`). It's an ordinary terminal afterwards: its command is its startup command
   (run again when you restart it, never on launch), and the shell stays when the command ends.
-- **send:** types `TEXT` (`-` reads stdin); `--enter` presses Return after it. See the rule below.
+- **send:** types `TEXT` (`-` reads stdin). Into a Claude session it is submitted (queued while
+  Claude works) unless `--no-enter`; into a plain terminal Return is pressed only with `--enter`.
+  See the rule below.
 - **capture:** the screen and up to 1000 lines of scrollback (or `--lines N`, the last N), trailing
   spaces cut; `--trim` also drops blank lines at the top and bottom.
 - **wait:** until the terminal's command finishes, or a Claude session is idle or needs you. A

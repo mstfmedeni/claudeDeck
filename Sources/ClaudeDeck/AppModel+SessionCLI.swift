@@ -262,7 +262,9 @@ extension AppModel {
 
     private func cliSend(_ caller: UUID, to target: DeckSession, form: [String: String], json: Bool) -> AgentHTTPResponse {
         let text = form["text"] ?? ""
-        let enter = form["enter"] == "1"
+        // Text typed into Claude but never submitted just sits in its input box, so a Claude
+        // session gets Return unless the caller says --no-enter; a plain terminal only with --enter.
+        let enter = form["enter"] == "1" || (target.kind == .claude && form["enter"] != "0")
         guard text.count <= SessionCLI.maxText else { return SessionCLI.failure(400, "too_long", exit: .usage) }
         guard !text.isEmpty || enter else { return SessionCLI.failure(400, "bad_request", exit: .usage) }
         let sender = deck.session(caller)?.name ?? "claudedeck"

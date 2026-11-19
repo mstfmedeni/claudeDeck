@@ -21,9 +21,11 @@ extension SessionCLI {
       claudedeck open [--split right|left|down|none] [--cwd DIR] [--name NAME] [--json] [--] [COMMAND...]
           A plain terminal next to this session running COMMAND; prints its id.
           One argument is a shell command line ("npm run dev"); several are run as given.
-      claudedeck send ID TEXT [--enter] [--json]
+      claudedeck send ID TEXT [--enter|--no-enter] [--json]
           Types TEXT (- reads stdin) into a terminal this session opened or one beside it.
-          Another Claude session gets it as a note unless the user lets sessions type into Claude.
+          A Claude session gets it submitted (queued if it's working; --no-enter only types it);
+          a plain terminal only with --enter. Another Claude session gets it as a note unless
+          the user lets sessions type into Claude.
       claudedeck capture ID [--lines N] [--trim] [--json]
           The screen and scrollback as text.
       claudedeck wait ID [--timeout SECONDS] [--json]
@@ -307,10 +309,11 @@ extension SessionCLI {
     }
 
     cmd_send() {
-      enter=0; id=""; text=""; have_text=0; options=1
+      enter=""; id=""; text=""; have_text=0; options=1
       while [ $# -gt 0 ]; do
         case "$options:$1" in
           1:--enter) enter=1 ;;
+          1:--no-enter) enter=0 ;;
           1:--json) json=1 ;;
           1:--) options=0 ;;
           1:-?*) die "send: unknown option $1 (use -- before text that starts with -)" ;;
