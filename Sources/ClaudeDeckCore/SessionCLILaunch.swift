@@ -481,8 +481,9 @@ extension SessionCLI {
 
     public static func waitManyText(_ entries: [SessionCLIWaitEntry], texts: [String]) -> String {
         zip(entries, texts).map { entry, text in
-            let id = entry.id.map { String($0.uuidString.prefix(8)) } ?? entry.ref
-            return (entry.queueId.map { "\($0) " } ?? "") + "\(id): \(text)"
+            // A queue id that started: "q_… SESSION: …"; otherwise the id as given.
+            guard let id = entry.id else { return "\(entry.ref): \(text)" }
+            return (entry.queueId.map { "\($0) " } ?? "") + "\(id.uuidString.prefix(8)): \(text)"
         }.joined(separator: "\n")
     }
 

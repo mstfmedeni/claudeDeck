@@ -152,6 +152,9 @@ import Testing
         #expect(first["id"] as? String == id.uuidString && first["detail"] is NSNull)
         let text = SessionCLI.waitManyText([entry], texts: ["finished (exit 0)"])
         #expect(text == "q_0123456789ab \(id.uuidString.prefix(8)): finished (exit 0)")
+        let queued = SessionCLIWaitEntry(ref: "q_0123456789ab", id: nil, queueId: "q_0123456789ab", result: "timeout", exitCode: nil,
+                                         state: "queued", detail: nil, running: true, exit: .timeout)
+        #expect(SessionCLI.waitManyText([queued], texts: ["still queued"]) == "q_0123456789ab: still queued")
     }
 
     // MARK: Queue
