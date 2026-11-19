@@ -174,6 +174,22 @@ struct ServersScreen: View {
             if plan.servers.isEmpty, projects.isEmpty, failures.isEmpty {
                 Text("No servers yet").foregroundStyle(.secondary)
             }
+            // Macs with Feature.registrarBalance, a ServerPlan 1.4 panel with Namecheap.
+            if store.snapshot?.supports(RemoteSnapshot.Feature.registrarBalance) == true, let balance = plan.registrarBalance {
+                Section {
+                    HStack {
+                        Label("Namecheap Balance", systemImage: balance.low ? "exclamationmark.triangle.fill" : "creditcard")
+                        Spacer()
+                        Text(verbatim: "\(balance.available.formatted(.number.precision(.fractionLength(0...2)))) \(balance.currency)")
+                            .monospacedDigit()
+                            .foregroundStyle(balance.low ? Color.orange : Color.secondary)
+                    }
+                } footer: {
+                    if balance.low {
+                        Text("Under the alert threshold. Top up for domain purchases: Namecheap › Billing › Add Funds.")
+                    }
+                }
+            }
             Section {
             } footer: {
                 Text("Read only. Deploy, restart and the terminals are on the Mac.")

@@ -36,7 +36,7 @@ enum DebugSnapshot {
             if let project = UUID(uuidString: String(file.dropLast(6))) { model.newShell(in: project) }
         }
         // Screenshots of things only a scroll or a right click shows (the app need not be in front):
-        // `settings.category`: "agents" (a SettingsCategory raw value) selects that Settings category;
+        // `settings.category`: "agents" (a SettingsCategory raw value) opens Settings on that category;
         // `settings.scroll`: "Y" scrolls the Settings window's form to Y points from its top;
         // `rightclick`: "X Y" right-clicks the main window at X, Y points from its top left.
         for file in files where file == "settings.category" {
@@ -44,6 +44,8 @@ enum DebugSnapshot {
             let name = contents(path)
             try? FileManager.default.removeItem(atPath: path)
             if SettingsCategory(rawValue: name) != nil { UserDefaults.windowState.set(name, forKey: SettingsCategory.storageKey) }
+            // Opens Settings too (already open: just brought forward).
+            model.openSettings?()
         }
         for file in files where file == "settings.scroll" {
             let path = (dir as NSString).appendingPathComponent(file)

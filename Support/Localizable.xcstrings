@@ -20593,6 +20593,156 @@
           }
         }
       }
+    },
+    "Namecheap balance low": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiyesi düşük"
+          }
+        }
+      }
+    },
+    "Namecheap balance is low: %@ %@ (threshold %@ %@). Top up for domain purchases: Namecheap › Billing › Add Funds.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiyesi düşük: %1$@ %2$@ (eşik %3$@ %4$@). Alan adı alımları için bakiye yükle: Namecheap › Billing › Add Funds."
+          }
+        }
+      }
+    },
+    "Namecheap balance": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiyesi"
+          }
+        }
+      }
+    },
+    "Ask Namecheap for the balance now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakiyeyi şimdi Namecheap'ten al"
+          }
+        }
+      }
+    },
+    "Namecheap balance alert (USD)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiye uyarısı (USD)"
+          }
+        }
+      }
+    },
+    "ServerPlan's own threshold (%@ %@) is used; this one applies when ServerPlan has none.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan'ın kendi eşiği (%1$@ %2$@) kullanılıyor; bu ayar yalnızca ServerPlan'da eşik yoksa geçerli."
+          }
+        }
+      }
+    },
+    "A notification on the Mac and the phone when the balance goes under this (once, until it's topped up). 0 turns it off.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakiye bunun altına düşünce Mac'te ve telefonda bildirim (bakiye yüklenene kadar bir kez). 0 kapatır."
+          }
+        }
+      }
+    },
+    "Account balance %@ %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap bakiyesi %1$@ %2$@"
+          }
+        }
+      }
+    },
+    "checked %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kontrol: %@"
+          }
+        }
+      }
+    },
+    "Low: top up in Namecheap › Billing › Add Funds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düşük: Namecheap › Billing › Add Funds ile bakiye yükle"
+          }
+        }
+      }
+    },
+    "Namecheap: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap: %@"
+          }
+        }
+      }
+    },
+    "Namecheap balance is low. Top up for domain purchases: Namecheap › Billing › Add Funds.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiyesi düşük. Alan adı alımları için bakiye yükle: Namecheap › Billing › Add Funds."
+          }
+        }
+      }
+    },
+    "Namecheap balance (for domain purchases)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap bakiyesi (alan adı alımları için)"
+          }
+        }
+      }
+    },
+    "Namecheap Balance": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Namecheap Bakiyesi"
+          }
+        }
+      }
+    },
+    "Under the alert threshold. Top up for domain purchases: Namecheap › Billing › Add Funds.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uyarı eşiğinin altında. Alan adı alımları için bakiye yükle: Namecheap › Billing › Add Funds."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

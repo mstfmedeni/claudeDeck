@@ -408,10 +408,11 @@ final class ServerPlanController {
     func balanceThresholdChanged() {
         guard let balance = registrarBalance else { return }
         var watch = balanceWatch
+        let wasLow = watch.notifiedLow
         let notice = watch.observe(available: balance.available, currency: balance.currency, panelThreshold: balance.lowThreshold,
                                    localThreshold: localBalanceThreshold)
         balanceWatch = watch
-        if let notice { notifyLowBalance(notice) }
+        if let notice { notifyLowBalance(notice) } else if wasLow, !watch.notifiedLow { onCleared?([Self.balanceNoticeID]) }
         model?.onCountsChanged?()
     }
 
