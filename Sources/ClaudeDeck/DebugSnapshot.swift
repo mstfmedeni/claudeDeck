@@ -369,6 +369,33 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             if parts.count == 2, let id = Int(parts[0]) { model.openServerPlanTerminal(serverID: id, serverName: parts[1], runClaude: false) }
         }
+        // `serverplan.clear`: "all" | "deploy <id>" | "server <id>" | "panel" | "action" clears
+        // that ServerPlan error as its x / Clear All does; "phone <id>…" as the phone's swipe.
+        // `serverplan.dump`: the shown and cleared failures to `serverplan.txt`.
+        for file in files where file == "serverplan.clear" || file == "serverplan.dump" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let words = contents(path).split(whereSeparator: \.isWhitespace).map(String.init)
+            try? FileManager.default.removeItem(atPath: path)
+            let controller = ServerPlanController.shared
+            if file == "serverplan.dump" {
+                let lines = ["shown: " + controller.visibleIssues.map { "\($0.key)=\($0.signature)" }.joined(separator: ", "),
+                             "cleared: " + model.deck.dismissedServerIssues.map { "\($0.key)=\($0.signature)" }.joined(separator: ", "),
+                             "actionError: \(controller.actionError ?? "-") lastError: \(controller.lastError ?? "-") shownLastError: \(controller.shownLastError ?? "-")",
+                             "phone deploys: " + (controller.remoteStatus?.deploys.map { "\($0.id):\($0.status)" }.joined(separator: ", ") ?? "-")]
+                try? lines.joined(separator: "\n").write(toFile: (dir as NSString).appendingPathComponent("serverplan.txt"), atomically: true, encoding: .utf8)
+                continue
+            }
+            let id = words.count > 1 ? Int(words[1]) : nil
+            switch words.first {
+            case "all": controller.clearAll()
+            case "deploy": if let id, let deploy = controller.deployments.first(where: { $0.id == id }) { controller.clearDeploy(deploy) }
+            case "server": if let id, let server = controller.server(id) { controller.clearServerIssue(server) }
+            case "panel": controller.clearPanelError()
+            case "action": controller.actionError = nil
+            case "phone": controller.clearFromPhone(deploymentIDs: words.dropFirst().compactMap { Int($0) }, all: false)
+            default: break
+            }
+        }
         for file in files where file == "ptyd.cmd" {
             let path = (dir as NSString).appendingPathComponent(file)
             let command = contents(path)

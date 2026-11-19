@@ -388,6 +388,9 @@ public struct DeckData: Codable, Sendable, Equatable {
     public var ciRepairRequests: [CIRepairRequest] = []
     /// "Fix with Claude" requests for failed ServerPlan deploys (see ServerPlanRepair.swift).
     public var deployRepairRequests: [DeployRepairRequest] = []
+    /// ServerPlan failures the owner cleared from the sidebar or the phone (local only: nothing
+    /// is removed on the panel). See ServerPlanRepair.swift.
+    public var dismissedServerIssues: [DismissedServerIssue] = []
     /// `claudedeck preset set`: per project, the options for sessions `claudedeck new` starts there.
     public var cliPresets: [CLIPreset] = []
     /// `claudedeck new --queue`: starts waiting for room (and recently finished ones).
@@ -411,6 +414,7 @@ public struct DeckData: Codable, Sendable, Equatable {
         automationRuns = try c.decodeIfPresent([AutomationRun].self, forKey: .automationRuns) ?? []
         ciRepairRequests = (try? c.decodeIfPresent([Lossy<CIRepairRequest>].self, forKey: .ciRepairRequests))?.compactMap(\.value) ?? []
         deployRepairRequests = (try? c.decodeIfPresent([Lossy<DeployRepairRequest>].self, forKey: .deployRepairRequests))?.compactMap(\.value) ?? []
+        dismissedServerIssues = (try? c.decodeIfPresent([Lossy<DismissedServerIssue>].self, forKey: .dismissedServerIssues))?.compactMap(\.value) ?? []
         cliPresets = (try? c.decodeIfPresent([Lossy<CLIPreset>].self, forKey: .cliPresets))?.compactMap(\.value) ?? []
         cliQueue = (try? c.decodeIfPresent([Lossy<CLIQueuedStart>].self, forKey: .cliQueue))?.compactMap(\.value) ?? []
     }

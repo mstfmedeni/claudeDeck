@@ -89,6 +89,8 @@ final class RemoteStore {
     private(set) var repairingDeploys: Set<Int> = []
     /// Why the Mac couldn't start Fix with Claude (shown, then cleared).
     var serverPlanError: String?
+    /// Failed deploys cleared here: hidden at once, before the Mac's next snapshot leaves them out.
+    private(set) var clearedDeploys: Set<Int> = []
 
     // Windows (iPad): each keeps its own selection; the store only routes "show this session".
     struct OpenRequest: Equatable {
@@ -756,6 +758,16 @@ final class RemoteStore {
             try? await Task.sleep(for: .seconds(45))
             self?.repairingDeploys.remove(deploymentID)
         }
+    }
+
+    /// Whether the Mac takes `dismissServerIssues` (older Macs don't: no swipe, no Clear All).
+    var canClearServerErrors: Bool { snapshot?.supports(RemoteSnapshot.Feature.dismissServerIssues) == true }
+
+    /// Clears failed deploys on the Mac (its sidebar and this list; nothing changes on the
+    /// panel). `all`: every ServerPlan error the Mac shows.
+    func clearDeploys(_ ids: [Int], all: Bool = false) {
+        guard canClearServerErrors, send(.dismissServerIssues(deploymentIDs: ids, all: all)) else { return }
+        clearedDeploys.formUnion(ids)
     }
 
     private func serverPlanRepaired(_ deploymentID: Int, sessionID: UUID?, error: String?) {

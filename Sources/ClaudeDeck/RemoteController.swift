@@ -341,6 +341,9 @@ final class RemoteController {
             server.onServerPlanRepair = { deploymentID, reply in
                 MainActor.assumeIsolated { ServerPlanController.shared.fixWithClaude(deploymentID) { reply($0, $1) } }
             }
+            server.onDismissServerIssues = { ids, all in
+                MainActor.assumeIsolated { ServerPlanController.shared.clearFromPhone(deploymentIDs: ids, all: all) }
+            }
             server.onPermission = { [weak self] id, stamp, approve in
                 MainActor.assumeIsolated {
                     guard let model = self?.model else { return false }

@@ -378,6 +378,8 @@ public final class RemoteServer: @unchecked Sendable {
     public var onAnswerDecision: ((_ id: String, _ answer: String) -> Void)?
     /// `dismissDecision`.
     public var onDismissDecision: ((_ id: String) -> Void)?
+    /// `dismissServerIssues` (ids capped at 200).
+    public var onDismissServerIssues: ((_ deploymentIDs: [Int], _ all: Bool) -> Void)?
     /// `changeDecisionAnswer` (the answer cut to `Decisions.maxAnswer`).
     public var onChangeDecisionAnswer: ((_ id: String, _ answer: String) -> Void)?
     /// The set of sessions any remote watches changed (the host taps only those).
@@ -667,6 +669,8 @@ public final class RemoteServer: @unchecked Sendable {
                 onAnswerDecision?(decisionID, String(answer.prefix(Decisions.maxAnswer)))
             case .dismissDecision(let decisionID) where Decisions.isValidID(decisionID):
                 onDismissDecision?(decisionID)
+            case .dismissServerIssues(let ids, let all):
+                onDismissServerIssues?(Array(ids.prefix(200)), all)
             case .changeDecisionAnswer(let decisionID, let answer) where Decisions.isValidID(decisionID):
                 onChangeDecisionAnswer?(decisionID, String(answer.prefix(Decisions.maxAnswer)))
             case .browseFolder(let path):

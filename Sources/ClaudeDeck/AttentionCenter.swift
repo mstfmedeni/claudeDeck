@@ -70,6 +70,9 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             self?.serverPlanNotice(notice)
             model?.remote.pushNotice(title: notice.title, body: notice.body, collapseID: notice.id)
         }
+        ServerPlanController.shared.onCleared = { [weak self] ids in
+            self?.center?.removeDeliveredNotifications(withIdentifiers: ids)
+        }
     }
 
     /// `claudedeck notify` / `ask` from a session's terminal (the caller checked the setting).

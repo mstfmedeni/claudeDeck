@@ -75,6 +75,10 @@ final class ServerPlanController {
 
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored var onNotice: ((ServerPlanNotice) -> Void)?
+    /// Failures were cleared: their delivered notifications (`ServerPlanNotice.id`s) go too.
+    @ObservationIgnored var onCleared: (([String]) -> Void)?
+    /// Old cleared failures are pruned once per launch, after the first full list.
+    @ObservationIgnored private var pruned = false
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var lastEventID: String?
     @ObservationIgnored private var notified: Set<String> = []
@@ -197,6 +201,8 @@ final class ServerPlanController {
             absorb(d)
             lastError = nil
             lastRefresh = Date()
+            forgetRecovered(panel: true, servers: [])
+            if !pruned { pruned = true; pruneCleared() }
         } catch {
             lastError = error.localizedDescription
             return
@@ -226,6 +232,8 @@ final class ServerPlanController {
             }
             for await (id, value) in group { health[id] = value ?? health[id] }
         }
+        // Back up: a cleared "unreachable" shows again the next time it fails.
+        forgetRecovered(panel: false, servers: servers.filter { serverIssue($0) == nil && health[$0.id] != nil }.map(\.id))
     }
 
     /// Whether `claude` runs on each server (the panel caches it 10 min; so do we).
@@ -299,6 +307,7 @@ final class ServerPlanController {
             }
             servers[index].status = event.kind == .serverRecovered ? .online : .offline
             servers[index].reachable = event.kind == .serverRecovered
+            if event.kind == .serverRecovered { forgetRecovered(panel: false, servers: [id]) }
             if event.kind == .serverUnreachable { notifyServerDown(servers[index].name, id: id) }
         case .unknown:
             break
@@ -421,7 +430,8 @@ final class ServerPlanController {
     /// For the phone (RemoteSnapshot.serverPlan): nil unless configured.
     var remoteStatus: RemoteServerPlan? {
         guard isConfigured else { return nil }
-        let recent = deployments.filter { $0.status.isRunning || $0.status == .failed }.prefix(10)
+        // Cleared failures stay on the Mac's side: phones (old ones too) don't list them.
+        let recent = deployments.filter { $0.status.isRunning || ($0.status == .failed && !isCleared($0)) }.prefix(10)
         var status = RemoteServerPlan(
             servers: servers.map { RemoteServerPlan.Server(id: $0.id, name: $0.name, status: $0.effectiveStatus.rawValue) },
             deploys: recent.map {
@@ -431,8 +441,10 @@ final class ServerPlanController {
         )
         status.projects = projects.map { project in
             let last = latestDeploy(of: project)
-            return RemoteServerPlan.Project(id: project.id, name: project.name, serverID: project.defaultServerID, lastDeployID: last?.id,
-                                            lastDeployStatus: last?.status.rawValue, lastDeployAt: last?.finishedAt)
+            var row = RemoteServerPlan.Project(id: project.id, name: project.name, serverID: project.defaultServerID, lastDeployID: last?.id,
+                                               lastDeployStatus: last?.status.rawValue, lastDeployAt: last?.finishedAt)
+            if let last, isCleared(last) { row.lastDeployCleared = true }
+            return row
         }
         return status
     }
@@ -465,12 +477,14 @@ final class ServerPlanController {
             do {
                 switch try await client.perform(confirmation) {
                 case .deployStarted(let started):
+                    actionError = nil
                     startedHere.insert(started.deploymentID)
                     if case .deploy(_, let name, _, _) = pending.action {
                         sheet = .deploy(id: started.deploymentID, title: name)
                     }
                     absorb([ServerPlanDeployment(id: started.deploymentID, projectID: actionProjectID(pending.action), status: .pending)], fromEvent: true)
                 case .done:
+                    actionError = nil
                     if case .container(let serverID, _, _, _) = pending.action,
                        let list = try? await client.containers(serverID: serverID) { containers[serverID] = list }
                 }
@@ -538,12 +552,153 @@ final class ServerPlanController {
                 return
             }
             model.mutate { $0.recordDeployRepair(DeployRepairRequest(key: key, sessionID: target)) }
+            actionError = nil
             sheet = nil
             model.openMainWindow?()
             model.tabs.selectSessions()
             model.sendPrompt(DeployRepair.prompt(project: projectName, server: deployment.serverName, deployment: deployment, log: deployment.log ?? ""), to: target)
             done?(target, nil)
         }
+    }
+
+    // MARK: Clearing failures (local: nothing changes on the panel)
+
+    private var panelURL: URL? { client?.config.baseURL }
+
+    /// A failed deploy's issue (nil for any other status).
+    func issue(for deploy: ServerPlanDeployment) -> ServerIssue? {
+        guard deploy.status == .failed, let panelURL else { return nil }
+        return .deploy(panel: panelURL, deploymentID: deploy.id)
+    }
+
+    /// A failed deploy the owner cleared.
+    func isCleared(_ deploy: ServerPlanDeployment) -> Bool {
+        guard let issue = issue(for: deploy), let model else { return false }
+        return model.deck.isDismissed(issue)
+    }
+
+    /// Whether `deploy` is shown as a failure (failed and not cleared).
+    func showsFailure(_ deploy: ServerPlanDeployment?) -> Bool {
+        guard let deploy, deploy.status == .failed else { return false }
+        return !isCleared(deploy)
+    }
+
+    /// What's wrong with a server (unreachable, offline, Docker not answering), or nil.
+    func serverIssue(_ server: ServerPlanServer) -> ServerIssue? {
+        guard let panelURL else { return nil }
+        let health = health[server.id]
+        let message: String
+        if health?.reachable == false {
+            message = "unreachable:" + (health?.error ?? "")
+        } else if server.effectiveStatus == .offline {
+            message = "offline"
+        } else if health?.dockerOK == false {
+            message = "docker"
+        } else {
+            return nil
+        }
+        return .server(panel: panelURL, serverID: server.id, message: message)
+    }
+
+    /// Whether the server row shows its problem (there is one and it wasn't cleared).
+    func showsServerIssue(_ server: ServerPlanServer) -> Bool {
+        guard let issue = serverIssue(server), let model else { return false }
+        return !model.deck.isDismissed(issue)
+    }
+
+    private var panelIssue: ServerIssue? {
+        guard let lastError, let panelURL else { return nil }
+        return .panel(panelURL, message: lastError)
+    }
+
+    /// `lastError`, unless it was cleared (it shows again after the panel answers once more).
+    var shownLastError: String? {
+        guard let lastError else { return nil }
+        if let issue = panelIssue, model?.deck.isDismissed(issue) == true { return nil }
+        return lastError
+    }
+
+    /// The failed deploys the sidebar can show: the recent list and every project's last deploy.
+    private var failedDeploys: [ServerPlanDeployment] {
+        var seen: Set<Int> = []
+        return (deployments + projects.compactMap { latestDeploy(of: $0) })
+            .filter { $0.status == .failed && seen.insert($0.id).inserted }
+    }
+
+    /// Every failure on screen that can still be cleared.
+    var visibleIssues: [ServerIssue] {
+        guard let model else { return [] }
+        let all = failedDeploys.compactMap(issue(for:)) + servers.compactMap(serverIssue) + [panelIssue].compactMap { $0 }
+        return all.filter { !model.deck.isDismissed($0) }
+    }
+
+    /// For the Servers header's Clear All.
+    var hasClearableErrors: Bool { actionError != nil || !visibleIssues.isEmpty }
+
+    func clearDeploy(_ deploy: ServerPlanDeployment) {
+        guard let issue = issue(for: deploy) else { return }
+        clear([issue], notices: ["serverplan-deploy-\(deploy.id)"])
+    }
+
+    func clearServerIssue(_ server: ServerPlanServer) {
+        guard let issue = serverIssue(server) else { return }
+        clear([issue], notices: ["serverplan-server-\(server.id)"])
+    }
+
+    func clearPanelError() {
+        guard let issue = panelIssue else { return }
+        clear([issue], notices: [])
+    }
+
+    /// Clear All: every failure shown now and the last action's error.
+    func clearAll() {
+        actionError = nil
+        let notices = failedDeploys.map { "serverplan-deploy-\($0.id)" } + servers.map { "serverplan-server-\($0.id)" }
+        clear(visibleIssues, notices: notices)
+    }
+
+    /// The phone's swipe (`ids`) or its Clear All (`all`).
+    func clearFromPhone(deploymentIDs ids: [Int], all: Bool) {
+        if all { clearAll(); return }
+        let wanted = Set(ids)
+        let deploys = failedDeploys.filter { wanted.contains($0.id) }
+        clear(deploys.compactMap(issue(for:)), notices: deploys.map { "serverplan-deploy-\($0.id)" })
+    }
+
+    private func clear(_ issues: [ServerIssue], notices: [String]) {
+        guard let model else { return }
+        if !issues.isEmpty {
+            let active = activeIssueKeys
+            model.mutate {
+                $0.dismissServerIssues(issues)
+                $0.pruneDismissedServerIssues(keeping: active)
+            }
+        }
+        if !notices.isEmpty { onCleared?(notices) }
+        model.onCountsChanged?()  // the phone's snapshot leaves them out
+    }
+
+    /// Keys of the failures still listed (their clearing must outlive the 30 days).
+    private var activeIssueKeys: Set<String> {
+        Set(failedDeploys.compactMap(issue(for:)).map(\.key) + servers.compactMap(serverIssue).map(\.key) + [panelIssue].compactMap { $0?.key })
+    }
+
+    private func pruneCleared() {
+        guard let model else { return }
+        let active = activeIssueKeys
+        var deck = model.deck
+        guard deck.pruneDismissedServerIssues(keeping: active) else { return }
+        model.mutate(userInitiated: false) { $0.pruneDismissedServerIssues(keeping: active) }
+    }
+
+    /// The panel answered / servers are healthy again: their cleared errors are forgotten, so the
+    /// next failure shows.
+    private func forgetRecovered(panel: Bool, servers ids: [Int]) {
+        guard let model, let panelURL else { return }
+        var keys = Set(ids.map { ServerIssue.serverKey(panel: panelURL, serverID: $0) })
+        if panel { keys.insert(ServerIssue.panelKey(panelURL)) }
+        guard model.deck.dismissedServerIssues.contains(where: { keys.contains($0.key) }) else { return }
+        model.mutate(userInitiated: false) { $0.forgetServerIssues(keys) }
     }
 
     /// Shows the deploy's log (from a notification).
