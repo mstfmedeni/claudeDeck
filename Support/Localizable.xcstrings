@@ -18230,6 +18230,476 @@
           }
         }
       }
+    },
+    "%lld waiting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld bekliyor"
+          }
+        }
+      }
+    },
+    "%lld/%lld done": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld/%lld bitti"
+          }
+        }
+      }
+    },
+    "A session asks with claudedeck decide (Settings › Agents › Command-line tool for sessions).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar claudedeck decide ile sorar (Ayarlar › Ajanlar › Oturumlar için komut satırı aracı)."
+          }
+        }
+      }
+    },
+    "Agenda": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gündem"
+          }
+        }
+      }
+    },
+    "Agenda Board": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gündem Panosu"
+          }
+        }
+      }
+    },
+    "Agenda — %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gündem — %@"
+          }
+        }
+      }
+    },
+    "Answered · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtlananlar · %lld"
+          }
+        }
+      }
+    },
+    "Answered": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtlananlar"
+          }
+        }
+      }
+    },
+    "Blocked": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engelli"
+          }
+        }
+      }
+    },
+    "Changed %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değişti: %@"
+          }
+        }
+      }
+    },
+    "Columns: id, track, owner, status (todo, doing, review, done, blocked), depends-on, evidence.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sütunlar: id, track, owner, status (todo, doing, review, done, blocked), depends-on, evidence."
+          }
+        }
+      }
+    },
+    "Decision needed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karar bekleniyor"
+          }
+        }
+      }
+    },
+    "Decision needed — %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karar bekleniyor — %@"
+          }
+        }
+      }
+    },
+    "Decisions your sessions left for you": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlarının sana bıraktığı kararlar"
+          }
+        }
+      }
+    },
+    "Depends on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlı olduğu: %@"
+          }
+        }
+      }
+    },
+    "Doing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yapılıyor"
+          }
+        }
+      }
+    },
+    "Latest: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son: %@"
+          }
+        }
+      }
+    },
+    "Less": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha az"
+          }
+        }
+      }
+    },
+    "No board: docs/AGENDA.md is missing, or has no table with id and status columns.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pano yok: docs/AGENDA.md yok ya da id ve status sütunlu bir tablo içermiyor."
+          }
+        }
+      }
+    },
+    "Nothing to decide": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karar verilecek bir şey yok"
+          }
+        }
+      }
+    },
+    "Nothing to Decide": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karar Verilecek Bir Şey Yok"
+          }
+        }
+      }
+    },
+    "Or answer in your own words": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya da kendi sözlerinle yanıtla"
+          }
+        }
+      }
+    },
+    "Recommended": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önerilen"
+          }
+        }
+      }
+    },
+    "Review": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İnceleme"
+          }
+        }
+      }
+    },
+    "Sessions keep working while these wait. Your answer reaches the session as its next message.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bunlar beklerken oturumlar çalışmaya devam eder. Yanıtın oturuma bir sonraki mesajı olarak gider."
+          }
+        }
+      }
+    },
+    "Show the session that asked": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soran oturumu göster"
+          }
+        }
+      }
+    },
+    "The asking session recommends this": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soran oturum bunu öneriyor"
+          }
+        }
+      }
+    },
+    "The project's docs/AGENDA.md as a board": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projenin docs/AGENDA.md dosyası pano olarak"
+          }
+        }
+      }
+    },
+    "The table in docs/AGENDA.md has no rows yet.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "docs/AGENDA.md içindeki tabloda henüz satır yok."
+          }
+        }
+      }
+    },
+    "To Do": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yapılacak"
+          }
+        }
+      }
+    },
+    "Your Decisions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kararların"
+          }
+        }
+      }
+    },
+    "on the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te"
+          }
+        }
+      }
+    },
+    "on the phone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "telefonda"
+          }
+        }
+      }
+    },
+    "sent to the session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturuma gönderildi"
+          }
+        }
+      }
+    },
+    "the session was gone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturum artık yoktu"
+          }
+        }
+      }
+    },
+    "%lld blocked": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld engelli"
+          }
+        }
+      }
+    },
+    "%lld doing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld yapılıyor"
+          }
+        }
+      }
+    },
+    "A project with docs/AGENDA.md (a table with id and status columns) shows its board here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "docs/AGENDA.md dosyası (id ve status sütunlu bir tablo) olan projenin panosu burada görünür."
+          }
+        }
+      }
+    },
+    "No Agenda": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gündem Yok"
+          }
+        }
+      }
+    },
+    "None waiting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekleyen yok"
+          }
+        }
+      }
+    },
+    "Sending “%@”…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” gönderiliyor…"
+          }
+        }
+      }
+    },
+    "Sessions on the Mac ask with claudedeck decide and keep working; their questions show up here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'teki oturumlar claudedeck decide ile sorar ve çalışmaya devam eder; soruları burada görünür."
+          }
+        }
+      }
+    },
+    "Show %lld Done": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Biten %lld Öğeyi Göster"
+          }
+        }
+      }
+    },
+    "Waiting · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekleyen · %lld"
+          }
+        }
+      }
+    },
+    "Your answer goes to the session as its next message.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtın oturuma bir sonraki mesajı olarak gider."
+          }
+        }
+      }
+    },
+    "docs/AGENDA.md · changed %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "docs/AGENDA.md · %@ değişti"
+          }
+        }
+      }
+    },
+    "%@ · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %lld"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

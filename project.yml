@@ -178,6 +178,8 @@ targets:
       - Sources/ClaudeDeckCore/RemoteTransferClient.swift
       - Sources/ClaudeDeckCore/PromptQueue.swift
       - Sources/ClaudeDeckCore/Agents.swift
+      - Sources/ClaudeDeckCore/Decisions.swift
+      - Sources/ClaudeDeckCore/AgendaBoard.swift
       - Support/Localizable.xcstrings
     dependencies:
       - package: SwiftTerm
