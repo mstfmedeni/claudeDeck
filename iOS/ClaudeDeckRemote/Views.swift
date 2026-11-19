@@ -370,8 +370,8 @@ struct SessionListView: View {
             }
             if let plan = store.serverPlan { ServersRow(plan: plan) }
             if let simulators = store.simulators { SimulatorsRow(simulators: simulators) }
-            // A Mac that sends decisions: the row once a session has asked something.
-            if let decisions = store.decisions, !decisions.isEmpty { DecisionsRow(decisions: decisions) }
+            // A Mac that sends decisions: always the row, so it can be found before anything is asked.
+            if let decisions = store.decisions { DecisionsRow(decisions: decisions) }
             if let agendas = store.agendas, !agendas.isEmpty { AgendaRow(agendas: agendas) }
             if let groups = store.agentGroups, !groups.isEmpty { AgentTreeRow(groups: groups) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
