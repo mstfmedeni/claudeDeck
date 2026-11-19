@@ -74,6 +74,10 @@ extension AppModel {
             var text = String(localized: "New sessions will run in a small background helper (claudedeck-ptyd), so they keep running when ClaudeDeck quits, crashes or updates. ClaudeDeck reattaches to them at launch. Restarting the Mac or logging out still ends them. You can turn this off again at any time.")
             if ptyd.mode == .launchAgent {
                 text += "\n\n" + String(localized: "The helper is listed under ClaudeDeck in System Settings › General › Login Items.")
+                // Only the Full Disk Access file: probing ~/Desktop here could raise a prompt.
+                if PtydAccessProbe.runFullDiskAccess() == .granted {
+                    text += "\n\n" + String(localized: "ClaudeDeck has Full Disk Access, but macOS treats the helper as a separate app: sessions in it can't open protected folders until you give claudedeck-ptyd Full Disk Access too (Settings › Sessions shows how).")
+                }
             }
             alert.informativeText = text
             alert.addButton(withTitle: String(localized: "Turn On"))

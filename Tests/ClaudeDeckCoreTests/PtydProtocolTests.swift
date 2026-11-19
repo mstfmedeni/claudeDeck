@@ -101,6 +101,103 @@ import Testing
         // Helper no longer accepts this old app: read-only.
         #expect(PtydVersion.negotiate(client: (2, 1), helper: (5, 3)) == .readOnly)
     }
+
+    /// Protocol 2 (the access probe) still drives version 1 helpers fully, and a version 1 app
+    /// still drives this helper.
+    @Test func accessProbeVersionStaysCompatible() {
+        #expect(PtydProtocol.version >= PtydProtocol.accessProbeVersion)
+        #expect(PtydProtocol.oldestCompatibleHelper == 1 && PtydProtocol.oldestCompatibleClient == 1)
+        #expect(PtydVersion.negotiate(client: (PtydProtocol.version, PtydProtocol.oldestCompatibleHelper),
+                                      helper: (1, 1)) == .full(dialect: 1))
+        #expect(PtydVersion.negotiate(client: (1, 1),
+                                      helper: (PtydProtocol.version, PtydProtocol.oldestCompatibleClient)) == .full(dialect: 1))
+        #expect(PtydOp.probeAccess.rawValue == "probeAccess" && PtydOp.access.rawValue == "access")
+    }
+
+    @Test func accessReportOnTheWire() throws {
+        var message = PtydMessage(op: .access, seq: 3)
+        message.access = PtydAccessReport(fullDiskAccess: .denied, desktop: .granted)
+        let frame = try #require(try { var r = PtydFrameReader(); r.append(try PtydFrame(message).encoded()); return try r.next() }())
+        #expect(frame.message.access == PtydAccessReport(fullDiskAccess: .denied, desktop: .granted))
+        // A version 1 message has none.
+        let old = try JSONDecoder().decode(PtydMessage.self, from: Data(#"{"op":"ok","seq":1}"#.utf8))
+        #expect(old.access == nil)
+        // A state from a later build reads as unknown, the rest still decodes.
+        let later = try JSONDecoder().decode(PtydMessage.self, from: Data(#"{"op":"access","access":{"fullDiskAccess":"partial","desktop":"granted"}}"#.utf8))
+        #expect(later.access == PtydAccessReport(fullDiskAccess: .unknown, desktop: .granted))
+    }
+}
+
+@Suite struct PtydAccessTests {
+    @Test func errnoClassification() {
+        #expect(PtydAccessProbe.classify(errno: 0) == .granted)
+        #expect(PtydAccessProbe.classify(errno: EPERM) == .denied)
+        #expect(PtydAccessProbe.classify(errno: ENOENT) == .unknown)
+        #expect(PtydAccessProbe.classify(errno: EACCES) == .unknown)
+        #expect(PtydAccessProbe.classify(errno: EIO) == .unknown)
+    }
+
+    @Test func fullDiskAccessTriesTCCThenSafari() {
+        let home = "/Users/x"
+        let tcc = home + "/Library/Application Support/com.apple.TCC/TCC.db"
+        let safari = home + "/Library/Safari/Bookmarks.plist"
+        func probe(_ answers: [String: Int32]) -> (PtydAccessState, [String]) {
+            var tried: [String] = []
+            let state = PtydAccessProbe.fullDiskAccess(home: home) { path in tried.append(path); return answers[path] ?? ENOENT }
+            return (state, tried)
+        }
+        // TCC.db decides when it answers.
+        #expect(probe([tcc: 0]) == (.granted, [tcc]))
+        #expect(probe([tcc: EPERM]) == (.denied, [tcc]))
+        // Missing TCC.db: Safari's bookmarks decide.
+        #expect(probe([safari: EPERM]) == (.denied, [tcc, safari]))
+        #expect(probe([safari: 0]) == (.granted, [tcc, safari]))
+        // Neither exists: unknown.
+        #expect(probe([:]) == (.unknown, [tcc, safari]))
+    }
+
+    @Test func desktopProbe() {
+        var listed: String?
+        #expect(PtydAccessProbe.desktop(home: "/Users/x") { listed = $0; return EPERM } == .denied)
+        #expect(listed == "/Users/x/Desktop")
+        #expect(PtydAccessProbe.desktop(home: "/Users/x") { _ in 0 } == .granted)
+        #expect(PtydAccessProbe.desktop(home: "/Users/x") { _ in ENOENT } == .unknown)
+    }
+
+    @Test func levels() {
+        typealias R = PtydAccessReport
+        #expect(R(fullDiskAccess: .granted, desktop: .granted).level == .full)
+        #expect(R(fullDiskAccess: .granted, desktop: .unknown).level == .full)
+        #expect(R(fullDiskAccess: .denied, desktop: .granted).level == .desktopOnly)
+        #expect(R(fullDiskAccess: .denied, desktop: .denied).level == .none)
+        #expect(R(fullDiskAccess: .denied, desktop: .unknown).level == .none)
+        #expect(R(fullDiskAccess: .unknown, desktop: .granted).level == .unknown)
+        #expect(R.unknown.level == .unknown)
+    }
+
+    @Test func helperLacksOnlyOnDefiniteDenials() {
+        typealias R = PtydAccessReport
+        let appFull = R(fullDiskAccess: .granted, desktop: .granted)
+        #expect(R(fullDiskAccess: .denied, desktop: .denied).lacks(comparedTo: appFull))
+        #expect(R(fullDiskAccess: .denied, desktop: .granted).lacks(comparedTo: appFull))
+        #expect(!R(fullDiskAccess: .granted, desktop: .granted).lacks(comparedTo: appFull))
+        // An old helper (unknown) never warns.
+        #expect(!R.unknown.lacks(comparedTo: appFull))
+        // The app has only the Desktop grant, the helper not even that.
+        let appDesktop = R(fullDiskAccess: .denied, desktop: .granted)
+        #expect(R(fullDiskAccess: .denied, desktop: .denied).lacks(comparedTo: appDesktop))
+        #expect(!R(fullDiskAccess: .denied, desktop: .granted).lacks(comparedTo: appDesktop))
+        // The app has nothing either: nothing to tell.
+        #expect(!R(fullDiskAccess: .denied, desktop: .denied).lacks(comparedTo: R(fullDiskAccess: .denied, desktop: .denied)))
+    }
+
+    @Test func realProbeNeverCrashesAndReadsNothing() {
+        // Whatever this machine grants the test runner, the probe answers.
+        let report = PtydAccessProbe.run()
+        #expect([.granted, .denied, .unknown].contains(report.fullDiskAccess))
+        let empty = PtydAccessProbe.run(home: "/nonexistent-\(UUID().uuidString)")
+        #expect(empty == .unknown)
+    }
 }
 
 @Suite struct PtydDeckDataTests {

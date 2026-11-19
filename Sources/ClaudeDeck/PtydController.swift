@@ -42,6 +42,12 @@ final class PtydController {
     private(set) var prepared = false
     /// A restart of the helper is under way.
     private(set) var restarting = false
+    /// What privacy (TCC) lets this app open, and the connected helper (`checkAccess`; nil:
+    /// not checked yet). An old helper answers `.unknown`.
+    private(set) var appAccess: PtydAccessReport?
+    private(set) var helperAccess: PtydAccessReport?
+    @ObservationIgnored private var activeObserver: NSObjectProtocol?
+    @ObservationIgnored private var accessCheck: Task<Void, Never>?
 
     @ObservationIgnored weak var model: AppModel?
     @ObservationIgnored let paths = PtydPaths.default()
@@ -67,6 +73,38 @@ final class PtydController {
         } else {
             mode = .launchAgent
         }
+        // A grant made in System Settings shows once the user comes back to the app.
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkAccessIfRelevant() }
+        }
+    }
+
+    // MARK: Privacy (TCC)
+
+    /// The helper definitely can't open something the app can (never on an unknown answer).
+    var helperLacksAccess: Bool {
+        guard let appAccess, let helperAccess else { return false }
+        return helperAccess.lacks(comparedTo: appAccess)
+    }
+
+    /// Only while sessions run in the helper by the setting: the check is for them.
+    private func checkAccessIfRelevant() {
+        guard client != nil, model?.deck.settings.keepSessionsRunning == true else { return }
+        Task { await checkAccess() }
+    }
+
+    /// Runs the probe in the app and in the helper (one check at a time).
+    func checkAccess() async {
+        if let accessCheck { return await accessCheck.value }
+        let task = Task { @MainActor in
+            appAccess = await Task.detached { PtydAccessProbe.run() }.value
+            helperAccess = await client?.probeAccess()
+        }
+        accessCheck = task
+        await task.value
+        accessCheck = nil
     }
 
     var isConnected: Bool { client != nil }
@@ -212,12 +250,16 @@ final class PtydController {
         orphans = sessions.filter { $0.alive && !known.contains($0.id) }
         ptydLog.info("connected to helper \(connected.welcome.instance, privacy: .public) build \(connected.welcome.build, privacy: .public), \(sessions.count) sessions")
         retireIfDone()
+        // A new helper process (connect, restart, upgrade): its grants may differ from the last one's.
+        helperAccess = nil
+        checkAccessIfRelevant()
     }
 
     private func setState(_ new: PtydHelperState) {
         if case .live = new {} else {
             client = nil
             helperBuild = nil
+            helperAccess = nil
             liveSessions = [:]
         }
         state = new
@@ -368,6 +410,7 @@ final class PtydController {
         ptydLog.error("lost the helper connection")
         client = nil
         helperBuild = nil
+        helperAccess = nil
         liveSessions = [:]
         state = .unknown
         let lost = model?.terminals.helperLost(lostClient) ?? []

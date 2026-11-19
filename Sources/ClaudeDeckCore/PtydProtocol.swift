@@ -13,7 +13,11 @@ import Foundation
 public enum PtydProtocol {
     /// This build's protocol version. Bump it when a message changes meaning; add the old
     /// behaviour behind `dialect` checks while older peers are still supported.
-    public static let version = 1
+    /// 2: `probeAccess` / `access` (PtydAccessProbe).
+    public static let version = 2
+    /// The first helper version that answers `probeAccess`. Never sent to an older helper: it
+    /// can't decode an op it doesn't know and drops the connection.
+    public static let accessProbeVersion = 2
     /// Oldest helper this app can drive fully (spawn, write, resize, signal).
     public static let oldestCompatibleHelper = 1
     /// Oldest app this helper accepts as a full client; older apps get read-only access.
@@ -30,6 +34,8 @@ public enum PtydOp: String, Codable, Sendable {
     case hello, welcome, list, sessions, attach, attached, detach, output, exited, error
     // Version 1.
     case spawn, spawned, write, resize, signal, forget, drain, shutdown, ok
+    // Version 2: the helper checks what privacy (TCC) lets it open; answered by `access`.
+    case probeAccess, access
 }
 
 /// One pty session as the helper reports it.
@@ -116,6 +122,8 @@ public struct PtydMessage: Codable, Sendable, Equatable {
     /// signal: SIGKILL after this many seconds if the child is still alive.
     public var killAfter: Double?
     public var error: String?
+    /// access: what the helper could open (version 2).
+    public var access: PtydAccessReport?
 
     public init(op: PtydOp, seq: Int? = nil, session: String? = nil) {
         self.op = op

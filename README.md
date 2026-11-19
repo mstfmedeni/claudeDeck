@@ -318,9 +318,17 @@ processes, so quitting, a crash or an update of ClaudeDeck no longer ends them.
 - **If the helper dies**, its sessions get SIGHUP and end. ClaudeDeck notices the dropped connection and
   resumes them once their old processes are gone, so nothing runs twice. A process that survives (it
   ignored SIGHUP) is left alone, and a banner offers **Restart Helper (Restarts Sessions)**.
-- **Updates:** a newer ClaudeDeck keeps using an older helper whose protocol it speaks. With an
-  incompatible one, the helper's sessions are shown read-only with a banner; the new helper takes over
-  only when no session is running, or when you restart the helper.
+- **Updates:** a newer ClaudeDeck keeps using an older helper whose protocol it speaks; Settings ›
+  Sessions then says "Helper is outdated (build X, app build Y)". With an incompatible one, the
+  helper's sessions are shown read-only with a banner. The new helper takes over when no session is
+  running (also as soon as the last one ends), or when you restart the helper: **Restart Helper
+  (Restarts Sessions)** is always in Settings › Sessions while the helper runs.
+- **Privacy (Full Disk Access):** macOS treats the helper as its own app, so ClaudeDeck's Full Disk
+  Access or Desktop grant doesn't cover the sessions in it (they get "Operation not permitted"). Settings
+  › Sessions shows the helper's access (Full / Desktop only / None / Unknown), compared with the app's;
+  when the helper lacks what the app has, **Open Settings and Copy Path** copies the helper's path
+  (`ClaudeDeck.app/Contents/MacOS/claudedeck-ptyd`) and opens Full Disk Access: + › ⌘⇧G › paste ›
+  Open. A new grant applies once the helper restarts.
 - Sessions survive the app, not a restart of the Mac or logging out. Phones and other Macs (remote mode)
   see them while ClaudeDeck runs, as before.
 - The helper is a launch agent registered with macOS (it shows under ClaudeDeck in System Settings ›

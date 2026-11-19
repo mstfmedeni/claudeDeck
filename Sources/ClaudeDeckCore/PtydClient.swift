@@ -220,6 +220,27 @@ public final class PtydClient: @unchecked Sendable {
         request(PtydMessage(op: .shutdown)) { completion?($0) }
     }
 
+    /// The helper answers `probeAccess` (protocol 2 and later).
+    public var supportsAccessProbe: Bool { welcome.protocolVersion >= PtydProtocol.accessProbeVersion }
+
+    /// What privacy (TCC) lets the helper open. `.unknown` without asking from a helper older
+    /// than protocol 2 (it would drop the connection over an op it doesn't know), and on an
+    /// error, a lost connection or no answer within `timeout`.
+    public func probeAccess(timeout: TimeInterval = 3, _ completion: @escaping @Sendable (PtydAccessReport) -> Void) {
+        guard supportsAccessProbe else {
+            callbackQueue.async { completion(.unknown) }
+            return
+        }
+        let once = PtydOnce()
+        request(PtydMessage(op: .probeAccess)) { result in
+            let report = (try? result.get())?.message.access ?? .unknown
+            if once.claim() { completion(report) }
+        }
+        callbackQueue.asyncAfter(deadline: .now() + timeout) {
+            if once.claim() { completion(.unknown) }
+        }
+    }
+
     /// Closes the connection (the helper keeps every session running).
     public func close() {
         queue.async { self.disconnect(notify: false) }
@@ -329,5 +350,23 @@ extension PtydClient {
 
     public func spawn(_ spawn: PtydSpawn) async throws -> PtydSessionInfo {
         try await withCheckedThrowingContinuation { cont in self.spawn(spawn) { cont.resume(with: $0) } }
+    }
+
+    public func probeAccess(timeout: TimeInterval = 3) async -> PtydAccessReport {
+        await withCheckedContinuation { cont in probeAccess(timeout: timeout) { cont.resume(returning: $0) } }
+    }
+}
+
+/// True for the first caller only (a reply racing its timeout).
+final class PtydOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    func claim() -> Bool {
+        lock.withLock {
+            if done { return false }
+            done = true
+            return true
+        }
     }
 }

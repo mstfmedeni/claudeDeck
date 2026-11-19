@@ -273,6 +273,20 @@ public final class PtydServer: @unchecked Sendable {
         case .detach:
             if let id = message.session { sessions[id]?.attached.remove(client.id) }
             reply(message, .ok, to: client)
+        case .probeAccess:
+            // Informational and harmless: read-only clients may ask too. A helper pretending to
+            // be older (tests) answers like one that doesn't know the request.
+            guard options.protocolVersion >= PtydProtocol.accessProbeVersion else {
+                return fail(message, PtydErrorCode.badRequest, to: client)
+            }
+            // Off the helper's queue: a slow file system mustn't hold up the sessions' output.
+            DispatchQueue.global(qos: .utility).async { [weak self, weak client] in
+                let report = PtydAccessProbe.run()
+                self?.queue.async {
+                    guard let self, let client else { return }
+                    self.reply(message, .access, to: client) { $0.access = report }
+                }
+            }
         default:
             guard client.full else { return fail(message, PtydErrorCode.readOnly, to: client) }
             handleFull(frame, from: client)

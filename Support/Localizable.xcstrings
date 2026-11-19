@@ -20823,6 +20823,166 @@
           }
         }
       }
+    },
+    "ptyd.access.full": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tam"
+          }
+        }
+      }
+    },
+    "ptyd.access.desktopOnly": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desktop only"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca Masaüstü"
+          }
+        }
+      }
+    },
+    "ptyd.access.none": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yok"
+          }
+        }
+      }
+    },
+    "ptyd.access.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilinmiyor"
+          }
+        }
+      }
+    },
+    "Session helper's disk access: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısının disk erişimi: %@"
+          }
+        }
+      }
+    },
+    "ClaudeDeck can open folders the session helper can't. macOS treats the helper (claudedeck-ptyd) as a separate app, so ClaudeDeck's Full Disk Access doesn't cover the sessions running in it: they get \"Operation not permitted\" there.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck'in açabildiği bazı klasörleri oturum yardımcısı açamıyor. macOS yardımcıyı (claudedeck-ptyd) ayrı bir uygulama sayar; bu yüzden ClaudeDeck'in Tam Disk Erişimi içinde çalışan oturumları kapsamaz ve oralarda \"Operation not permitted\" hatası alırlar."
+          }
+        }
+      }
+    },
+    "In Full Disk Access: + › ⌘⇧G › paste › Open, and turn it on.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tam Disk Erişimi'nde: + › ⌘⇧G › yapıştır › Aç, sonra açık konuma getirin."
+          }
+        }
+      }
+    },
+    "Open Settings and Copy Path": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarları Aç ve Yolu Kopyala"
+          }
+        }
+      }
+    },
+    "The grant applies once the helper restarts:": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzin, yardımcı yeniden başladığında geçerli olur:"
+          }
+        }
+      }
+    },
+    "Sessions in the session helper can't open folders ClaudeDeck can: give claudedeck-ptyd Full Disk Access too (Settings › Sessions).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısındaki oturumlar ClaudeDeck'in açabildiği klasörleri açamıyor: claudedeck-ptyd'ye de Tam Disk Erişimi verin (Ayarlar › Oturumlar)."
+          }
+        }
+      }
+    },
+    "Don't show again": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir daha gösterme"
+          }
+        }
+      }
+    },
+    "ClaudeDeck has Full Disk Access, but macOS treats the helper as a separate app: sessions in it can't open protected folders until you give claudedeck-ptyd Full Disk Access too (Settings › Sessions shows how).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck'in Tam Disk Erişimi var, ancak macOS yardımcıyı ayrı bir uygulama sayar: claudedeck-ptyd'ye de Tam Disk Erişimi verene kadar içindeki oturumlar korunan klasörleri açamaz (nasıl yapılacağı Ayarlar › Oturumlar'da)."
+          }
+        }
+      }
+    },
+    "ptyd.access.checkAgain": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Again"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekrar Kontrol Et"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

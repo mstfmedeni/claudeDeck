@@ -322,5 +322,43 @@ struct PtydIntegrationTests {
         helper.kill()
     }
 
+    @Test func helperAnswersTheAccessProbe() throws {
+        let helper = try HelperProcess()
+        #expect(helper.waitUntilListening())
+        let client = try helper.connect(Collector())
+        #expect(client.supportsAccessProbe)
+        let report = try sync { (done: @escaping @Sendable (Result<PtydAccessReport, PtydClientError>) -> Void) in
+            client.probeAccess(timeout: 4) { done(.success($0)) }
+        }
+        // A child of this test runs under the same privacy grants as the test itself.
+        #expect(report == PtydAccessProbe.run())
+        #expect((try? sync { client.list($0) }) == [])
+        helper.kill()
+    }
+
+    /// A helper from before protocol 2: the app never sends it the probe (it would drop the
+    /// connection over the unknown op) and reads its access as unknown, with no error.
+    @Test func oldHelperAccessIsUnknownWithoutAsking() throws {
+        let helper = try HelperProcess(extra: ["--protocol-version", "1"])
+        #expect(helper.waitUntilListening())
+        let collector = Collector()
+        let client = try helper.connect(collector)
+        #expect(client.compatibility == .full(dialect: 1))
+        #expect(!client.supportsAccessProbe)
+        let report = try sync { (done: @escaping @Sendable (Result<PtydAccessReport, PtydClientError>) -> Void) in
+            client.probeAccess(timeout: 2) { done(.success($0)) }
+        }
+        #expect(report == .unknown)
+        // Asked anyway, a helper that doesn't answer it refuses; the connection survives.
+        #expect(throws: PtydClientError.refused(PtydErrorCode.badRequest, nil)) {
+            _ = try sync { (done: @escaping @Sendable (Result<PtydFrame, PtydClientError>) -> Void) in
+                client.request(PtydMessage(op: .probeAccess), completion: done)
+            }
+        }
+        #expect((try? sync { client.list($0) }) == [])
+        #expect(!collector.isDisconnected)
+        helper.kill()
+    }
+
     private func paths(_ helper: HelperProcess) -> PtydPaths { helper.paths }
 }
