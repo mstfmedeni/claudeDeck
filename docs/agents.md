@@ -333,6 +333,13 @@ owner's MCP servers, onboarding answers and each folder's trust are copied into 
 - **What a session should do:** nothing special. Keep durable state in files (`docs/AGENDA.md`
   for what's done and next, `HANDOFF.md` for anything mid-flight) so a resumed session can pick
   up from them.
+- **Good to know:** moving a session back to the default account copies its folder's trust answer
+  into the real `~/.claude.json` (the way `ClaudeTrust` adds it, only that key) when the folder
+  was trusted on the other account. If Claude Code ever replaces a linked file in an account folder
+  with its own copy (e.g. `settings.json`), that account stops following later changes to the
+  shared one; ClaudeDeck logs it ("not linked (in the way)") and leaves the file alone. Which
+  account knows it is at its limit is kept in memory (and the usage API): after a relaunch an
+  account counts as limited again only once the API or a session says so.
 
 ```sh
 claudedeck account list [--json]
