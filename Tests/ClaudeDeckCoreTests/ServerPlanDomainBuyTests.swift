@@ -249,3 +249,12 @@ import Testing
         }
     }
 }
+
+@Test func aNoAnswerDoesntApproveAPurchase() {
+    for no in ["Hayır", "hayır, şimdi değil", "No", "Vazgeç", "İstemiyorum", "Gerek yok", "alma."] {
+        #expect(ServerPlanCLI.declines(no), "\(no)")
+    }
+    for yes in ["Evet", "Evet, al", "Alalım", "1 yıllık al", "Yes"] {
+        #expect(!ServerPlanCLI.declines(yes), "\(yes)")
+    }
+}

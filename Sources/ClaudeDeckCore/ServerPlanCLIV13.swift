@@ -147,7 +147,15 @@ extension ServerPlanCLI {
         guard decision.question.lowercased().contains(name) || (decision.answer ?? "").lowercased().contains(name) else {
             return "\(id) doesn't mention \(domain)"
         }
+        if declines(decision.answer ?? "") { return "the owner said no in \(id)" }
         return nil
+    }
+
+    /// An answer that turns the purchase down ("Hayır", "No", "Vazgeç", "İstemiyorum", "Alma"…).
+    public static func declines(_ answer: String) -> Bool {
+        let text = answer.lowercased(with: Locale(identifier: "tr")).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let negatives = ["hayır", "hayir", "no", "yok", "vazgeç", "vazgec", "iptal", "istemiyorum", "alma", "almayalım", "almayalim", "olmaz", "gerek yok"]
+        return negatives.contains { text == $0 || text.hasPrefix($0 + " ") || text.hasPrefix($0 + ",") }
     }
 
     static func amount(_ value: Any?) -> String? {
