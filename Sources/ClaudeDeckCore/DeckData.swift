@@ -279,6 +279,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var serverPlanURL = ""
     /// The sidebar lists a project's ServerPlan projects (same folder or a subfolder) under it.
     public var serverPlanProjectRows = true
+    /// Settings › ServerPlan "Namecheap balance alert (USD)": the low-balance notice's threshold
+    /// when the panel has none of its own (v1.4 panels). 0: off.
+    public var serverPlanBalanceAlert: Double = 20
     /// New sessions run in the session helper (claudedeck-ptyd) and keep running when the app
     /// quits, crashes or updates; the app reattaches at launch. Off by default.
     public var keepSessionsRunning = false
@@ -358,6 +361,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
         serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
         serverPlanProjectRows = try c.decodeIfPresent(Bool.self, forKey: .serverPlanProjectRows) ?? d.serverPlanProjectRows
+        serverPlanBalanceAlert = max(0, (try? c.decodeIfPresent(Double.self, forKey: .serverPlanBalanceAlert)) ?? d.serverPlanBalanceAlert)
         keepSessionsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning) ?? d.keepSessionsRunning
         retireSessionHelper = try c.decodeIfPresent(Bool.self, forKey: .retireSessionHelper) ?? d.retireSessionHelper
         accounts = (try? c.decodeIfPresent([Lossy<ClaudeAccount>].self, forKey: .accounts))?.compactMap(\.value) ?? d.accounts

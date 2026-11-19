@@ -23,6 +23,12 @@ extension ServerPlanCLI.Runner {
             return ServerPlanCLI.Outcome(json: data, text: ServerPlanCLI.domainCheckText(data))
         case "domain-buy":
             return try await domainBuy(command, form)
+        case "balance":
+            // v1.4. 412: no Namecheap in the panel; 502: Namecheap didn't answer.
+            let query = form["refresh"] == "1" ? [URLQueryItem(name: "refresh", value: "1")] : []
+            let (status, data) = try await exchange("GET", "/registrar/balance", query: query, timeout: 60)
+            guard (200..<300).contains(status) else { throw Refusal(outcome: Self.domainFailure(status, data, buying: false)) }
+            return ServerPlanCLI.Outcome(json: data, text: ServerPlanCLI.balanceText(data))
         default:
             return .error(404, "unknown_command", exit: .usage)
         }
@@ -177,11 +183,36 @@ extension ServerPlanCLI {
         }
         lines.append("premium: " + ((object["premium"] as? Bool) == true ? "yes" : "no"))
         if let cap = amount(object["price_cap"]) { lines.append("price cap: \(cap)\(currency)/year") }
+        // v1.4: the Namecheap balance (left out when the panel couldn't read it).
+        if let balance = amount(object["balance"]) {
+            lines.append("balance: \(balance)" + (value(object, "balance_currency").map { " \($0)" } ?? currency))
+        }
         if (object["purchase_allowed"] as? Bool) == true {
             lines.append("purchase: allowed (with the owner's approval)")
         } else {
-            lines.append("purchase: not allowed" + (value(object, "reason").map { ": \($0)" } ?? ""))
+            let reason = value(object, "reason")
+            let topUpHint = reason?.lowercased().hasPrefix("bakiye yetersiz") == true ? " (the owner tops up: \(topUp))" : ""
+            lines.append("purchase: not allowed" + (reason.map { ": \($0)" } ?? "") + topUpHint)
         }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Where the owner adds funds.
+    public static let topUp = "Namecheap › Billing › Add Funds"
+
+    /// `/registrar/balance`: available and account balance, the panel's threshold, low or not.
+    public static func balanceText(_ data: Data) -> String {
+        guard let object = object(data) else { return String(decoding: data, as: UTF8.self) }
+        let currency = value(object, "currency").map { " \($0)" } ?? ""
+        var lines = ["available: \(amount(object["available_balance"]) ?? "?")\(currency)"]
+        if let account = amount(object["account_balance"]) { lines.append("account: \(account)\(currency)") }
+        lines.append("low threshold: " + (amount(object["low_threshold"]).map { "\($0)\(currency)" } ?? "none set in ServerPlan"))
+        if (object["low"] as? Bool) == true {
+            lines.append("LOW: under the threshold; domain purchases may fail. The owner tops up: \(topUp)")
+        } else {
+            lines.append("low: no")
+        }
+        if let checked = value(object, "checked_at") { lines.append("checked: \(checked)") }
         return lines.joined(separator: "\n")
     }
 

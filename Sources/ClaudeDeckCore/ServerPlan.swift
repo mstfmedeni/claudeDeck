@@ -23,6 +23,8 @@ public enum ServerPlanContract {
         public static let terminal = "terminal"
         public static let terminalClaude = "terminal_claude"
         public static let events = "events"
+        /// v1.4: `GET /registrar/balance`, the `registrar.*` events.
+        public static let registrarBalance = "registrar_balance"
     }
 }
 
@@ -435,6 +437,9 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
         case deployCancelled = "deploy.cancelled"
         case serverUnreachable = "server.unreachable"
         case serverRecovered = "server.recovered"
+        /// v1.4, edge-triggered on the panel: the Namecheap balance fell under its threshold / recovered.
+        case registrarLowBalance = "registrar.low_balance"
+        case registrarBalanceOK = "registrar.balance_ok"
         case unknown
     }
 
@@ -445,21 +450,30 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
         public var serverID: Int?
         public var serverName: String?
         public var errorSummary: String?
+        /// `registrar.*` events: `{"available_balance","currency","low_threshold"}`.
+        public var availableBalance: Double?
+        public var currency: String?
+        public var lowThreshold: Double?
 
         public init(deploymentID: Int? = nil, projectID: Int? = nil, projectName: String? = nil, serverID: Int? = nil,
-                    serverName: String? = nil, errorSummary: String? = nil) {
+                    serverName: String? = nil, errorSummary: String? = nil,
+                    availableBalance: Double? = nil, currency: String? = nil, lowThreshold: Double? = nil) {
             self.deploymentID = deploymentID
             self.projectID = projectID
             self.projectName = projectName
             self.serverID = serverID
             self.serverName = serverName
             self.errorSummary = errorSummary
+            self.availableBalance = availableBalance
+            self.currency = currency
+            self.lowThreshold = lowThreshold
         }
 
         // v1 leaves `data` open: the likely names are read, as well as the deployment's own shape.
         enum CodingKeys: String, CodingKey {
             case deploymentID = "deployment_id", id, projectID = "project_id", projectName = "project_name", project
             case serverID = "server_id", serverName = "server_name", server, errorSummary = "error_summary", error
+            case availableBalance = "available_balance", currency, lowThreshold = "low_threshold"
         }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -469,6 +483,9 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
             serverID = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .serverID))?.value
             serverName = (try? c.decodeIfPresent(String.self, forKey: .serverName)) ?? (try? c.decodeIfPresent(String.self, forKey: .server))
             errorSummary = (try? c.decodeIfPresent(String.self, forKey: .errorSummary)) ?? (try? c.decodeIfPresent(String.self, forKey: .error))
+            availableBalance = try? c.decodeIfPresent(Double.self, forKey: .availableBalance)
+            currency = try? c.decodeIfPresent(String.self, forKey: .currency)
+            lowThreshold = try? c.decodeIfPresent(Double.self, forKey: .lowThreshold)
         }
     }
 

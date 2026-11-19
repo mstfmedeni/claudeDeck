@@ -127,6 +127,7 @@ extension SessionCLI {
       claudedeck server domain buy DOMAIN --approval DECISION_ID [--years 1|2] [--no-dns]
           Spends money (the Namecheap balance). DECISION_ID: a claudedeck decide the owner answered
           that names DOMAIN; then the owner confirms the price in ClaudeDeck.
+      claudedeck server balance [--refresh]   (the Namecheap balance: available, account, threshold, LOW; --refresh asks Namecheap now)
       claudedeck server domain add PROJECT SUBDOMAIN BASE [--server S] [--port N] [--websocket] [--target T]
       claudedeck server domain add --static SERVER SUBDOMAIN BASE [--target /opt/static/DIR] [--no-clean-urls]
       claudedeck server static add SERVER BASE      (the root static site of BASE)
@@ -878,7 +879,7 @@ extension SessionCLI {
       wait=0; follow=0; force=0; websocket=0; stdin=0; file=""; static=0; clean=1
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
-      approval=""; years=""; no_dns=0
+      approval=""; years=""; no_dns=0; refresh=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
@@ -897,6 +898,7 @@ extension SessionCLI {
           --no-cache) no_cache=1 ;;
           --revoke) revoke=1 ;;
           --no-dns) no_dns=1 ;;
+          --refresh) refresh=1 ;;
           --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
           -) stdin=1 ;;
           --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years)
@@ -921,11 +923,11 @@ extension SessionCLI {
       args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
       case "$sub" in
         list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns|static|sync) ;;
-        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg) ;;
+        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg|balance) ;;
         *) die "server: unknown command $sub (claudedeck help)" ;;
       esac
       case "$sub" in
-        list|projects|dirs|features|deployments) args 0 "no arguments" ;;
+        list|projects|dirs|features|deployments|balance) args 0 "no arguments" ;;
         cloudflare) case "$p1" in "") ;; purge|ssl|ssl-full) args 2 "cloudflare $p1 BASE" ;;
           *) die "server cloudflare: purge, ssl or ssl-full BASE" ;; esac ;;
         sql) if [ "$stdin" = 1 ]; then args 1 "sql PROJECT - (the query on stdin)"; else args 2 "sql PROJECT QUERY"; fi ;;
@@ -981,6 +983,7 @@ extension SessionCLI {
             ssl-full) srv ssl-full --data-urlencode "base=$p2" ;;
           esac ;;
         list|projects|dirs|features) srv "$sub" GET ;;
+        balance) max_time=75; srv balance GET --data-urlencode "refresh=$refresh" ;;
         deployments) srv deployments GET --data-urlencode "project=$sproject" ;;
         health|containers) srv "$sub" GET --data-urlencode "server=$p1" ;;
         ports) srv ports GET --data-urlencode "server=$p1" ;;
@@ -1520,8 +1523,19 @@ extension SessionCLI {
     - Try a change locally first: `db clone-for-local`, `local run --wait`, `sql --local`, then deploy.
     - `sql` runs one statement. Never `--write` on the deploy database unless the user asked for it.
 
+    ServerPlan v1.3 / v1.4 (domains and the Namecheap balance; `server features` says which):
+
+    ```sh
+    claudedeck server domain check example.com     # available? price, renewal, the balance, may an agent buy it
+    claudedeck server domain buy example.com --approval d_…   # only after the owner said yes in claudedeck decide
+    claudedeck server balance [--refresh]          # Namecheap balance: available, account, threshold, LOW
+    ```
+
+    - "purchase: not allowed: bakiye yetersiz" means the balance doesn't cover the first year:
+      tell the owner to top up (Namecheap › Billing › Add Funds); don't try `domain buy`.
+
     - The port is the container's internal port (Traefik routes the domain to it). Only
-      PostgreSQL databases; domains can't be bought here.
+      PostgreSQL databases.
     - An existing database, domain or Dockerfile is an error (`conflict`), never overwritten.
 
     - `deploy` starts without asking (`--wait` streams the log; exit 0 success, 1 failed with the
