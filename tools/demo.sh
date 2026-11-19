@@ -317,6 +317,15 @@ CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && [ "$DEFAULTS" = false ] && CLI=
 # CLAUDEDECK_DEMO_AUTONOMY=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may add projects, start Claude
 # sessions and use ServerPlan (claudedeck project add / new / server).
 AUTONOMY=false; [ "$CLI" = true ] && [ "${CLAUDEDECK_DEMO_AUTONOMY:-}" = 1 ] && AUTONOMY=true
+# CLAUDEDECK_DEMO_SIM_HOLDS=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may reserve simulators
+# (claudedeck sim; real simctl: it creates and boots "ClaudeDeck · …" simulators).
+SIM_HOLDS=false; [ "$CLI" = true ] && [ "${CLAUDEDECK_DEMO_SIM_HOLDS:-}" = 1 ] && SIM_HOLDS=true
+# CLAUDEDECK_DEMO_STALL=MINUTES[:notify|nudge|restart] (with CLAUDEDECK_DEMO_CLI=1): the stall watch on.
+STALL_WATCH='{"enabled": false}'
+if [ "$CLI" = true ] && [ -n "${CLAUDEDECK_DEMO_STALL:-}" ]; then
+  STALL_WATCH=$(jq -cn --arg spec "$CLAUDEDECK_DEMO_STALL" \
+    '($spec | split(":")) as $p | {enabled: true, minutes: ($p[0] | tonumber), action: ($p[1] // "notify")}')
+fi
 # Opt-in features, on unless CLAUDEDECK_DEMO_DEFAULTS=1.
 if [ "$DEFAULTS" = true ]; then SIMULATORS=false; PROGRAM_STATUS=""; else SIMULATORS=true; PROGRAM_STATUS=', "showProgramStatus": true'; fi
 EXTRA_SESSION=""
@@ -398,7 +407,8 @@ cat > "$ROOT/data/deck.json" <<EOF
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
                 "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY,
-                "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS }
+                "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS,
+                "sessionsMayUseSimulators": $SIM_HOLDS, "stallWatch": $STALL_WATCH }
 }
 EOF
 

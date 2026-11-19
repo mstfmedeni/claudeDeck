@@ -776,8 +776,11 @@ final class AppModel {
         // On quit, prepareForQuit already recorded which sessions were open and working.
         guard !isQuitting else { return }
         // A restart (the user's, or the stall watch's) keeps the session's simulators.
-        if !restartingSessions.contains(id) { releaseSimulators(of: id, reason: "the session ended") }
-        stallTrackers[id] = nil
+        // So does the stall watch's count of nudges and restarts (the cap must hold across restarts).
+        if !restartingSessions.contains(id) {
+            releaseSimulators(of: id, reason: "the session ended")
+            stallTrackers[id] = nil
+        }
         deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil }
         scheduleSave()
         onCountsChanged?()
