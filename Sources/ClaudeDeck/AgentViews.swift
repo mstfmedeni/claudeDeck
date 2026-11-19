@@ -31,9 +31,11 @@ struct AgentsSettingsSection: View {
                         .buttonStyle(.borderless)
                 }
             }
-            Button("Add Agent…") { editing = AgentProfile(name: String(localized: "New Agent")) }
-            apiRows
-            Button("Activity Log…") { showLog = true }
+            HStack {
+                Button("Add Agent…") { editing = AgentProfile(name: String(localized: "New Agent")) }
+                Spacer()
+                Button("Activity Log…") { showLog = true }
+            }
         } header: {
             Text("Agents")
         } footer: {
@@ -42,6 +44,19 @@ struct AgentsSettingsSection: View {
         }
         .sheet(item: $editing) { agent in AgentEditor(agent: agent) }
         .sheet(isPresented: $showLog) { AgentActivityLog() }
+        Section("Local API") {
+            apiRows
+        }
+        if model.deck.settings.agentAPIEnabled {
+            Section("Command-Line Tool") {
+                cliRows
+            }
+            if model.deck.settings.sessionCLIEnabled {
+                Section("Stall Watch") {
+                    StallWatchRows()
+                }
+            }
+        }
     }
 
     /// Agents that signed themselves up through the local API: nothing reaches them until approved.
@@ -103,7 +118,6 @@ struct AgentsSettingsSection: View {
                     }
                 }
             }
-            cliRows
         }
     }
 
@@ -163,7 +177,6 @@ struct AgentsSettingsSection: View {
             }
             Text("claudedeck sim acquire gives a session simulators of its own (at most 4): a free one ClaudeDeck created earlier, or a new one it creates and boots. Your own simulators are never used. They're released with claudedeck sim release, or when the session ends or is closed.")
                 .font(.caption).foregroundStyle(.secondary)
-            StallWatchRows()
         }
     }
 }

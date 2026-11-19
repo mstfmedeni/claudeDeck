@@ -36,14 +36,22 @@ enum DebugSnapshot {
             if let project = UUID(uuidString: String(file.dropLast(6))) { model.newShell(in: project) }
         }
         // Screenshots of things only a scroll or a right click shows (the app need not be in front):
+        // `settings.category`: "agents" (a SettingsCategory raw value) selects that Settings category;
         // `settings.scroll`: "Y" scrolls the Settings window's form to Y points from its top;
         // `rightclick`: "X Y" right-clicks the main window at X, Y points from its top left.
+        for file in files where file == "settings.category" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let name = contents(path)
+            try? FileManager.default.removeItem(atPath: path)
+            if SettingsCategory(rawValue: name) != nil { UserDefaults.windowState.set(name, forKey: SettingsCategory.storageKey) }
+        }
         for file in files where file == "settings.scroll" {
             let path = (dir as NSString).appendingPathComponent(file)
             let y = Double(contents(path).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
             try? FileManager.default.removeItem(atPath: path)
-            let settings = NSApp.windows.first { $0.isVisible && $0.contentView.map { firstScrollView(in: $0) != nil } == true && $0.frame.width < 700 }
-            if let scroll = settings?.contentView.flatMap(firstScrollView) {
+            // The form is the widest scroll view of the Settings window (the category list is narrower).
+            let settings = NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.contains("Settings") == true }
+            if let scroll = settings?.contentView.map({ scrollViews(in: $0) })?.max(by: { $0.frame.width < $1.frame.width }) {
                 scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
                 scroll.reflectScrolledClipView(scroll.contentView)
             }
@@ -387,10 +395,9 @@ enum DebugSnapshot {
         }
     }
 
-    private static func firstScrollView(in view: NSView) -> NSScrollView? {
-        if let scroll = view as? NSScrollView { return scroll }
-        for sub in view.subviews { if let found = firstScrollView(in: sub) { return found } }
-        return nil
+    private static func scrollViews(in view: NSView) -> [NSScrollView] {
+        if let scroll = view as? NSScrollView { return [scroll] }
+        return view.subviews.flatMap { scrollViews(in: $0) }
     }
 
     private static func contents(_ path: String) -> String {

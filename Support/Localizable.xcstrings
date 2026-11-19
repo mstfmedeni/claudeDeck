@@ -19790,6 +19790,119 @@
           }
         }
       }
+    },
+    "Terminals & Editor": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminaller ve Editör"
+          }
+        }
+      }
+    },
+    "Notifications": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bildirimler"
+          }
+        }
+      }
+    },
+    "Remote": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzak bağlantı"
+          }
+        }
+      }
+    },
+    "Appearance": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görünüm"
+          }
+        }
+      }
+    },
+    "Startup and Quit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açılış ve Çıkış"
+          }
+        }
+      }
+    },
+    "When ClaudeDeck Quits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck kapanınca"
+          }
+        }
+      }
+    },
+    "At Launch": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açılışta"
+          }
+        }
+      }
+    },
+    "Continue Message": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devam mesajı"
+          }
+        }
+      }
+    },
+    "Local API": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel API"
+          }
+        }
+      }
+    },
+    "Command-Line Tool": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komut satırı aracı"
+          }
+        }
+      }
+    },
+    "Stall Watch": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takılma takibi"
+          }
+        }
+      }
+    },
+    "Claude Code": {
+      "shouldTranslate": false
     }
   },
   "version": "1.0"
