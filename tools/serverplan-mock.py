@@ -10,6 +10,9 @@ gives terminal tickets whose WebSocket runs a local /bin/sh in a scratch folder 
 `POST /_demo/fail` (no auth) emits a deploy.failed event, for the notification path.
 `--v13` makes /me a 1.3 panel (domain check / purchase); `--purchase enabled` lets the mock "buy"
 domains (nothing is registered anywhere; the default, like the panel's, refuses with 412).
+`--v14` makes it a 1.4 panel: GET /registrar/balance (`--balance`, `--low-threshold`; `--namecheap
+unconfigured` answers 412), the balance in /domains/check, and the edge-triggered registrar.low_balance /
+registrar.balance_ok events. `POST /_demo/balance?value=N` (no auth) sets the balance, for the alert path.
 Python standard library only.
 """
 import argparse
@@ -623,8 +626,9 @@ def v12_delete(h, p, body):
 # purchase_disabled) unless --purchase enabled.
 
 PRICE_CAP = 25.0
-BALANCE = 30.0
 purchased = {}        # domain -> purchase id
+# v1.4: the Namecheap balance (--balance, --low-threshold) and its edge state, like the panel's cache.
+registrar = {"available": 30.0, "account": 30.0, "threshold": 0.0, "low": False, "checked": None}
 DOMAIN_RE = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
 
 
@@ -641,10 +645,40 @@ def domain_quote(name):
     return {"domain": name, "available": available, "premium": premium, "price": price, "renewal_price": renewal, "currency": "USD"}
 
 
+def set_balance(available, account=None):
+    """The panel's registrarBalance(): records the balance and emits on a threshold crossing."""
+    with state_lock:
+        registrar["available"] = float(available)
+        registrar["account"] = float(account if account is not None else max(registrar["account"], available))
+        registrar["checked"] = now()
+        threshold = registrar["threshold"]
+        was_low = registrar["low"]
+        is_low = threshold > 0 and registrar["available"] < threshold
+        registrar["low"] = is_low
+    data = {"available_balance": registrar["available"], "currency": "USD", "low_threshold": threshold}
+    if is_low and not was_low:
+        emit("registrar.low_balance", data)
+    elif was_low and not is_low:
+        emit("registrar.balance_ok", data)
+
+
+def registrar_balance(h, query):
+    if args.namecheap == "unconfigured":
+        return h.error(412, "not_configured", "Namecheap ayarlari yapilmamis")
+    if (query.get("refresh") or [""])[0] == "1" or registrar["checked"] is None:
+        set_balance(registrar["available"], registrar["account"])
+    threshold = registrar["threshold"]
+    h.send_json(200, {"available_balance": registrar["available"], "account_balance": registrar["account"], "currency": "USD",
+                      "low_threshold": threshold if threshold > 0 else None,
+                      "low": threshold > 0 and registrar["available"] < threshold, "checked_at": registrar["checked"]})
+
+
 def domain_check(h, query):
     name = (query.get("name") or [""])[0].strip().lower()
     if not DOMAIN_RE.fullmatch(name):
         return h.error(400, "bad_request", "gecersiz domain: %r" % name)
+    if args.namecheap == "unconfigured":
+        return h.error(412, "not_configured", "Namecheap ayarlari yapilmamis")
     a = domain_quote(name)
     reason = ""
     if not a["available"]:
@@ -655,7 +689,13 @@ def domain_check(h, query):
         reason = "fiyat %.2f, sinir %.2f" % (a["price"], PRICE_CAP)
     elif args.purchase != "enabled":
         reason = "agent domain satin alma panelde kapali"
-    h.send_json(200, dict(a, price_cap=PRICE_CAP, purchase_allowed=reason == "", reason=reason))
+    res = dict(a, price_cap=PRICE_CAP, purchase_allowed=reason == "", reason=reason)
+    if args.v14:
+        # Like the panel: the balance, and "bakiye yetersiz" when it can't cover the first year.
+        res.update(balance=registrar["available"], balance_currency="USD")
+        if reason == "" and registrar["available"] < a["price"]:
+            res.update(purchase_allowed=False, reason="bakiye yetersiz: %.2f" % registrar["available"])
+    h.send_json(200, res)
 
 
 def domain_purchase(h, body):
@@ -680,8 +720,8 @@ def domain_purchase(h, body):
     if a["price"] > PRICE_CAP:
         return h.error(403, "price_cap", "Fiyat %.2f USD/yil, sinir %.2f: sahibi siniri panelden artirmali" % (a["price"], PRICE_CAP))
     total = a["price"] + a["renewal_price"] * (years - 1)
-    if BALANCE < total:
-        return h.error(402, "insufficient_balance", "Namecheap bakiyesi yetersiz: %.2f, gereken %.2f USD" % (BALANCE, total))
+    if registrar["available"] < total:
+        return h.error(402, "insufficient_balance", "Namecheap bakiyesi yetersiz: %.2f, gereken %.2f USD" % (registrar["available"], total))
     summary = "%s %d yil icin satin alinacak: ~%.2f USD (yenileme %.2f/yil), onay %s" % (name, years, total, a["renewal_price"], ref)
     if body.get("confirm") != name:
         return confirm_required(h, summary, name)
@@ -691,6 +731,7 @@ def domain_purchase(h, body):
     setup_dns = body.get("setup_dns", True)
     ns = ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"] if setup_dns else []
     zone = {"name": name, "status": "pending", "nameservers": ns} if setup_dns else None
+    set_balance(registrar["available"] - total, registrar["account"] - total)  # refresh + low-balance check
     emit("domain.purchased", {"domain": name, "charged_amount": total, "currency": "USD", "approval_ref": ref})
     h.send_json(201, {"domain": name, "years": years, "charged_amount": total, "currency": "USD", "order_id": "MOCK-%d" % (9000 + pid),
                       "purchase_id": pid, "nameservers": ns, "cloudflare_zone": zone, "whois_privacy": True})
@@ -761,9 +802,13 @@ class Handler(BaseHTTPRequestHandler):
                 if args.v13:
                     me.update(server_version="1.3.0", scopes=me["scopes"] + ["domains_buy"],
                               features=me["features"] + ["env_delete", "domain_check", "domain_purchase"])
+                if args.v14:
+                    me.update(server_version="1.4", features=me["features"] + ["registrar_balance"])
                 return self.send_json(200, me)
             if p == "/domains/check":
                 return domain_check(self, query)
+            if p == "/registrar/balance" and args.v14:
+                return registrar_balance(self, query)
             if v12_get(self, p, query):
                 return
             if p == "/servers":
@@ -917,6 +962,14 @@ class Handler(BaseHTTPRequestHandler):
             emit("deploy.failed", {"id": dep_id, "project_id": 11, "project_name": "payments-api", "server_id": 1,
                                    "server_name": "prod-eu-1", "status": "failed", "error": deployments[207]["error"]})
             return self.send_json(200, {"ok": True, "deployment_id": dep_id})
+        if url.path == "/_demo/balance":
+            # Sets the Namecheap balance: crossing the --low-threshold emits registrar.low_balance / balance_ok.
+            value = (parse_qs(url.query).get("value") or [""])[0]
+            try:
+                set_balance(float(value))
+            except ValueError:
+                return self.error(400, "bad_request", "value=N (USD)")
+            return self.send_json(200, {"ok": True, "available_balance": registrar["available"], "low": registrar["low"]})
         if not url.path.startswith(BASE) or not self.authed():
             if not url.path.startswith(BASE):
                 self.error(404, "not_found", "Bulunamadı")
@@ -1002,7 +1055,15 @@ def main():
     parser.add_argument("--v13", action="store_true", help="/me says 1.3.0: the v1.2 scopes plus domains_buy, features domain_check/domain_purchase")
     parser.add_argument("--purchase", choices=("disabled", "enabled"), default="disabled",
                         help="agent domain purchases in the panel: disabled (412 purchase_disabled, the panel's default) or enabled (mock 201s)")
+    parser.add_argument("--v14", action="store_true", help="/me says 1.4 (implies --v13): GET /registrar/balance, the balance in domain check, registrar.* events")
+    parser.add_argument("--balance", type=float, default=30.0, help="the mock Namecheap balance in USD (default 30)")
+    parser.add_argument("--low-threshold", type=float, default=0.0, help="the panel's low-balance threshold in USD (0: none, the panel's default)")
+    parser.add_argument("--namecheap", choices=("configured", "unconfigured"), default="configured",
+                        help="unconfigured: /registrar/balance and /domains/check answer 412 not_configured")
     args = parser.parse_args()
+    if args.v14:
+        args.v13 = True
+    registrar.update(available=args.balance, account=args.balance, threshold=max(0.0, args.low_threshold))
     if args.port == 5050:
         raise SystemExit("refusing :5050 (the real panel's port)")
     load_state()

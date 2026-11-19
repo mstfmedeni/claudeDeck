@@ -649,6 +649,29 @@ import Testing
         }
     }
 
+    @Test func balanceArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        let plain = try run(["server", "balance"], answers: [("available: 15.00 USD\nLOW: under the threshold", "200 0")])
+        let call = try #require(plain.curlCalls.first)
+        #expect(plain.code == 0 && plain.out.contains("LOW") && call.last == base + "balance" && call.contains("-G") && call.contains("refresh=0"))
+        let fresh = try run(["server", "balance", "--refresh", "--json"], answers: [(#"{"available_balance":15}"#, "200 0")])
+        let refreshed = try #require(fresh.curlCalls.first)
+        #expect(fresh.out.contains("available_balance") && refreshed.contains("refresh=1") && refreshed.contains("format=json"))
+        // No arguments; unknown options are refused before anything goes out.
+        let extra = try run(["server", "balance", "now"])
+        #expect(extra.code == 2 && extra.curlCalls.isEmpty)
+        #expect(try run(["server", "balance", "--force-it"]).curlCalls.isEmpty)
+        // The app's refusals pass through: no Namecheap in the panel (4), an older panel (4), Namecheap down (1).
+        for (body, status, code, hint) in [
+            (#"{"error":"not_configured","message":"Namecheap ayarlari yapilmamis; Namecheap (or the registrant contact) isn't set up in ServerPlan › Entegrasyonlar › Namecheap"}"#, "412 4", 4, "Entegrasyonlar"),
+            (#"{"error":"not_available","message":"not available: ServerPlan doesn't offer this yet"}"#, "501 4", 4, "doesn't offer this yet"),
+            (#"{"error":"registrar_error","message":"timeout"}"#, "502 1", 1, "timeout"),
+        ] {
+            let refused = try run(["server", "balance"], answers: [(body, status)])
+            #expect(refused.code == Int32(code) && refused.err.contains(hint), "\(status) \(refused.err)")
+        }
+    }
+
     @Test func envSetKeepsSecretsOffTheCommandLine() throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "cli-env-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -741,7 +741,8 @@ if [ "$DEFAULTS" = true ]; then
 elif [ "${CLAUDEDECK_SERVERPLAN_DEMO:-}" = 1 ]; then
   SP_PORT="${CLAUDEDECK_SERVERPLAN_PORT:-5099}"
   [ -f "$ROOT.serverplan.pid" ] && kill "$(cat "$ROOT.serverplan.pid")" 2>/dev/null || true
-  python3 tools/serverplan-mock.py --port "$SP_PORT" --token spk_1_demo --root "$ROOT" --claude "$ROOT/bin/claude" \
+  # CLAUDEDECK_SERVERPLAN_MOCK_ARGS: extra mock flags, e.g. "--v14 --balance 15 --low-threshold 20" (word-split on purpose).
+  python3 tools/serverplan-mock.py --port "$SP_PORT" --token spk_1_demo --root "$ROOT" --claude "$ROOT/bin/claude" ${CLAUDEDECK_SERVERPLAN_MOCK_ARGS:-} \
     >"$ROOT/serverplan-mock.log" 2>&1 &
   echo $! > "$ROOT.serverplan.pid"
   export CLAUDEDECK_SERVERPLAN_URL="http://127.0.0.1:$SP_PORT" CLAUDEDECK_SERVERPLAN_TOKEN=spk_1_demo

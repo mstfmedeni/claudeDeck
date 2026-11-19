@@ -666,7 +666,8 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server pg user-add SERVER USERNAME PROJECT` · `pg grant SERVER USER DB [--revoke]` | `POST …/pg/users` `{"username","project_id"}` · `…/pg/users/:name/grant` `{"database","revoke"?}` | |
 | `server pg clone SERVER DB TARGET [--project P] [--wait]` | `POST …/pg/databases/:name/clone` `{"target_name","project_id"?}` | |
 | `server server-env get\|set SERVER …` | `GET`/`POST /servers/:id/env` `{"key","value"}` (admin token) | |
-| `server domain check DOMAIN` | `GET /domains/check?name=` (scope `read`) → `{"domain","available","premium","price","renewal_price","currency","price_cap","purchase_allowed","reason"}` | |
+| `server domain check DOMAIN` | `GET /domains/check?name=` (scope `read`) → `{"domain","available","premium","price","renewal_price","currency","price_cap","purchase_allowed","reason"}` (1.4: `+ "balance","balance_currency"`) | |
+| `server balance [--refresh]` | `GET /registrar/balance[?refresh=1]` (scope `read`, 1.4) → `{"available_balance","account_balance","currency","low_threshold","low","checked_at"}` | |
 | `server domain buy DOMAIN --approval DECISION_ID [--years 1\|2] [--no-dns]` | `POST /domains/purchase` `{"domain","years","approval_ref","setup_dns"}` (scope `domains_buy`, admin token) → 201 `{"domain","years","charged_amount","currency","order_id","purchase_id","nameservers","cloudflare_zone","whois_privacy"}` | **always** the owner's purchase dialog (confirm = the domain) |
 
 - SERVER, PROJECT, DOMAIN: an id or a name (FQDN for domains). `scan PATH` scans the registered dir
@@ -754,6 +755,30 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
     the Cloudflare zone and WHOIS privacy; `--json` passes the panel's object through. The command
     waits up to 330 s (2 minutes for the owner, then up to 3 for the registrar). The purchase and
     every refusal are in the Activity Log, and a bought domain is a Mac (and phone) notification.
+- **Namecheap balance (v1.4)**: offered only when `/me` says 1.4 or later or lists
+  `registrar_balance` (scope `read`). `server balance` prints the available and account balance
+  with the currency, the panel's low threshold (or "none set in ServerPlan"), `LOW` with where to
+  top up (Namecheap › Billing › Add Funds) or `low: no`, and when the panel last asked Namecheap
+  (it caches 5 minutes; `--refresh` asks again). `412 not_configured` (no Namecheap in the panel,
+  exit 4), `502 registrar_error` (exit 1). On a 1.4 panel `domain check` also prints `balance:`,
+  and when the balance can't cover the first year the panel says `purchase: not allowed: bakiye
+  yetersiz: X` (the command adds the top-up hint); the two balance fields are left out when the
+  panel couldn't read the balance.
+- **Low-balance alert on the Mac and the phone**: Settings › ServerPlan shows the Namecheap balance
+  (with a refresh button) and the "Namecheap balance alert (USD)" setting (default 20, 0 = off);
+  the sidebar's Servers section has a small "Namecheap: X USD" line (orange when low). The balance
+  is read when the section or Settings opens, every 30 minutes while a window is visible, and on
+  refresh. When it goes under the threshold (the panel's `low_threshold`, else the setting), the
+  owner gets one notification on the Mac and a push on the phone ("Namecheap balance is low: 15
+  USD (threshold 20 USD). Top up for domain purchases: Namecheap › Billing › Add Funds."), once
+  per crossing: the panel's `registrar.low_balance` event and a low fetch count as the same
+  crossing, and the state is kept per panel across relaunches. `registrar.balance_ok`, or a fetch
+  at or above the threshold, re-arms it (and withdraws the notification). A panel without
+  Namecheap (412) shows nothing. The phone's Servers screen shows the balance from Macs with
+  `Feature.registrarBalance` (`RemoteServerPlan.registrarBalance`).
+- **Mock**: `tools/serverplan-mock.py --v14 [--balance N] [--low-threshold N] [--namecheap
+  unconfigured]`; `POST /_demo/balance?value=N` moves the balance and emits the events on a crossing.
+  In the demo: `CLAUDEDECK_SERVERPLAN_DEMO=1 CLAUDEDECK_SERVERPLAN_MOCK_ARGS="--v14 --balance 15" tools/demo.sh`.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
   Activity Log.
 
