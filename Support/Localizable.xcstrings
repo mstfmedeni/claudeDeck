@@ -18730,6 +18730,586 @@
           }
         }
       }
+    },
+    "Not logged in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum açılmamış"
+          }
+        }
+      }
+    },
+    "Limit reached · resets in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit doldu · %@ sonra sıfırlanır"
+          }
+        }
+      }
+    },
+    "Limit reached": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit doldu"
+          }
+        }
+      }
+    },
+    "5h %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 sa %@"
+          }
+        }
+      }
+    },
+    "week %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hafta %@"
+          }
+        }
+      }
+    },
+    "Usage unknown": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanım bilinmiyor"
+          }
+        }
+      }
+    },
+    "Accounts": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesaplar"
+          }
+        }
+      }
+    },
+    "Each Claude account is its own Claude Code login. Sessions on another account share your settings, skills, plugins, MCP servers and conversations; when an account hits its usage limit, a session can move to another one and continue the same conversation. ClaudeDeck never sees your password or token: you log in yourself in a terminal.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her Claude hesabı ayrı bir Claude Code girişidir. Başka bir hesaptaki oturumlar ayarlarını, skill'lerini, eklentilerini, MCP sunucularını ve konuşmalarını paylaşır; bir hesap kullanım limitine ulaşınca oturum başka bir hesaba geçip aynı konuşmaya devam edebilir. ClaudeDeck şifreni ya da token'ını hiç görmez: girişi bir terminalde kendin yaparsın."
+          }
+        }
+      }
+    },
+    "Add Account…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap Ekle…"
+          }
+        }
+      }
+    },
+    "New sessions start on": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni oturumlar şu hesapta başlar"
+          }
+        }
+      }
+    },
+    "Automatic (first with room)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik (yeri olan ilk hesap)"
+          }
+        }
+      }
+    },
+    "When a session hits the usage limit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limit dolunca"
+          }
+        }
+      }
+    },
+    "Wait for the reset": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sıfırlanmayı bekle"
+          }
+        }
+      }
+    },
+    "Notify me (switch with one click)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bana bildir (tek tıkla geç)"
+          }
+        }
+      }
+    },
+    "Switch to another account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başka hesaba geç"
+          }
+        }
+      }
+    },
+    "Near the limit at %lld%%": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite yakın: %%%lld"
+          }
+        }
+      }
+    },
+    "An account at or above this (5-hour or weekly) is skipped for new sessions and switches while another has room. Pin a project to an account from its menu; pin a session from its Account menu. Pinned sessions never move.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu orana (5 saatlik ya da haftalık) ulaşan hesap, yeri olan başka bir hesap varken yeni oturumlarda ve geçişlerde atlanır. Bir projeyi menüsünden, bir oturumu Hesap menüsünden bir hesaba sabitleyebilirsin. Sabitlenmiş oturumlar hiç taşınmaz."
+          }
+        }
+      }
+    },
+    "The session waits for its own limit to reset (and gets the continue message then, if that's on).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum kendi limitinin sıfırlanmasını bekler (açıksa o zaman devam mesajını alır)."
+          }
+        }
+      }
+    },
+    "You get a notification with a Switch Account button; the session waits until you choose.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap Değiştir düğmeli bir bildirim alırsın; oturum sen seçene kadar bekler."
+          }
+        }
+      }
+    },
+    "The session ends and resumes the same conversation on the first account with room, in the same pane. If it was working, it's told to continue. When every account is at its limit it waits for the first reset.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum kapanır ve aynı konuşmayı yeri olan ilk hesapta, aynı panelde sürdürür. Çalışıyorsa devam etmesi söylenir. Bütün hesaplar limitteyse ilk sıfırlanmayı bekler."
+          }
+        }
+      }
+    },
+    "Log In…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş Yap…"
+          }
+        }
+      }
+    },
+    "Log In Again…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Giriş Yap…"
+          }
+        }
+      }
+    },
+    "Try this account earlier": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hesabı daha önce dene"
+          }
+        }
+      }
+    },
+    "Try this account later": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hesabı daha sonra dene"
+          }
+        }
+      }
+    },
+    "Remove Account…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesabı Kaldır…"
+          }
+        }
+      }
+    },
+    "New Claude Account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni Claude Hesabı"
+          }
+        }
+      }
+    },
+    "Name (e.g. Work, Second Max)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ad (ör. İş, İkinci Max)"
+          }
+        }
+      }
+    },
+    "Use letters or digits in the name.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adda harf ya da rakam kullan."
+          }
+        }
+      }
+    },
+    "Account: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap: %@"
+          }
+        }
+      }
+    },
+    "Keep on This Account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Hesapta Tut"
+          }
+        }
+      }
+    },
+    "Account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap"
+          }
+        }
+      }
+    },
+    "Any Account (Not Pinned)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herhangi Bir Hesap (Sabitlenmemiş)"
+          }
+        }
+      }
+    },
+    "New Claude Session on Account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesapta Yeni Claude Oturumu"
+          }
+        }
+      }
+    },
+    "not logged in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturum açılmamış"
+          }
+        }
+      }
+    },
+    "limit reached": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "limit doldu"
+          }
+        }
+      }
+    },
+    "The session wasn't moved": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum taşınmadı"
+          }
+        }
+      }
+    },
+    "Nobody is logged in on that account yet: Settings › Accounts › Log In…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O hesapta henüz kimse giriş yapmadı: Ayarlar › Hesaplar › Giriş Yap…"
+          }
+        }
+      }
+    },
+    "ClaudeDeck doesn't know this session's conversation yet, so it can't be resumed on another account.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck bu oturumun konuşmasını henüz bilmiyor, bu yüzden başka bir hesapta sürdürülemez."
+          }
+        }
+      }
+    },
+    "It is already being moved.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zaten taşınıyor."
+          }
+        }
+      }
+    },
+    "Its Claude process didn't end, so it wasn't resumed elsewhere.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude süreci kapanmadı, bu yüzden başka yerde sürdürülmedi."
+          }
+        }
+      }
+    },
+    "Default account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsayılan hesap"
+          }
+        }
+      }
+    },
+    "Add a project first": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önce bir proje ekle"
+          }
+        }
+      }
+    },
+    "The login runs in a terminal, and terminals belong to a project.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş bir terminalde yapılır, terminaller de bir projeye aittir."
+          }
+        }
+      }
+    },
+    "Login · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş · %@"
+          }
+        }
+      }
+    },
+    "%@ is in use": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kullanımda"
+          }
+        }
+      }
+    },
+    "Move or stop its sessions first: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önce oturumlarını taşı ya da durdur: %@"
+          }
+        }
+      }
+    },
+    "Remove the account %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hesabı kaldırılsın mı?"
+          }
+        }
+      }
+    },
+    "Its sessions move to the default account. Its folder goes to the Trash; conversations stay (they're shared). The login stays in the Keychain: run `claude auth logout` in its login terminal first to remove it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumları varsayılan hesaba geçer. Klasörü Çöp Sepeti'ne gider; konuşmalar kalır (paylaşılıyorlar). Giriş Anahtar Zinciri'nde kalır: silmek için önce giriş terminalinde `claude auth logout` çalıştır."
+          }
+        }
+      }
+    },
+    "%@: account switched": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: hesap değişti"
+          }
+        }
+      }
+    },
+    "%@ hit its usage limit; continuing on %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kullanım limitine ulaştı; %@ ile devam ediliyor."
+          }
+        }
+      }
+    },
+    "Now running on %@ (was %@).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artık %@ ile çalışıyor (önce %@)."
+          }
+        }
+      }
+    },
+    "%@: every account is at its limit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: bütün hesaplar limitte"
+          }
+        }
+      }
+    },
+    "It continues when a limit resets.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir limit sıfırlanınca devam eder."
+          }
+        }
+      }
+    },
+    "It continues when a limit resets (first at %@).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir limit sıfırlanınca devam eder (ilki %@)."
+          }
+        }
+      }
+    },
+    "%@: usage limit reached": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: kullanım limiti doldu"
+          }
+        }
+      }
+    },
+    "%@ is at its limit. Switch to %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ limitte. %@ hesabına geçilsin mi?"
+          }
+        }
+      }
+    },
+    "logged in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturum açık"
+          }
+        }
+      }
+    },
+    "Switch Account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap Değiştir"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
