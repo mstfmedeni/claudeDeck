@@ -379,6 +379,31 @@ final class ServerPlanController {
         return DeployRepair.project(forRepoPath: project.repoPath, in: model.deck.projects)
     }
 
+    /// The ServerPlan projects listed under a ClaudeDeck project in the sidebar: the same folder
+    /// or a subfolder of it (`DeployRepair.projectsByDeckProject`). Empty when the setting is off.
+    func serverProjects(under deckProject: UUID) -> [ServerPlanProject] {
+        guard isConfigured, let model, model.deck.settings.serverPlanProjectRows, !projects.isEmpty else { return [] }
+        return projectsByDeckProject(model.deck.projects)[deckProject] ?? []
+    }
+
+    /// Ids of every ServerPlan project shown under a ClaudeDeck project (the sidebar rebuilds its
+    /// list when one goes away).
+    var projectRowIDs: Set<String> {
+        guard isConfigured, let model, model.deck.settings.serverPlanProjectRows, !projects.isEmpty else { return [] }
+        return Set(projectsByDeckProject(model.deck.projects).flatMap { deck, list in list.map { "\(deck)-\($0.id)" } })
+    }
+
+    /// Matching resolves symlinks on disk: worked out once per change of either list.
+    @ObservationIgnored private var matchCache: (paths: [String], projects: [ServerPlanProject], map: [UUID: [ServerPlanProject]])?
+
+    private func projectsByDeckProject(_ deckProjects: [Project]) -> [UUID: [ServerPlanProject]] {
+        let paths = deckProjects.map { "\($0.id) \($0.path)" }
+        if let cache = matchCache, cache.paths == paths, cache.projects == projects { return cache.map }
+        let map = DeployRepair.projectsByDeckProject(projects, in: deckProjects)
+        matchCache = (paths, projects, map)
+        return map
+    }
+
     /// Terminals: the token's scope and the panel's feature flag (it only sends `terminal` when the
     /// user also has the servers.ssh permission).
     var canOpenTerminal: Bool {

@@ -341,6 +341,28 @@ private func json(_ request: URLRequest) -> [String: Any] {
         #expect(DeployRepair.project(forRepoPath: nil, in: projects) == nil)
     }
 
+    @Test func groupsServerProjectsUnderTheirDeckProject() {
+        let main = Project(path: "/tmp/a/app")
+        let worktree = Project(path: "/tmp/a/app/.claude/worktrees/x/")
+        let blog = Project(path: "/tmp/a/blog")
+        let other = Project(path: "/tmp/a/app-other")
+        let server = [
+            ServerPlanProject(id: 1, name: "app", repoPath: "/tmp/a/app/"),
+            ServerPlanProject(id: 2, name: "api", repoPath: "/tmp/a/app/services/api"),
+            ServerPlanProject(id: 3, name: "wt", repoPath: "/tmp/a/app/.claude/worktrees/x/web"),
+            ServerPlanProject(id: 4, name: "elsewhere", repoPath: "/srv/blog"),
+            ServerPlanProject(id: 5, name: "no path"),
+            ServerPlanProject(id: 6, name: "blog", repoPath: "/tmp/a/../a/blog"),
+        ]
+        let map = DeployRepair.projectsByDeckProject(server, in: [main, worktree, blog, other])
+        #expect(map[main.id]?.map(\.id) == [1, 2])
+        #expect(map[worktree.id]?.map(\.id) == [3])
+        #expect(map[blog.id]?.map(\.id) == [6])
+        // "/tmp/a/app-other" doesn't hold "/tmp/a/app…": a prefix of the name isn't a subfolder.
+        #expect(map[other.id] == nil)
+        #expect(DeckSettings().serverPlanProjectRows)
+    }
+
     @Test func deckKeepsRepairRequestsAndTerminalTargets() throws {
         var deck = DeckData()
         let project = deck.addProject(path: "/tmp/a/blog")

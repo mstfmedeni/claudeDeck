@@ -19690,6 +19690,66 @@
           }
         }
       }
+    },
+    "Hide servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuları gizle"
+          }
+        }
+      }
+    },
+    "Show servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuları göster"
+          }
+        }
+      }
+    },
+    "Hide Servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuları Gizle"
+          }
+        }
+      }
+    },
+    "Show Servers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucuları Göster"
+          }
+        }
+      }
+    },
+    "ServerPlan · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan · %@"
+          }
+        }
+      }
+    },
+    "Show matching server projects under their project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleşen sunucu projelerini projenin altında göster"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

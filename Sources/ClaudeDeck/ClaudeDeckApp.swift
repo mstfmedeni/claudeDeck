@@ -55,6 +55,7 @@ struct ClaudeDeckApp: App {
                     ForEach(AppTheme.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 Divider()
+                ServerPlanSidebarToggle() // Show/Hide Servers, with ServerPlan set up
             }
         }
 

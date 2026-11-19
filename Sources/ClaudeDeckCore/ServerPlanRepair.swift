@@ -46,6 +46,23 @@ public enum DeployRepair {
         return projects.first { normalize($0.path) == wanted }
     }
 
+    /// ServerPlan projects by the ClaudeDeck project whose folder holds them (the same folder or a
+    /// subfolder). With nested projects (a worktree inside its main project) the deepest one wins.
+    /// Keeps ServerPlan's order. Resolves symlinks: call it once per change, not per row.
+    public static func projectsByDeckProject(_ serverProjects: [ServerPlanProject], in projects: [Project]) -> [UUID: [ServerPlanProject]] {
+        let roots = projects.map { (id: $0.id, path: normalize($0.path)) }.filter { $0.path.count > 1 }
+        var result: [UUID: [ServerPlanProject]] = [:]
+        for serverProject in serverProjects {
+            guard let repoPath = serverProject.repoPath, !repoPath.isEmpty else { continue }
+            let path = normalize(repoPath)
+            let owner = roots
+                .filter { path == $0.path || path.hasPrefix($0.path + "/") }
+                .max { $0.path.count < $1.path.count }
+            if let owner { result[owner.id, default: []].append(serverProject) }
+        }
+        return result
+    }
+
     static func normalize(_ path: String) -> String {
         var p = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL.resolvingSymlinksInPath().path
         while p.count > 1, p.hasSuffix("/") { p.removeLast() }

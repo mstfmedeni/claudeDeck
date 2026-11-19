@@ -30,6 +30,11 @@ struct SidebarView: View {
                         DispatchQueue.main.async { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
+                // ServerPlan rows under a project going away (setting off, project gone from the
+                // panel): same as a removed session, a fresh list rather than a reshaped one.
+                .onChange(of: ServerPlanController.shared.projectRowIDs) { old, new in
+                    if !old.subtracting(new).isEmpty { rebuild += 1 }
+                }
                 .onChange(of: model.sidebarReveal) { _, request in
                     guard let request else { return }
                     reveal(request.id, proxy: proxy, latest: latest)
@@ -119,9 +124,6 @@ struct SidebarView: View {
             if model.deck.settings.remoteClient {
                 RemoteSidebarSection(filter: layout.filter)
             }
-            if ServerPlanController.shared.isConfigured, layout.filter == .all {
-                ServerPlanSidebarSection()
-            }
             // Inactive: everything else in its saved order, collapsible like an accordion.
             // Hidden while a filter is on (nothing there is waiting or working).
             if layout.filter == .all {
@@ -133,6 +135,10 @@ struct SidebarView: View {
                         Text("\(layout.inactive.count)").foregroundStyle(.tertiary)
                     }
                 }
+            }
+            // Servers last: opened and closed from its header (or View › Show/Hide Servers).
+            if ServerPlanController.shared.isConfigured, layout.filter == .all {
+                ServerPlanSidebarSection()
             }
         }
         .listStyle(.sidebar)
@@ -146,6 +152,8 @@ struct SidebarView: View {
         // Rows moving between sections (Active ↔ Inactive) land at once: an animated move while
         // row heights also change left a stale copy drawn over the next row.
         .transaction(value: layout) { $0.animation = nil }
+        // ServerPlan's refresh loop and sheets (not on the Servers header, which may not be drawn).
+        .modifier(ServerPlanSidebarSupport())
     }
 
     private var filterBar: some View {
@@ -286,10 +294,16 @@ struct ProjectEntry: View {
 
     var body: some View {
         let sessions = (layout.sessionsInProject[project.id] ?? []).compactMap { model.deck.session($0) }
+        // Its ServerPlan projects (same folder or a subfolder), only in the unfiltered list.
+        let serverProjects = layout.filter == .all ? ServerPlanController.shared.serverProjects(under: project.id) : []
         if layout.compact.contains(project.id), let session = sessions.first {
             CompactProjectRow(project: project, session: session)
+            // A one-row project has no children: its server projects follow it, indented.
+            if !serverProjects.isEmpty {
+                ServerPlanProjectRows(projects: serverProjects).padding(.leading, 18)
+            }
         } else {
-            ProjectRow(project: project, sessions: sessions)
+            ProjectRow(project: project, sessions: sessions, serverProjects: serverProjects)
         }
     }
 }
@@ -345,6 +359,8 @@ struct ProjectRow: View {
     let project: Project
     /// The sessions to list (the sidebar filter may hide some).
     let sessions: [DeckSession]
+    /// Its ServerPlan projects, listed after the sessions.
+    var serverProjects: [ServerPlanProject] = []
     @State private var showResume = false
 
     var body: some View {
@@ -366,6 +382,7 @@ struct ProjectRow: View {
             ForEach(sessions) { session in
                 SessionRow(session: session).tag(session.id)
             }
+            ServerPlanProjectRows(projects: serverProjects)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: project.pinned ? "pin.fill" : "folder")

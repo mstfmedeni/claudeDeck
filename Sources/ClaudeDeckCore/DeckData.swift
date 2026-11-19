@@ -267,6 +267,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var simulators = false
     /// ServerPlan panel address (Settings › ServerPlan); the token is in the keychain. Empty: off.
     public var serverPlanURL = ""
+    /// The sidebar lists a project's ServerPlan projects (same folder or a subfolder) under it.
+    public var serverPlanProjectRows = true
     /// New sessions run in the session helper (claudedeck-ptyd) and keep running when the app
     /// quits, crashes or updates; the app reattaches at launch. Off by default.
     public var keepSessionsRunning = false
@@ -343,6 +345,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators
         serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
+        serverPlanProjectRows = try c.decodeIfPresent(Bool.self, forKey: .serverPlanProjectRows) ?? d.serverPlanProjectRows
         keepSessionsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning) ?? d.keepSessionsRunning
         retireSessionHelper = try c.decodeIfPresent(Bool.self, forKey: .retireSessionHelper) ?? d.retireSessionHelper
         accounts = (try? c.decodeIfPresent([Lossy<ClaudeAccount>].self, forKey: .accounts))?.compactMap(\.value) ?? d.accounts
