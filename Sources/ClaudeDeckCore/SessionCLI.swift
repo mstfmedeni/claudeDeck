@@ -82,8 +82,8 @@ public enum SessionCLI {
         case simulators
         /// Token and cost usage per project (`claudedeck usage`; read-only).
         case usage
-        /// Ending itself or a session it started (also needs Settings › "Sessions may close
-        /// sessions they started").
+        /// Ending itself or a session it started, and removing such a session from the deck
+        /// (also needs Settings › "Sessions may close sessions they started").
         case close
     }
 
@@ -147,6 +147,8 @@ public enum SessionCLI {
         case status(String)
         /// `POST /v1/cli/sessions/{ref}/close`.
         case close(String)
+        /// `POST /v1/cli/sessions/{ref}/remove`: a session that isn't running leaves the deck.
+        case remove(String)
 
         public var scope: Scope {
             switch self {
@@ -167,7 +169,7 @@ public enum SessionCLI {
             case .simList, .simAcquire, .simRelease: .simulators
             case .usage: .usage
             case .status: .list
-            case .close: .close
+            case .close, .remove: .close
             }
         }
     }
@@ -222,6 +224,7 @@ public enum SessionCLI {
             case "wait": return expect("GET", .wait(ref))
             case "status": return expect("GET", .status(ref))
             case "close": return expect("POST", .close(ref))
+            case "remove": return expect("POST", .remove(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -302,6 +305,29 @@ public enum SessionCLI {
             current = parent
         }
         return false
+    }
+
+    /// Whether `close` also removes the session from the deck: `--remove` always does, `--keep`
+    /// never does, otherwise Settings › "Closed sessions are removed from the list" decides.
+    /// (`--remove` wins over `--keep`; the script refuses both together.)
+    public static func removesAfterClose(form: [String: String], setting: Bool) -> Bool {
+        if form["remove"] == "1" { return true }
+        if form["keep"] == "1" { return false }
+        return setting
+    }
+
+    public enum RemoveCheck: Equatable, Sendable {
+        case allowed
+        /// The owner's session, or one another session started (`403 not_yours`).
+        case notYours
+        /// Its process still runs (`409 still_running`: `close` it).
+        case stillRunning
+    }
+
+    /// `remove`: the same sessions `close` may end (`mayClose`), and only once they've stopped.
+    public static func mayRemove(caller: UUID, target: UUID, startedBy: [UUID: UUID], running: Bool) -> RemoveCheck {
+        guard mayClose(caller: caller, target: target, startedBy: startedBy) else { return .notYours }
+        return running ? .stillRunning : .allowed
     }
 
     /// How long `close` waits for Claude to leave after `/exit` before it gives up (or, with
@@ -725,27 +751,42 @@ public struct SessionCLIWaited: Encodable, Sendable, Equatable {
 
 /// `POST /v1/cli/sessions/{ref}/close`. `closed`: it has ended (false while `close self` waits for
 /// the turn to end: `pending`); `forced`: its process was ended with a signal instead of `/exit`.
+/// `removed`: it was also removed from the deck (for `close self`: it will be, once it has ended).
 public struct SessionCLIClosed: Encodable, Sendable, Equatable {
     public var closed: Bool
     public var id: UUID
     public var forced: Bool
     public var pending: Bool
-    public init(closed: Bool, id: UUID, forced: Bool, pending: Bool = false) {
+    public var removed: Bool
+    public init(closed: Bool, id: UUID, forced: Bool, pending: Bool = false, removed: Bool = false) {
         self.closed = closed
         self.id = id
         self.forced = forced
         self.pending = pending
+        self.removed = removed
     }
 
-    private enum CodingKeys: String, CodingKey { case closed, id, forced, pending }
+    private enum CodingKeys: String, CodingKey { case closed, id, forced, pending, removed }
 
-    /// `pending` only for `close self` (`{"closed":true,"id":…,"forced":false}` otherwise).
+    /// `pending` only for `close self`, `removed` only when true
+    /// (`{"closed":true,"id":…,"forced":false}` otherwise).
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(closed, forKey: .closed)
         try c.encode(id, forKey: .id)
         try c.encode(forced, forKey: .forced)
         if pending { try c.encode(pending, forKey: .pending) }
+        if removed { try c.encode(removed, forKey: .removed) }
+    }
+}
+
+/// `POST /v1/cli/sessions/{ref}/remove`: `{"removed":true,"id":…}`.
+public struct SessionCLIRemoved: Encodable, Sendable, Equatable {
+    public var removed: Bool
+    public var id: UUID
+    public init(removed: Bool, id: UUID) {
+        self.removed = removed
+        self.id = id
     }
 }
 

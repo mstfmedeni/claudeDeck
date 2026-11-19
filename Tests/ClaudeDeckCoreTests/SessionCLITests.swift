@@ -1021,4 +1021,129 @@ import Testing
         #expect(try run(["help"]).out.contains("claudedeck close ID|self"))
         #expect(SessionCLI.skill.contains("claudedeck close") && SessionCLI.skill.contains("close_off"))
     }
+
+    // MARK: Removing
+
+    @Test func removeRouteAndScope() {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/abcd/remove") == .route(.remove("abcd")))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/q_0123456789/remove") == .route(.remove("q_0123456789")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd/remove") == .methodNotAllowed)
+        #expect(SessionCLI.Route.remove("x").scope == .close)
+        #expect(!SessionCLI.openedScopes.contains(SessionCLI.Route.remove("x").scope))
+    }
+
+    @Test func removeOwnershipRules() {
+        let me = UUID(), child = UUID(), grandchild = UUID(), sibling = UUID(), parent = UUID(), owners = UUID()
+        let startedBy = [child: me, grandchild: child, sibling: parent, me: parent]
+        // Only stopped sessions of its own.
+        #expect(SessionCLI.mayRemove(caller: me, target: child, startedBy: startedBy, running: false) == .allowed)
+        #expect(SessionCLI.mayRemove(caller: me, target: grandchild, startedBy: startedBy, running: false) == .allowed)
+        #expect(SessionCLI.mayRemove(caller: me, target: child, startedBy: startedBy, running: true) == .stillRunning)
+        // Itself is always running while it asks.
+        #expect(SessionCLI.mayRemove(caller: me, target: me, startedBy: startedBy, running: true) == .stillRunning)
+        // Never the owner's, a sibling's, or the one that started it; ownership is checked first.
+        #expect(SessionCLI.mayRemove(caller: me, target: owners, startedBy: startedBy, running: false) == .notYours)
+        #expect(SessionCLI.mayRemove(caller: me, target: owners, startedBy: startedBy, running: true) == .notYours)
+        #expect(SessionCLI.mayRemove(caller: me, target: sibling, startedBy: startedBy, running: false) == .notYours)
+        #expect(SessionCLI.mayRemove(caller: me, target: parent, startedBy: startedBy, running: false) == .notYours)
+        #expect(SessionCLI.mayRemove(caller: child, target: me, startedBy: startedBy, running: false) == .notYours)
+    }
+
+    @Test func removeAfterCloseFlagsAndSetting() {
+        #expect(SessionCLI.removesAfterClose(form: [:], setting: true))
+        #expect(!SessionCLI.removesAfterClose(form: [:], setting: false))
+        #expect(!SessionCLI.removesAfterClose(form: ["keep": "1"], setting: true))
+        #expect(SessionCLI.removesAfterClose(form: ["remove": "1"], setting: false))
+        #expect(SessionCLI.removesAfterClose(form: ["remove": "1", "keep": "1"], setting: false))
+        #expect(SessionCLI.removesAfterClose(form: ["remove": "0", "keep": "0"], setting: true))
+    }
+
+    @Test func removeSettingDefaultsOnAndDecodes() throws {
+        #expect(DeckSettings().removeClosedSessions)
+        // A settings file from before the setting: on (the owner's request).
+        let old = try JSONDecoder().decode(DeckSettings.self, from: Data(#"{"sessionsMayCloseSessions":true}"#.utf8))
+        #expect(old.sessionsMayCloseSessions && old.removeClosedSessions)
+        var off = DeckSettings()
+        off.removeClosedSessions = false
+        #expect(try !JSONDecoder().decode(DeckSettings.self, from: JSONEncoder().encode(off)).removeClosedSessions)
+        let explicit = try JSONDecoder().decode(DeckSettings.self, from: Data(#"{"removeClosedSessions":false}"#.utf8))
+        #expect(!explicit.removeClosedSessions)
+    }
+
+    @Test func removeAnswers() throws {
+        let id = UUID(uuidString: "C0000000-0000-0000-0000-000000000002")!
+        let closed = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(
+            SessionCLIClosed(closed: true, id: id, forced: false, removed: true))) as? [String: Any])
+        #expect(closed["removed"] as? Bool == true && closed.count == 4)
+        let kept = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(
+            SessionCLIClosed(closed: true, id: id, forced: false))) as? [String: Any])
+        #expect(kept["removed"] == nil)
+        let removed = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(
+            SessionCLIRemoved(removed: true, id: id))) as? [String: Any])
+        #expect(removed["removed"] as? Bool == true && removed["id"] as? String == id.uuidString && removed.count == 2)
+    }
+
+    @Test func removedSessionHandsOverWhatItStarted() {
+        var deck = DeckData()
+        let project = UUID()
+        let a = DeckSession(projectID: project, name: "a")
+        var b = DeckSession(projectID: project, name: "b")
+        var c = DeckSession(projectID: project, name: "c")
+        let owners = DeckSession(projectID: project, name: "owner's")
+        var d = DeckSession(projectID: project, name: "d")
+        b.startedBy = a.id
+        c.startedBy = b.id
+        d.startedBy = owners.id
+        deck.sessions = [a, b, c, owners, d]
+        // Removing b: c now counts as a's, so a can still close it.
+        deck.handOverStartedSessions(of: b.id)
+        deck.removeSession(b.id)
+        #expect(deck.session(c.id)?.startedBy == a.id)
+        let starters = Dictionary(uniqueKeysWithValues: deck.sessions.compactMap { s in s.startedBy.map { (s.id, $0) } })
+        #expect(SessionCLI.mayClose(caller: a.id, target: c.id, startedBy: starters))
+        // Removing the owner's session: what it started never becomes the owner's own.
+        deck.handOverStartedSessions(of: owners.id)
+        deck.removeSession(owners.id)
+        #expect(deck.session(d.id)?.startedBy == owners.id)
+    }
+
+    @Test func removeArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/sessions/"
+        // close: --remove / --keep reach the API; neither: the setting decides there.
+        let plain = try run(["close", "abcd"], answers: [("closed and removed", "200 0")])
+        #expect(plain.code == 0 && plain.out == "closed and removed\n")
+        let plainCall = try #require(plain.curlCalls.first)
+        #expect(!plainCall.contains("remove=1") && !plainCall.contains("keep=1"))
+        let remove = try #require(try run(["close", "abcd", "--remove"], answers: [("closed and removed", "200 0")]).curlCalls.first)
+        #expect(remove.contains("remove=1") && !remove.contains("keep=1") && remove.last == base + "abcd/close")
+        let keep = try #require(try run(["close", "--keep", "abcd", "--json"], answers: [(#"{"closed":true}"#, "200 0")]).curlCalls.first)
+        #expect(keep.contains("keep=1") && !keep.contains("remove=1") && keep.contains("format=json") && keep.contains("force=0"))
+        let selfRemove = try #require(try run(["close", "self", "--remove", "--force"], answers: [("closing (then removed)", "200 0")]).curlCalls.first)
+        #expect(selfRemove.contains("remove=1") && selfRemove.contains("force=1") && selfRemove.last == base + "self/close")
+        let both = try run(["close", "abcd", "--remove", "--keep"])
+        #expect(both.code == 2 && both.curlCalls.isEmpty && both.err.contains("not both"))
+        // remove
+        let removed = try run(["remove", "d1234567"], answers: [("removed", "200 0")])
+        #expect(removed.code == 0 && removed.out == "removed\n")
+        let call = try #require(removed.curlCalls.first)
+        #expect(call.last == base + "d1234567/remove" && call.contains("format=text") && !call.contains("-G"))
+        #expect(try run(["remove", "q_0123456789", "--json"], answers: [(#"{"removed":true}"#, "200 0")]).curlCalls.first?.contains("format=json") == true)
+        for args in [["remove"], ["remove", "a", "b"], ["remove", "a/../b"], ["remove", "abcd", "--force"]] {
+            let usage = try run(args)
+            #expect(usage.code == 2 && usage.curlCalls.isEmpty, "\(args)")
+        }
+        #expect(try run(["remove", "abcd"], session: false).code == 2)
+        let running = try run(["remove", "abcd"], answers: [(#"{"error":"still_running"}"#, "409 1")])
+        #expect(running.code == 1 && running.err.contains("claudedeck close ID --remove"))
+        let mine = try run(["remove", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(mine.code == 4 && mine.err.contains("sessions it started"))
+        let off = try run(["remove", "abcd"], answers: [(#"{"error":"close_off"}"#, "403 4")])
+        #expect(off.code == 4 && off.err.contains("Sessions may close sessions they started"))
+        #expect(try run(["remove", "abcd"], answers: [(#"{"error":"unknown_session"}"#, "404 5")]).code == 5)
+        // close's own still_running hint is unchanged.
+        #expect(try run(["close", "abcd"], answers: [(#"{"error":"still_running"}"#, "409 124")]).err.contains("close --force"))
+        let help = try run(["help"]).out
+        #expect(help.contains("claudedeck remove ID") && help.contains("--remove|--keep"))
+        #expect(SessionCLI.skill.contains("claudedeck remove ID") && SessionCLI.skill.contains("merged and handed off"))
+    }
 }

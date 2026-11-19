@@ -962,8 +962,13 @@ final class AppModel {
         if let projectID = selectedProjectID ?? deck.projects.first?.id { newShell(in: projectID) }
     }
 
-    func removeSession(_ id: UUID) {
-        noteUserLayoutAction()
+    /// End and Remove: ends its process and drops it from the deck. Only the deck entry and what
+    /// the app keeps in memory go: the Claude transcript (~/.claude/projects), the folder and any
+    /// worktree stay. `userInitiated` false: a session's `claudedeck close`/`remove`, which isn't
+    /// the owner arranging the layout.
+    func removeSession(_ id: UUID, userInitiated: Bool = true) {
+        if userInitiated { noteUserLayoutAction() }
+        deck.handOverStartedSessions(of: id)
         terminals.terminate(id)
         terminals.discard(id)
         tailers[id]?.stop()

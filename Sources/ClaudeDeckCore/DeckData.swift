@@ -261,6 +261,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// `claudedeck close`: a session may end itself and the sessions it started (never the
     /// owner's). Off by default.
     public var sessionsMayCloseSessions = false
+    /// A session closed with `claudedeck close` is also removed from the deck (like the owner's
+    /// End and Remove; its Claude transcript is kept) unless the call says `--keep`. On by default.
+    public var removeClosedSessions = true
     /// The cap on Claude sessions started with `claudedeck new` running at once (1–40).
     public var maxStartedSessions = SessionCLI.maxRunningStarted
     /// A session started with `claudedeck new` finishing its turn is news for the session that
@@ -354,6 +357,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
+        removeClosedSessions = try c.decodeIfPresent(Bool.self, forKey: .removeClosedSessions) ?? d.removeClosedSessions
         startedSessionsTurnGoesToStarter = try c.decodeIfPresent(Bool.self, forKey: .startedSessionsTurnGoesToStarter) ?? d.startedSessionsTurnGoesToStarter
         maxStartedSessions = min(max(try c.decodeIfPresent(Int.self, forKey: .maxStartedSessions) ?? d.maxStartedSessions, 1), 40)
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
@@ -563,6 +567,16 @@ public struct DeckData: Codable, Sendable, Equatable {
         var n = 2
         while taken.contains("\(base) \(n)") { n += 1 }
         return "\(base) \(n)"
+    }
+
+    /// Before `id` leaves the deck: the sessions it started count as started by its own starter,
+    /// so that one can still close them (`SessionCLI.mayClose`). A session the owner started has
+    /// no starter: then nothing changes (they never turn into the owner's own sessions).
+    public mutating func handOverStartedSessions(of id: UUID) {
+        guard let parent = session(id)?.startedBy else { return }
+        for index in sessions.indices where sessions[index].startedBy == id {
+            sessions[index].startedBy = parent == sessions[index].id ? nil : parent
+        }
     }
 
     public mutating func removeSession(_ id: UUID) {

@@ -158,7 +158,8 @@ claudedeck send ID TEXT [--enter|--no-enter] [--json]
 claudedeck capture ID [--lines N] [--trim] [--json]
 claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
-claudedeck close ID|self [--force] [--json]
+claudedeck close ID|self [--force] [--remove|--keep] [--json]
+claudedeck remove ID [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--supersedes ID] [--json]
@@ -213,7 +214,8 @@ claudedeck skill setup [--user|--project] [--force]
   given when several did). Timeout: 124. One line per id (`--json`: `{mode, result, first,
   sessions: [{ref, id, queue_id, result, exit_code, state, detail}]}`). Every id is checked
   first: an unknown one is exit 5, `self` exit 2.
-- **close:** ends a session the way End Session does, and closes its pane; see
+- **close:** ends a session the way End Session does, and closes its pane (and by default
+  removes it from the list); **remove:** removes one that has already stopped; see
   [Closing sessions](#closing-sessions) below.
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
@@ -241,7 +243,7 @@ claudedeck skill setup [--user|--project] [--force]
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
 | 5 | Unknown id, project, server, container, deployment, skill, queue id, decision or account |
 | 6 | `wait`: the Claude session stopped on its plan's usage limit and waits for the reset (a session being moved to another account isn't this: it counts as running) |
-| 124 | `wait` timed out; still running; `close`: Claude was still there 15 s after `/exit` |
+| 124 | `wait` timed out; still running; `close`: Claude was still there 15 s after `/exit` (`remove` on a running session is exit 1 `still_running`: close it) |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
@@ -301,7 +303,8 @@ Off, they answer `404 not_found`.
 | GET | `/v1/cli/sim` | | simulators |
 | POST | `/v1/cli/sim/acquire` | `device, duo=1` | simulators |
 | POST | `/v1/cli/sim/release` | `udid` (empty: all of the caller's) | simulators |
-| POST | `/v1/cli/sessions/{ref}/close` | `force=1`; `{ref}` may be a started queue id | close |
+| POST | `/v1/cli/sessions/{ref}/close` | `force=1`, `remove=1`, `keep=1`; `{ref}` may be a started queue id | close |
+| POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -314,9 +317,44 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
 `403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
-`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
+`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
+`403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
+
+### Closing sessions
+
+`close` and `remove` need **Settings › Agents › Sessions may close sessions they started** (off by
+default; else `403 close_off`, exit 4). A session may close or remove only itself and the
+sessions it started, directly or through sessions they started (`startedBy` all the way up);
+never one the owner started (`403 not_yours`, exit 4).
+
+- **close ID|self:** ends it like End Session: an idle Claude gets `/exit` (up to 15 s), a
+  terminal's process is ended, and its pane closes. Claude working: `409 busy` (exit 1); waiting
+  on the owner: `409 blocked` (exit 3); still there after `/exit`: `409 still_running` (exit
+  124). `--force` ends the process in each of those cases. `close self` answers at once
+  (`closing: after this turn`, `"pending":true`) and ends once the current turn is over (`--force`:
+  right away). The session that started the closed one gets a note.
+- **Removing after the close:** with **Closed sessions are removed from the list too** (under the
+  close setting; **on** by default) every close by a session also removes the closed session from
+  the deck, the way the owner's **End and Remove** does; `--keep` overrides it for one call and
+  `--remove` removes even when the setting is off (both together: usage error, exit 2). Prints
+  `closed and removed` (`--json`: `"removed":true`). `close self --remove` removes the session
+  after the deferred exit.
+- **remove ID:** removes a session that has already stopped (ended, or never started) from the
+  deck. A running one is `409 still_running` (exit 1): use `close ID --remove`. `remove self`
+  is always running, so it's refused the same way; use `close self --remove`.
+- **What removing deletes:** only the deck entry (the sidebar row, its pane and what the app keeps
+  for it in memory; its simulators are released and its `claudedeck` token stops working). The
+  Claude transcript (`.jsonl` under `~/.claude/projects`), the project folder and any git
+  work tree are kept: the owner can still reopen the conversation from the project's **Resume
+  Previous Conversation…** menu. Sessions the removed one had started now count as started by
+  its own starter, so that one can still close them.
+- Every close and removal is in the agent Activity Log, and the starter gets a note ("X closed
+  and removed Y, a session this one started").
+- **Agents:** remove the sessions you no longer need once their work is merged and handed off
+  (`close ID`, which removes by default; `remove ID` for ones that already stopped), and close
+  yourself with `close self` when you are done. Idle leftover sessions crowd the owner's sidebar.
 
 ### Claude accounts and usage limits
 
@@ -614,7 +652,8 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
 
 `403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
-`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed`. The routes for agents above (`/v1/projects`,
+`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
+`403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`. The routes for agents above (`/v1/projects`,
 
 ### ServerPlan (`claudedeck server …`)
 

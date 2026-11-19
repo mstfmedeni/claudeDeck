@@ -173,7 +173,15 @@ struct AgentsSettingsSection: View {
                 get: { model.deck.settings.sessionsMayCloseSessions },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayCloseSessions = on } }
             ))
-            Text("claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed.")
+            if model.deck.settings.sessionsMayCloseSessions {
+                Toggle("Closed sessions are removed from the list too", isOn: Binding(
+                    get: { model.deck.settings.removeClosedSessions },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.removeClosedSessions = on } }
+                ))
+            }
+            Text(model.deck.settings.removeClosedSessions
+                 ? "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. A closed session is also removed from the list (unless the session says --keep); its Claude conversation is kept and can be reopened from the project's \"Resume Previous Conversation…\" menu. claudedeck remove removes such a session once it has stopped. Each close and removal is in the activity log."
+                 : "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed (unless the session says --remove).")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Sessions may use ServerPlan", isOn: Binding(
                 get: { model.deck.settings.sessionsMayUseServerPlan },

@@ -36,11 +36,16 @@ extension SessionCLI {
       claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
           --all: until every one stopped running (3 if any needs the user, else 1 if any
           failed, else 0). --any: until the first one does, with its code.
-      claudedeck close ID|self [--force] [--json]
-          Ends this session or one it started, like End Session (it stays in the sidebar and
-          can be resumed), and closes its pane. An idle Claude gets /exit (up to 15 s); --force
-          ends the process when Claude is busy, blocked or doesn't leave. "self" ends after the
-          current turn (--force: right away). Needs "Sessions may close sessions they started".
+      claudedeck close ID|self [--force] [--remove|--keep] [--json]
+          Ends this session or one it started, like End Session, and closes its pane. An idle
+          Claude gets /exit (up to 15 s); --force ends the process when Claude is busy, blocked
+          or doesn't leave. "self" ends after the current turn (--force: right away).
+          --remove also removes it from the list (its Claude transcript is kept); --keep leaves
+          it in the sidebar to be resumed. Without either, the user's setting decides (on by
+          default: removed). Needs "Sessions may close sessions they started".
+      claudedeck remove ID [--json]
+          Removes a session this one started that has already stopped from the list (the
+          transcript is kept). A running one: close it (close --remove).
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -231,13 +236,16 @@ extension SessionCLI {
               not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
               not_yours) case "$command_name" in
-                  close) hint=" (only this session and the sessions it started)" ;;
+                  close|remove) hint=" (only this session and the sessions it started)" ;;
                   decide|decision) hint=" (only the session that asked it, or one that started that session)" ;;
                   *) hint=" (only terminals this session opened, or ones beside it)" ;;
                 esac ;;
               close_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may close sessions they started\")" ;;
               busy) hint=" (Claude is working; wait for it, or close --force)" ;;
-              still_running) hint=" (Claude didn't leave after /exit; close --force ends it)" ;;
+              still_running) case "$command_name" in
+                  remove) hint=" (it is still running; use claudedeck close ID --remove)" ;;
+                  *) hint=" (Claude didn't leave after /exit; close --force ends it)" ;;
+                esac ;;
               read_only) hint=" (it runs in another app's session helper)" ;;
               unknown_session) hint=" (see claudedeck list)" ;;
               ambiguous) hint=" (give more of the id)" ;;
@@ -416,10 +424,12 @@ extension SessionCLI {
     }
 
     cmd_close() {
-      id=""; force=0
+      id=""; force=0; remove=0; keep=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --force) force=1 ;;
+          --remove) remove=1 ;;
+          --keep) keep=1 ;;
           --json) json=1 ;;
           -*) die "close: unknown option $1" ;;
           *) [ -z "$id" ] || die "close: one ID only"; id=$1 ;;
@@ -427,10 +437,30 @@ extension SessionCLI {
         shift
       done
       check_id "$id" close
+      [ "$remove" = 1 ] && [ "$keep" = 1 ] && die "close: --remove or --keep, not both"
       need_session
       # Up to 15 s for Claude to leave after /exit, then the end of the process.
       max_time=60
-      call "/sessions/$id/close" --data-urlencode "force=$force" --data-urlencode "format=$(fmt)"
+      set -- --data-urlencode "force=$force"
+      [ "$remove" = 1 ] && set -- "$@" --data-urlencode "remove=1"
+      [ "$keep" = 1 ] && set -- "$@" --data-urlencode "keep=1"
+      call "/sessions/$id/close" "$@" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_remove() {
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "remove: unknown option $1" ;;
+          *) [ -z "$id" ] || die "remove: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      check_id "$id" remove
+      need_session
+      call "/sessions/$id/remove" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1263,6 +1293,7 @@ extension SessionCLI {
       capture) cmd_capture "$@" ;;
       wait) cmd_wait "$@" ;;
       close) cmd_close "$@" ;;
+      remove) cmd_remove "$@" ;;
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
@@ -1437,14 +1468,23 @@ extension SessionCLI {
     `close_off`; don't retry).
 
     ```sh
-    claudedeck close ID [--force] [--json]         # a session you started (or one they started)
-    claudedeck close self [--force]                # yourself, once this turn is over
+    claudedeck close ID [--force] [--remove|--keep] [--json]   # a session you started (or one they started)
+    claudedeck close self [--force] [--remove|--keep]          # yourself, once this turn is over
+    claudedeck remove ID [--json]                              # one of yours that has already stopped
     ```
 
     - Close a session you started once its work is done and you've read its result: it frees one
       of the 8 running slots (a queued `new --queue` starts in it). It ends like the user's End
-      Session (an idle Claude gets `/exit`); the session stays in the sidebar with its history and
-      the user can resume it. Prints `closed` (`--json`: `{"closed":true,"id":…,"forced":false}`).
+      Session (an idle Claude gets `/exit`). Prints `closed` (`--json`:
+      `{"closed":true,"id":…,"forced":false}`).
+    - Removing: the user has many idle leftover sessions, so remove the sessions you no longer
+      need once their work is merged and handed off (and `close self --remove` yourself when you
+      are done). By default (the user's setting "Closed sessions are removed from the list") a
+      close also removes the session from the list (`closed and removed`, `"removed":true`);
+      `--remove` always does, `--keep` leaves it in the sidebar for the user to resume. Removing
+      never deletes its Claude transcript, folder or work tree: the user can still reopen the
+      conversation. `remove ID` is for one that has already stopped (exit 1 `still_running`:
+      use `close ID --remove`).
     - Never sessions the user started (exit 4 `not_yours`). Claude busy: exit 1 `busy`; waiting on
       the user: exit 3 `blocked`; still there 15 s after `/exit`: exit 124 `still_running`. Use
       `--force` only when you mean to cut its work off.

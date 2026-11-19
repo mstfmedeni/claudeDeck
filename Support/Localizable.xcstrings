@@ -20763,6 +20763,66 @@
           }
         }
       }
+    },
+    "Closed sessions are removed from the list too": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapatılan oturumlar listeden de kaldırılsın"
+          }
+        }
+      }
+    },
+    "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. A closed session is also removed from the list (unless the session says --keep); its Claude conversation is kept and can be reopened from the project's \"Resume Previous Conversation…\" menu. claudedeck remove removes such a session once it has stopped. Each close and removal is in the activity log.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck close: bir oturum kendini ve başlattığı oturumları (ve onların başlattıklarını) sonlandırabilir, sizinkileri asla. Kapatılan oturum listeden de kaldırılır (oturum --keep demedikçe); Claude konuşması silinmez, projenin \"Eski Oturumu Devam Ettir…\" menüsünden yeniden açılabilir. claudedeck remove, durmuş böyle bir oturumu listeden kaldırır. Her kapatma ve kaldırma etkinlik günlüğüne yazılır."
+          }
+        }
+      }
+    },
+    "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed (unless the session says --remove).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck close: bir oturum kendini ve başlattığı oturumları (ve onların başlattıklarını) sonlandırabilir, sizinkileri asla. Her kapatma etkinlik günlüğüne yazılır; oturum kenar çubuğunda kalır ve sürdürülebilir (oturum --remove demedikçe)."
+          }
+        }
+      }
+    },
+    "%@, a session this one started, closed itself and was removed from the list.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumun başlattığı %@ kendini kapattı ve listeden kaldırıldı."
+          }
+        }
+      }
+    },
+    "%@ closed and removed %@, a session this one started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, bu oturumun başlattığı %2$@ oturumunu kapattı ve listeden kaldırdı."
+          }
+        }
+      }
+    },
+    "%@ removed %@, a session this one started, from the list.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, bu oturumun başlattığı %2$@ oturumunu listeden kaldırdı."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

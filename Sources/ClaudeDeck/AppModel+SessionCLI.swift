@@ -118,6 +118,8 @@ extension AppModel {
             return target(ref, caller: caller).flatMapResponse { cliStatus($0, json: json) }
         case .close(let ref):
             return await cliClose(caller, ref: ref, form: form, json: json)
+        case .remove(let ref):
+            return cliRemove(caller, ref: ref, json: json)
         }
     }
 
