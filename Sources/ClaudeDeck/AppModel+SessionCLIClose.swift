@@ -28,7 +28,7 @@ extension AppModel {
 
         // Already ended: only the pane is left to close.
         guard terminals.isRunning(id) else {
-            finishCLIClose(target, by: caller, forced: false)
+            finishCLIClose(target, by: caller, forced: false, ended: false)
             return SessionCLI.answer(200, SessionCLIClosed(closed: true, id: id, forced: false), text: "closed", exit: .ok, json: json)
         }
         // Watched read-only in another app's session helper: it can't be driven or ended from here.
@@ -63,11 +63,17 @@ extension AppModel {
                     terminals.terminate(id)
                 }
             case .blocked:
-                guard force else { return SessionCLI.failure(409, "blocked", exit: .blocked) }
+                guard force else {
+                    logAgent(callerName, inbound: true, "claudedeck close · \(target.name): refused (waits on a permission or a question)", ok: false)
+                    return SessionCLI.failure(409, "blocked", exit: .blocked)
+                }
                 forced = true
                 terminals.terminate(id)
             case .running, .failed:
-                guard force else { return SessionCLI.failure(409, "busy", exit: .failed) }
+                guard force else {
+                    logAgent(callerName, inbound: true, "claudedeck close · \(target.name): refused (Claude is working)", ok: false)
+                    return SessionCLI.failure(409, "busy", exit: .failed)
+                }
                 forced = true
                 terminals.terminate(id)
             }
@@ -136,15 +142,17 @@ extension AppModel {
         }
     }
 
-    /// After the process ended: its pane closes, the Activity Log gets a line, the session that started it a note
-    /// (unless it closed it itself), and a queued `new --queue` may start in the freed slot.
-    private func finishCLIClose(_ session: DeckSession, by caller: UUID, forced: Bool) {
+    /// After the process ended: its pane closes, the Activity Log gets a line, the session that
+    /// started it a note (unless that's the caller, or it had ended already: `ended` false), and a
+    /// queued `new --queue` may start in the freed slot.
+    private func finishCLIClose(_ session: DeckSession, by caller: UUID, forced: Bool, ended: Bool = true) {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         // Like the pane's close button; the owner's selection only moves if it was this one.
         if deck.panes.contains(session.id) { mutate(userInitiated: false) { $0.closePane(session.id) } }
         let byItself = caller == session.id
-        logAgent(callerName, inbound: true, "claudedeck close · " + (byItself ? "itself" : session.name) + (forced ? " (ended with a signal)" : ""))
-        if let parent = session.startedBy, parent != caller, deck.session(parent)?.kind == .claude {
+        logAgent(callerName, inbound: true, "claudedeck close · " + (byItself ? "itself" : session.name)
+                 + (ended ? (forced ? " (ended with a signal)" : "") : " (wasn't running; pane closed)"))
+        if ended, let parent = session.startedBy, parent != caller, deck.session(parent)?.kind == .claude {
             let text = byItself
                 ? String(localized: "\(session.name), a session this one started, closed itself.")
                 : String(localized: "\(callerName) closed \(session.name), a session this one started.")
