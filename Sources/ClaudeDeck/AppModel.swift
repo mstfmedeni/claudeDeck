@@ -88,6 +88,8 @@ final class AppModel {
     @ObservationIgnored var askLimiter = AgentAskLimiter()
     /// `claudedeck` (AppModel+SessionCLI): each session's token and scopes, and what `wait` goes by.
     @ObservationIgnored var cli = SessionCLIBook()
+    /// Drains `claudedeck new --queue` while anything waits (AppModel+SessionCLILaunch).
+    @ObservationIgnored var cliQueueDrainer: Task<Void, Never>?
     /// The command asked for a notification (AttentionCenter shows it).
     @ObservationIgnored var onSessionNotice: ((UUID, String) -> Void)?
     @ObservationIgnored var agentPromptSeen: [UUID: Date] = [:]
@@ -224,6 +226,7 @@ final class AppModel {
         agentAPI.start(model: self) // no-op unless the agents' API is on
         installAskScript()
         installCLIScript() // only while the command-line tool is on
+        resumeCLIQueue() // `claudedeck new --queue` left from the last run
         loadAgentNotes()
         usage.start()
         trackMenuBarCounts()
@@ -652,7 +655,10 @@ final class AppModel {
         let pencil = PencilApp.launchArgs(enabled: deck.settings.pencilMCP)
         if pencil.isEmpty { pencilSessions.remove(id) } else { pencilSessions.insert(id) }
         let ask = askEnvironment(for: id)
-        terminals.start(id: id, cwd: worktreeDir ?? project.path, claudePath: claudePath, args: pencil + args,
+        // `claudedeck new` options (mode, allowed tools, model, effort); `--allowedTools` is
+        // variadic too, and `--name` ends it.
+        let options = cliLaunchArguments(for: session)
+        terminals.start(id: id, cwd: worktreeDir ?? project.path, claudePath: claudePath, args: pencil + options + args,
                         environment: ask.merging(cliEnv) { $1 }, helper: helper,
                         helperMeta: ["askToken": ask["CLAUDEDECK_ASK_TOKEN"] ?? "", "pencil": pencil.isEmpty ? "0" : "1",
                                      "cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
@@ -839,12 +845,20 @@ final class AppModel {
     }
 
     @discardableResult
-    func newSession(in projectID: UUID, resumeID: String? = nil, title: String? = nil) -> UUID? {
+    func newSession(in projectID: UUID, resumeID: String? = nil, title: String? = nil,
+                    startedBy: UUID? = nil, launchOptions: ClaudeLaunchOptions? = nil) -> UUID? {
         var name: String?
         if let title, let project = deck.project(projectID) {
             name = "\(project.name) · \(title.prefix(30))"
         }
         guard let session = deck.addSession(to: projectID, claudeSessionID: resumeID, name: name) else { return nil }
+        // `claudedeck new`: known before the first start, which passes the options to `claude`.
+        if startedBy != nil || launchOptions != nil {
+            deck.updateSession(session.id) {
+                $0.startedBy = startedBy
+                $0.launchOptions = launchOptions
+            }
+        }
         launch(session.id, resume: resumeID != nil, resumeID: resumeID)
         selectedSessionID = session.id
         return session.id

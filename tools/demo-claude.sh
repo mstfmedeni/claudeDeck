@@ -47,6 +47,14 @@ if [ -f "$SCENE.state" ]; then
   IFS='|' read -r STATE EVENT TOOL DETAIL < "$SCENE.state"
   sleep 1   # after the app has recorded the launch
   report "$STATE" "$EVENT" "$TOOL" "$DETAIL"
+else
+  # A session without a scene (claudedeck new): say how it was started, then wait at the
+  # prompt like Claude Code does (idle), so `claudedeck wait` and the typed prompt have a target.
+  printf 'demo claude, started with:'
+  for arg in "$@"; do printf ' [%s]' "$arg"; done
+  printf '\n\n> '
+  sleep 1
+  report idle Stop "" ""
 fi
 
 # CLAUDEDECK_DEMO_LIVE=1 (tools/demo.sh creates $DEMO/live): every half minute or so the session

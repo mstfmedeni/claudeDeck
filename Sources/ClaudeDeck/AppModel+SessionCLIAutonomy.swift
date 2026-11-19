@@ -87,25 +87,63 @@ extension AppModel {
             guard DeckData.isValidWorktreeName(worktree) else { return SessionCLI.failure(400, "bad_worktree", exit: .usage) }
             guard isGitRepository(project) else { return SessionCLI.failure(400, "not_a_repository", exit: .usage) }
         }
-        let running = deck.sessions.filter { $0.startedBy != nil && terminals.isRunning($0.id) }.count
-        if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, book: &cli) {
-            logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (rate limit or cap)", ok: false)
-            return refusal
+        // Permission mode, allowed tools, model, effort: the flags, else the project's preset.
+        let given: ClaudeLaunchOptions
+        switch SessionCLI.launchOptions(form) {
+        case .failure(let refusal): return refusal.response
+        case .success(let options): given = options
         }
+        if let refusal = cliLaunchRefusal(given.over(cliPreset(for: projectID)?.options)) {
+            logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (\(refusal.rawValue))", ok: false)
+            return refusal.response
+        }
+        var skill = (form["skill"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if skill.hasPrefix("/") { skill.removeFirst() }
+        if !skill.isEmpty, let refusal = cliSkillRefusal(skill, project: project) { return refusal.response }
+        let request = CLIQueuedStart(id: SessionCLI.newQueueID(), caller: caller, callerName: callerName, projectID: projectID,
+                                     name: (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines), prompt: prompt,
+                                     worktree: worktree, skill: skill.isEmpty ? nil : skill, options: given)
+        let running = cliRunningStarted
+        if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, book: &cli) {
+            guard form["queue"] == "1", refusal.status == 429 else {
+                logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (rate limit or cap)", ok: false)
+                return refusal
+            }
+            return cliEnqueue(request, reason: running >= SessionCLI.maxRunningStarted ? "too_many_running" : "too_many_starts", json: json)
+        }
+        switch await cliStart(request) {
+        case .failure(let refusal): return refusal.response
+        case .success(let info): return SessionCLI.answer(200, info, text: info.id.uuidString, exit: .ok, json: json)
+        }
+    }
+
+    /// Claude sessions `claudedeck new` started that are running (the cap counts these).
+    var cliRunningStarted: Int { deck.sessions.filter { $0.startedBy != nil && terminals.isRunning($0.id) }.count }
+
+    /// Starts what `new` asked for (now, or when the queue gets room). The options are the
+    /// command's over the project's preset at this moment.
+    func cliStart(_ request: CLIQueuedStart) async -> Result<SessionCLIStarted, AgentHTTPRequestRefusal> {
+        let caller = request.caller, callerName = request.callerName
+        guard let project = deck.project(request.projectID) else { return .failure(.init(SessionCLI.failure(404, "unknown_project", exit: .unknown))) }
+        let options = request.options.over(cliPreset(for: project.id)?.options)
+        if let refusal = cliLaunchRefusal(options) { return .failure(.init(refusal.response)) }
+        let prompt = SessionCLI.skillPrompt(request.skill, prompt: request.prompt)
+        let worktree = request.worktree, given = request.name
         // Claude Code's folder-trust question would stop the session before it starts.
         let trust = await trustFolderForStartedSession(project.path)
-        let given = (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // The owner's selection stays where it was, as with `claudedeck open`.
         let focused = selectedSessionID
+        let launchOptions = options.isEmpty ? nil : options
         let started: UUID?
         if worktree.isEmpty {
-            let title = given.isEmpty ? prompt.split(separator: "\n").first.map(String.init) : given
-            started = newSession(in: projectID, title: title.flatMap { $0.isEmpty ? nil : $0 })
+            let firstLine = request.prompt.split(separator: "\n").first.map(String.init)
+            let title = given.isEmpty ? firstLine ?? request.skill.map { "/\($0)" } : given
+            started = newSession(in: project.id, title: title.flatMap { $0.isEmpty ? nil : $0 }, startedBy: caller, launchOptions: launchOptions)
         } else {
-            started = newWorktreeSession(in: projectID, worktreeName: worktree)
+            started = newWorktreeSession(in: project.id, worktreeName: worktree, startedBy: caller, launchOptions: launchOptions)
         }
         selectedSessionID = focused
-        guard let id = started else { return SessionCLI.failure(409, "not_started", exit: .failed) }
+        guard let id = started else { return .failure(.init(SessionCLI.failure(409, "not_started", exit: .failed))) }
         mutate(userInitiated: false) { deck in
             deck.updateSession(id) {
                 $0.startedBy = caller
@@ -114,7 +152,8 @@ extension AppModel {
         }
         typeWhenClaudeIsUp(prompt, into: id)
         let name = deck.session(id)?.name ?? project.name
-        logAgent(callerName, inbound: true, "claudedeck new · \(name) in \(project.name)" + (prompt.isEmpty ? "" : " (with a prompt)"))
+        logAgent(callerName, inbound: true, "claudedeck new · \(name) in \(project.name)" + (request.prompt.isEmpty ? "" : " (with a prompt)")
+                 + (request.skill.map { " · skill \($0)" } ?? "") + (options.isEmpty ? "" : " · \(options.summary)"))
         switch trust {
         case .trusted(let folder):
             logAgent(callerName, inbound: true, "claudedeck new · \(name): trusted the folder \(folder) for Claude Code")
@@ -130,8 +169,7 @@ extension AppModel {
             queueStartNotice(caller, String(localized: "Started \(name) in \(project.name)"))
         }
         onCountsChanged?()
-        let info = SessionCLIStarted(id: id, name: name, projectId: projectID, project: project.name, worktree: worktree.isEmpty ? nil : worktree)
-        return SessionCLI.answer(200, info, text: id.uuidString, exit: .ok, json: json)
+        return .success(SessionCLIStarted(id: id, name: name, projectId: project.id, project: project.name, worktree: worktree.isEmpty ? nil : worktree))
     }
 
     enum StartedSessionTrust: Equatable {
@@ -165,7 +203,7 @@ extension AppModel {
     }
 
     /// One notification per burst: what a caller did in the next 3 seconds goes out together.
-    private func queueStartNotice(_ caller: UUID, _ line: String) {
+    func queueStartNotice(_ caller: UUID, _ line: String) {
         let first = cli.startNotices[caller] == nil
         cli.startNotices[caller, default: []].append(line)
         guard first else { return }

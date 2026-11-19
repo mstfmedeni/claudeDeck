@@ -114,10 +114,20 @@ extension AppModel {
     /// A Claude session in its own git worktree (`claude --worktree <name>`), so parallel sessions
     /// in one project don't edit the same files.
     @discardableResult
-    func newWorktreeSession(in projectID: UUID, worktreeName: String) -> UUID? {
+    func newWorktreeSession(in projectID: UUID, worktreeName: String, startedBy: UUID? = nil,
+                            launchOptions: ClaudeLaunchOptions? = nil) -> UUID? {
         guard DeckData.isValidWorktreeName(worktreeName) else { return nil }
         var created: DeckSession?
-        mutate { created = $0.addWorktreeSession(to: projectID, worktreeName: worktreeName) }
+        mutate { deck in
+            created = deck.addWorktreeSession(to: projectID, worktreeName: worktreeName)
+            // `claudedeck new`: known before the first start, which passes the options to `claude`.
+            if let id = created?.id, startedBy != nil || launchOptions != nil {
+                deck.updateSession(id) {
+                    $0.startedBy = startedBy
+                    $0.launchOptions = launchOptions
+                }
+            }
+        }
         guard let session = created else { return nil }
         launch(session.id, resume: false)
         selectedSessionID = session.id

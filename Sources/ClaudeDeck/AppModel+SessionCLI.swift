@@ -63,6 +63,8 @@ extension AppModel {
             return target(ref, caller: caller).flatMapResponse { cliSend(caller, to: $0, form: form, json: json) }
         case .capture(let ref):
             return target(ref, caller: caller).flatMapResponse { cliCapture($0, form: form, json: json) }
+        case .wait(let ref) where SessionCLI.isQueueID(ref):
+            return await cliWaitQueued(caller, id: ref, form: form, json: json)
         case .wait(let ref):
             switch target(ref, caller: caller) {
             case .failure(let refusal): return refusal.response
@@ -80,10 +82,33 @@ extension AppModel {
             return await cliNewSession(caller, project: ref, form: form, json: json)
         case .server(let command):
             return await cliServer(caller, command: command, method: request.method, form: form, json: json)
+        case .presets:
+            return cliPresets(json: json)
+        case .showPreset(let ref):
+            return cliShowPreset(caller, project: ref, json: json)
+        case .setPreset(let ref):
+            return cliSetPreset(caller, project: ref, form: form, json: json)
+        case .queue:
+            return cliQueueList(caller, json: json)
+        case .queueItem(let id):
+            return cliQueueShow(caller, id: id, json: json)
+        case .cancelQueued(let id):
+            return cliQueueCancel(caller, id: id, json: json)
+        case .waitMany:
+            return await cliWaitMany(caller, form: form, json: json)
         }
     }
 
     private func target(_ ref: String, caller: UUID) -> Result<DeckSession, AgentHTTPRequestRefusal> {
+        // A queue id (`new --queue`) names its session once it started.
+        if SessionCLI.isQueueID(ref) {
+            switch cliQueuedSession(ref) {
+            case .failure(let refusal): return .failure(refusal)
+            case .success(let id):
+                if let session = deck.session(id) { return .success(session) }
+                return .failure(.init(SessionCLI.failure(404, "unknown_session", exit: .unknown)))
+            }
+        }
         switch SessionCLI.target(ref, caller: caller, sessions: deck.sessions.map(\.id)) {
         case .found(let id):
             if let session = deck.session(id) { return .success(session) }
@@ -107,7 +132,7 @@ extension AppModel {
 
     /// A Claude session's state name; a terminal's: `running`, `idle` (at its prompt), `failed`,
     /// `blocked` (its program waits for the user; Program Status) or `stopped`.
-    private func cliState(_ session: DeckSession) -> String {
+    func cliState(_ session: DeckSession) -> String {
         guard session.kind == .shell else { return Self.stateName(status(of: session.id).display) }
         switch cliProgress(session.id) {
         case .running: return "running"
@@ -233,7 +258,7 @@ extension AppModel {
     /// Long poll: answers once the target stops running, or after at most `maxWaitWindow`
     /// seconds (the command asks again until its own timeout). Checks four times a second, and
     /// only while someone waits.
-    private func cliWait(_ caller: UUID, for target: DeckSession, form: [String: String], json: Bool) async -> AgentHTTPResponse {
+    func cliWait(_ caller: UUID, for target: DeckSession, form: [String: String], json: Bool) async -> AgentHTTPResponse {
         guard target.id != caller else { return SessionCLI.failure(400, "cannot_wait_for_self", exit: .usage) }
         let window = min(SessionCLI.maxWaitWindow, max(0, form["timeout"].flatMap(Int.init) ?? SessionCLI.maxWaitWindow))
         let deadline = ContinuousClock.now + .seconds(window)

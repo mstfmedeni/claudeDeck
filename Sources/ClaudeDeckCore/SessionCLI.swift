@@ -95,6 +95,17 @@ public enum SessionCLI {
         case newSession(String)
         /// `/v1/cli/server/{command}`: one of `ServerPlanCLI.commands` (any method; the table checks it).
         case server(String)
+        /// `GET /v1/cli/presets`: every project's preset.
+        case presets
+        /// `GET`/`POST /v1/cli/projects/{ref}/preset`.
+        case showPreset(String)
+        case setPreset(String)
+        /// `GET /v1/cli/queue`, `GET /v1/cli/queue/{id}`, `POST /v1/cli/queue/{id}/cancel`.
+        case queue
+        case queueItem(String)
+        case cancelQueued(String)
+        /// `GET /v1/cli/wait?ids=…&mode=all|any`.
+        case waitMany
 
         public var scope: Scope {
             switch self {
@@ -106,8 +117,9 @@ public enum SessionCLI {
             case .notify: .notify
             case .ask: .ask
             case .projects: .projects
-            case .addProject, .newSession: .start
+            case .addProject, .newSession, .presets, .showPreset, .setPreset, .queue, .queueItem, .cancelQueued: .start
             case .server: .server
+            case .waitMany: .wait
             }
         }
     }
@@ -135,6 +147,14 @@ public enum SessionCLI {
         case 1 where rest[0] == "ask": return expect("POST", .ask)
         case 1 where rest[0] == "projects": return method == "POST" ? .route(.addProject) : expect("GET", .projects)
         case 3 where rest[0] == "projects" && rest[2] == "sessions": return expect("POST", .newSession(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "projects" && rest[2] == "preset":
+            let ref = AgentHTTP.percentDecode(rest[1])
+            return method == "POST" ? .route(.setPreset(ref)) : expect("GET", .showPreset(ref))
+        case 1 where rest[0] == "presets": return expect("GET", .presets)
+        case 1 where rest[0] == "queue": return expect("GET", .queue)
+        case 2 where rest[0] == "queue": return expect("GET", .queueItem(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "queue" && rest[2] == "cancel": return expect("POST", .cancelQueued(AgentHTTP.percentDecode(rest[1])))
+        case 1 where rest[0] == "wait": return expect("GET", .waitMany)
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
