@@ -335,6 +335,9 @@ final class RemoteController {
             server.onDismissDecision = { [weak self] id in
                 MainActor.assumeIsolated { self?.model?.dismissDecision(id, from: "phone") }
             }
+            server.onChangeDecisionAnswer = { [weak self] id, answer in
+                MainActor.assumeIsolated { self?.model?.changeDecisionAnswer(id, answer: answer, from: "phone") }
+            }
             server.onServerPlanRepair = { deploymentID, reply in
                 MainActor.assumeIsolated { ServerPlanController.shared.fixWithClaude(deploymentID) { reply($0, $1) } }
             }

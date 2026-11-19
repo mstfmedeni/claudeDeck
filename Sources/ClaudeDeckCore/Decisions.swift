@@ -44,6 +44,23 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     /// The asking session's starters when it asked (its parent and up), so a parent may still
     /// cancel it after the asking session is gone.
     public var ancestors: [UUID]
+    /// Earlier answers, oldest first, when the owner changed the answer afterwards (`answer` is
+    /// the current one); `changedAt`: when it last changed.
+    public var answerHistory: [PreviousAnswer]
+    public var changedAt: Date?
+
+    /// An answer the owner later replaced.
+    public struct PreviousAnswer: Codable, Sendable, Equatable {
+        public var answer: String
+        public var answeredAt: Date?
+        public var answeredFrom: String?
+
+        public init(answer: String, answeredAt: Date?, answeredFrom: String?) {
+            self.answer = answer
+            self.answeredAt = answeredAt
+            self.answeredFrom = answeredFrom
+        }
+    }
 
     public init(id: String, question: String, options: [String], recommended: String?, context: String?,
                 projectID: UUID?, project: String, sessionID: UUID?, session: String, ancestors: [UUID] = [],
@@ -58,6 +75,7 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         self.sessionID = sessionID
         self.session = session
         self.ancestors = ancestors
+        answerHistory = []
         self.createdAt = createdAt
         status = .pending
     }
@@ -65,6 +83,8 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     public var isPending: Bool { status == .pending }
     public var isAnswered: Bool { status == .answered }
     public var isCancelled: Bool { status == .cancelled }
+    /// Answered, and the answer changed since.
+    public var isChanged: Bool { isAnswered && !answerHistory.isEmpty }
     /// When it stopped waiting (answered or cancelled), else when it was asked.
     public var resolvedAt: Date { answeredAt ?? cancelledAt ?? createdAt }
 
@@ -78,6 +98,7 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, question, options, recommended, context, projectID = "projectId", project, sessionID = "sessionId", session
         case createdAt, status, answer, answeredAt, answeredFrom, delivery, cancelReason, cancelledAt, ancestors
+        case answerHistory, changedAt
     }
 
     /// Every key is always there (null when unknown), as the command's other JSON.
@@ -101,6 +122,8 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         try c.encode(cancelReason, forKey: .cancelReason)
         try c.encode(cancelledAt, forKey: .cancelledAt)
         try c.encode(ancestors, forKey: .ancestors)
+        try c.encode(answerHistory, forKey: .answerHistory)
+        try c.encode(changedAt, forKey: .changedAt)
     }
 
     /// Tolerant: a later version's status reads as pending, missing keys as empty.
@@ -124,6 +147,8 @@ public struct OwnerDecision: Codable, Sendable, Equatable, Identifiable {
         cancelReason = try? c.decodeIfPresent(String.self, forKey: .cancelReason)
         cancelledAt = try? c.decodeIfPresent(Date.self, forKey: .cancelledAt)
         ancestors = (try? c.decodeIfPresent([UUID].self, forKey: .ancestors)) ?? []
+        answerHistory = (try? c.decodeIfPresent([PreviousAnswer].self, forKey: .answerHistory)) ?? []
+        changedAt = try? c.decodeIfPresent(Date.self, forKey: .changedAt)
     }
 }
 
@@ -214,8 +239,9 @@ public enum Decisions {
     /// as it was when it asked (`decision.ancestors`, for an asking session that's gone).
     public static func mayCancel(caller: UUID, decision: OwnerDecision, startedBy: [UUID: UUID]) -> Bool {
         guard let asker = decision.sessionID else { return false }
-        if decision.ancestors.contains(caller) { return true }
-        return SessionCLI.mayClose(caller: caller, target: asker, startedBy: startedBy)
+        if caller == asker || decision.ancestors.contains(caller) { return true }
+        // Not SessionCLI.mayClose: this file is also in the phone's build, that one isn't.
+        return ancestors(of: asker, startedBy: startedBy).contains(caller)
     }
 
     /// The asking session's starters, parent first (bounded, like `SessionCLI.mayClose`).
@@ -245,6 +271,12 @@ public enum Decisions {
     public static func message(for decision: OwnerDecision) -> String {
         "[ClaudeDeck decision \(decision.id)] The owner answered your question “\(oneLine(decision.question, max: 300))”: "
             + oneLine(decision.answer ?? "", max: maxAnswer)
+    }
+
+    /// What the asking session gets when the owner changes an answer it already got.
+    public static func changedMessage(for decision: OwnerDecision, was old: String) -> String {
+        "[ClaudeDeck decision \(decision.id)] The owner changed the answer to your question “\(oneLine(decision.question, max: 300))”: "
+            + oneLine(decision.answer ?? "", max: maxAnswer) + " (was: \(oneLine(old, max: 300)))"
     }
 
     /// What the asking session gets when the owner dismisses its question without answering.
@@ -288,7 +320,7 @@ public enum Decisions {
     public static func text(_ decision: OwnerDecision) -> String {
         let status = switch decision.status {
         case .pending: "pending"
-        case .answered: "answered: \(decision.answer ?? "")"
+        case .answered: "answered: \(decision.answer ?? "")" + (decision.isChanged ? " (changed)" : "")
         case .cancelled: "cancelled: \(decision.cancelReason ?? "")"
         }
         var lines = [status]
@@ -298,6 +330,7 @@ public enum Decisions {
             lines.append("options: " + decision.options.map { $0 == decision.recommended ? "\($0) (recommended)" : $0 }.joined(separator: ", "))
         }
         if !decision.project.isEmpty { lines.append("project: \(decision.project)") }
+        for previous in decision.answerHistory { lines.append("was: \(previous.answer)") }
         if let delivery = decision.delivery { lines.append("delivery: \(delivery)") }
         return lines.joined(separator: "\n")
     }
@@ -414,6 +447,31 @@ public struct DecisionBook: Codable, Sendable, Equatable {
         }
     }
 
+    public enum Changed: Equatable, Sendable {
+        /// The new answer is in; `was`: the one it replaced.
+        case changed(OwnerDecision, was: String)
+        /// The same answer again: nothing changed.
+        case same(OwnerDecision)
+        /// Pending or cancelled: answer it, don't change it.
+        case notAnswered(OwnerDecision)
+        case unknown
+    }
+
+    /// The owner changes an answer already given (the old one goes to `answerHistory`).
+    public mutating func changeAnswer(_ id: String, to answer: String, from: String, at date: Date = Date()) -> Changed {
+        guard let index = decisions.firstIndex(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else { return .unknown }
+        let decision = decisions[index]
+        guard decision.isAnswered, let old = decision.answer else { return .notAnswered(decision) }
+        guard old != answer else { return .same(decision) }
+        decisions[index].answerHistory.append(.init(answer: old, answeredAt: decision.answeredAt, answeredFrom: decision.answeredFrom))
+        decisions[index].answer = answer
+        decisions[index].answeredAt = date
+        decisions[index].answeredFrom = from
+        decisions[index].changedAt = date
+        decisions[index].delivery = nil
+        return .changed(decisions[index], was: old)
+    }
+
     /// What became of the answer (after `answer`).
     public mutating func setDelivery(_ id: String, _ delivery: String) {
         guard let index = decisions.firstIndex(where: { $0.id == id }) else { return }
@@ -432,7 +490,7 @@ public struct DecisionBook: Codable, Sendable, Equatable {
     /// For a remote: every pending one and those answered in the last `recent` seconds (at most
     /// `maxAnswered` of them), newest first. Cancelled ones are never sent: an older phone reads
     /// a status it doesn't know as pending.
-    public func forRemote(now: Date = Date(), recent: TimeInterval = 24 * 3600, maxAnswered: Int = 20) -> [OwnerDecision] {
+    public func forRemote(now: Date = Date(), recent: TimeInterval = 24 * 3600, maxAnswered: Int = 50) -> [OwnerDecision] {
         let pending = decisions.filter(\.isPending)
         let answered = decisions.filter { $0.isAnswered && now.timeIntervalSince($0.answeredAt ?? $0.createdAt) < recent }
             .suffix(maxAnswered)
@@ -444,5 +502,24 @@ public struct DecisionBook: Codable, Sendable, Equatable {
         var copy = decision
         if let context = copy.context, context.count > 2_000 { copy.context = String(context.prefix(2_000)) + "…" }
         return copy
+    }
+}
+
+/// How the tab (and the phone's screen) splits the answered ones: the newest few always shown,
+/// the rest of today's behind a disclosure; older days aren't shown (the file keeps them).
+public enum DecisionSections {
+    public static let recentCount = 5
+
+    public static func answered(_ decisions: [OwnerDecision], now: Date = Date(), calendar: Calendar = .current)
+        -> (recent: [OwnerDecision], otherToday: [OwnerDecision]) {
+        let answered = decisions.filter(\.isAnswered).sorted { $0.resolvedAt > $1.resolvedAt }
+        let recent = Array(answered.prefix(recentCount))
+        let otherToday = answered.dropFirst(recentCount).filter { calendar.isDate($0.resolvedAt, inSameDayAs: now) }
+        return (recent, Array(otherToday))
+    }
+
+    public static func cancelledToday(_ decisions: [OwnerDecision], now: Date = Date(), calendar: Calendar = .current) -> [OwnerDecision] {
+        decisions.filter { $0.isCancelled && calendar.isDate($0.resolvedAt, inSameDayAs: now) }
+            .sorted { $0.resolvedAt > $1.resolvedAt }
     }
 }

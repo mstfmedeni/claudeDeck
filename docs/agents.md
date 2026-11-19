@@ -387,7 +387,8 @@ is none).
 ```sh
 claudedeck decide "Which database for the cache?" --options "Redis,SQLite,None" --recommend Redis \
   --context "Redis adds a container; SQLite is enough below 1k rps."   # prints d_1a2b3c4d5e
-claudedeck decision get d_1a2b3c4d5e    # "pending", "answered: SQLite" or "cancelled: REASON" (then id, question, options…)
+claudedeck decision get d_1a2b3c4d5e    # "pending", "answered: SQLite", "answered: SQLite (changed)" or "cancelled: REASON"
+                                        # (then id, question, options, "was: OLD" per earlier answer, delivery…)
 claudedeck decisions --pending          # ID, STATUS, PROJECT, QUESTION, ANSWER; newest first
 claudedeck decide "Önbellek için Redis mi, SQLite mı?" --options "Redis,SQLite" --supersedes d_1a2b3c4d5e
 claudedeck decision cancel d_1a2b3c4d5e --reason "artık gerekmiyor"   # prints "cancelled d_1a2b3c4d5e"
@@ -430,9 +431,10 @@ can't ask.
   would show an unknown status as waiting).
 - **The owner** sees it in **Your Decisions** (Window menu, and a tray above the sidebar's waiting
   tray with the count while any wait): question, project, the asking session, the context and the
-  options with the recommended one first and marked; one click on an option answers, or a few
-  words in the field. The phone shows the same list (remote feature `decisions`) and answers the
-  same way. A new decision is a notification on the Mac (unless notifications are off; clicking
+  options with the recommended one first and marked. A click on an option only selects it ("Double-click
+  to confirm"); a **double click** answers, so a stray click never does. Words of one's own go with
+  the **Send** button (Return doesn't send). The phone shows the same list (remote feature
+  `decisions`): a tap selects an option and a **Send "…"** button under the options confirms it. A new decision is a notification on the Mac (unless notifications are off; clicking
   opens the list) and a push to paired phones that aren't connected.
 - **The answer** goes to the asking Claude session as a message through its prompt queue: typed
   at its next "your turn" (at once when it's idle), never into a permission prompt or a question,
@@ -441,6 +443,17 @@ can't ask.
   it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
   `no_session` when the session is gone).
   The first answer counts; one from the other device a moment later is ignored (Activity Log).
+- **Recent answers, changeable:** under the pending ones, the last 5 answered decisions (muted:
+  question, answer, when) and a collapsed **Other decisions today** with the rest of today's;
+  older days aren't shown (the file keeps them). Today's cancelled ones are in their own collapsed
+  list on the Mac. **Change…** on one shows its options (same double click / Send rule) and a
+  field: the new answer replaces the old one (kept in `answer_history` with its time and device;
+  `changed_at`), and the asking session gets one line through its queue, as answers go:
+  `[ClaudeDeck decision d_…] The owner changed the answer to your question "…": NEW (was: OLD)`.
+  When the session is gone the change is only stored (`delivery: no_session`). `decision get`
+  then shows `answered: NEW (changed)` and a `was: OLD` line per earlier answer. The phone does
+  the same with Macs that have remote feature `changeDecisionAnswer` (older phones and Macs
+  ignore the extra fields and the new message).
 - **Removed by the owner:** **Remove** on a card (or its context menu) on the Mac, or a swipe on
   the phone (Macs with remote feature `dismissDecision`), dismisses it without an answer: it is
   cancelled with reason `owner dismissed`, and the asking session gets one line through its queue,
@@ -451,7 +464,8 @@ can't ask.
 - **JSON** (`--json`): `id, question, options, recommended, context, project_id, project,
   session_id, session, created_at, status` (`pending`/`answered`/`cancelled`)`, answer, answered_at,
   answered_from` (`mac`/`phone`)`, delivery, cancel_reason, cancelled_at, ancestors` (the asking
-  session's starters when it asked); every key is always there.
+  session's starters when it asked)`, answer_history` (`[{answer, answered_at, answered_from}]`,
+  earlier answers, oldest first)`, changed_at`; every key is always there.
 - **Limits:** 10 per 10 minutes per session (`429 too_many`), 50 waiting at once (`429
   too_many_pending`); exit 4. Kept in Application Support/decisions.json: every pending one and
   the newest 200 answered or cancelled. Asking, answering, cancelling, dismissing, duplicates and

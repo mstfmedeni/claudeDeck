@@ -19880,6 +19880,66 @@
           }
         }
       }
+    },
+    "Recently Answered": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son yanıtlananlar"
+          }
+        }
+      }
+    },
+    "Other decisions today · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü diğer kararlar · %lld"
+          }
+        }
+      }
+    },
+    "Double-click to confirm": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylamak için çift tıkla"
+          }
+        }
+      }
+    },
+    "changed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "değiştirildi"
+          }
+        }
+      }
+    },
+    "Change in your own words": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi sözlerinle değiştir"
+          }
+        }
+      }
+    },
+    "Send “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” gönder"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

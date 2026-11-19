@@ -1322,6 +1322,8 @@ extension SessionCLI {
       nothing. Only the session that asked, or one that started it, may cancel (exit 4 `not_yours`).
     - The owner may also remove a question without answering; you then get a message
       `[ClaudeDeck decision d_…] The owner dismissed your question …`: don't wait for it.
+    - The owner may change an answer later: `[ClaudeDeck decision d_…] The owner changed the answer
+      to your question … (was: …)`. The newest answer counts; adjust what you did on the old one.
     - Give 2-5 short options and recommend one; put the facts the owner needs in `--context`.
       The owner may also answer in their own words.
     - Options are separated by commas; when one contains a comma, put one option per line

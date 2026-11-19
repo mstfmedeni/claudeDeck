@@ -181,6 +181,36 @@ extension AppModel {
         }
     }
 
+    /// The owner changes an answer already given, on the Mac or a phone: the old one is kept in
+    /// the decision's history and the asking Claude session gets the new one as a message through
+    /// its queue (as answers go); with the session gone it's only stored.
+    func changeDecisionAnswer(_ id: String, answer raw: String, from: String) {
+        guard let answer = Decisions.cleanAnswer(raw) else { return }
+        let device = from == "phone" ? "phone" : "Mac"
+        switch decisions.changeAnswer(id, to: answer, from: from) {
+        case .unknown, .same:
+            return
+        case .notAnswered(let decision):
+            logAgent("ClaudeDeck", inbound: false, "decision \(decision.id) isn't answered (\(decision.status.rawValue)); "
+                + "the change from the \(device) was ignored", ok: false)
+        case .changed(let decision, let old):
+            var delivery = "no_session"
+            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+                if session.kind == .claude {
+                    enqueue(sessionID, text: Decisions.changedMessage(for: decision, was: old))
+                    delivery = "queued"
+                } else {
+                    delivery = "terminal"
+                }
+            }
+            decisions.setDelivery(decision.id, delivery)
+            decisionsChanged(added: nil)
+            let target = decision.session.isEmpty ? decision.project : decision.session
+            logAgent(target, inbound: false, "decision \(decision.id) answer changed on the \(device) · "
+                + (delivery == "queued" ? "queued for the session" : "kept for claudedeck decision get (\(delivery))"))
+        }
+    }
+
     /// The owner removes a pending decision without answering, on the Mac (`mac`) or a phone
     /// (`phone`): cancelled with "owner dismissed", and the asking Claude session gets a one-line
     /// note through its queue, as answers go.
