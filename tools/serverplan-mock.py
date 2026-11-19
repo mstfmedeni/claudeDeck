@@ -200,9 +200,10 @@ def terminal_session(sock, server_name, command):
 # --- Agent API v1.2 (and env rescan) -----------------------------------------------------------
 # Stand-ins for `claudedeck server sql | local | local-env | db clone-for-local | git | build |
 # pull-deploy | diagnose | deploy-cancel | domain set/apply/nginx/purge | cloudflare purge/ssl |
-# pg | server-env | env rescan`. Served always; `/me` offers them with --v12.
+# pg | server-env | env rescan | env rm`. Served always; `/me` offers them with --v12.
 
 local_runs = {}       # project id -> {"status", "port", "started_at", "error"}
+env_deleted = {}      # project id -> {env row ids removed with `env rm`}
 local_env = {}        # project id -> {key: value}
 clone_jobs = {}       # job id -> {"server_id", "source", "target", "started"}
 server_env = {1: [("APP_REGION", "eu-central"), ("SENTRY_TOKEN", "x")], 2: [("APP_REGION", "eu-west")]}
@@ -224,6 +225,17 @@ def is_secret_name(key):
 
 def project_by_id(pid):
     return next((pr for pr in fixture("projects.json") if pr["id"] == pid), None)
+
+
+def project_env_rows(pid):
+    """The project's env rows (LOG_LEVEL twice, as after a double import), minus deleted ones."""
+    rows = [{"id": 1, "key": "DB_NAME", "value": db_name(pid), "is_secret": False, "source": "auto-db"},
+            {"id": 2, "key": "DB_PASSWORD", "value": None, "is_secret": True, "source": "auto-db"},
+            {"id": 3, "key": "LOG_LEVEL", "value": "info", "is_secret": False, "source": "import"},
+            {"id": 4, "key": "LOG_LEVEL", "value": "debug", "is_secret": False, "source": "manual"}]
+    with state_lock:
+        gone = set(env_deleted.get(pid, set()))
+    return [r for r in rows if r["id"] not in gone]
 
 
 def db_name(pid, local=False):
@@ -289,8 +301,7 @@ def v12_get(h, p, query):
             h.send_json(200, {"default_server_id": project["default_server_id"], "default_port": 8080, "volume_path": "",
                               "dockerfile_path": "Dockerfile", "env_vars": []})
         elif what == "env":
-            h.send_json(200, [{"id": 1, "key": "DB_NAME", "value": db_name(pid), "is_secret": False, "source": "auto-db"},
-                              {"id": 2, "key": "DB_PASSWORD", "value": None, "is_secret": True, "source": "auto-db"}])
+            h.send_json(200, project_env_rows(pid))
         elif what == "branches":
             h.send_json(200, {"branches": [branch, "develop"], "current_branch": branch})
         elif what == "local-status":
@@ -568,7 +579,28 @@ def v12_put(h, p, body):
     return False
 
 
-def v12_delete(h, p):
+def v12_delete(h, p, body):
+    # One project env row; confirm = its key (ServerPlan 427bfe6, agentDeleteProjectEnv).
+    m = re.fullmatch(r"/projects/(\d+)/env/(\d+)", p)
+    if m:
+        pid, env_id = int(m.group(1)), int(m.group(2))
+        rows = project_env_rows(pid) if project_by_id(pid) else []
+        row = next((r for r in rows if r["id"] == env_id), None)
+        if not row:
+            h.error(404, "not_found", "Env kaydi bulunamadi")
+            return True
+        dupes = sum(1 for r in rows if r["key"] == row["key"] and r["id"] != env_id)
+        summary = "env %s (#%d) silinecek" % (row["key"], env_id)
+        if dupes:
+            summary += "; ayni anahtarin %d kopyasi daha kalacak" % dupes
+        else:
+            summary += "; bu anahtarin baska kopyasi YOK, deploy'da tamamen kalkar"
+        if body.get("confirm") != row["key"]:
+            return confirm_required(h, summary, row["key"])
+        with state_lock:
+            env_deleted.setdefault(pid, set()).add(env_id)
+        h.send_json(200, {"deleted": env_id, "key": row["key"], "remaining_copies": dupes})
+        return True
     m = re.fullmatch(r"/projects/(\d+)/local-env/([^/]+)", p)
     if m:
         pid, key = int(m.group(1)), unquote(m.group(2))
@@ -864,7 +896,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         p = self.agent_path()
-        if p is not None and not v12_delete(self, p):
+        if p is not None and not v12_delete(self, p, self.body()):
             self.error(404, "not_found", "Bulunamadı")
 
 

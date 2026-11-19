@@ -23,6 +23,22 @@ extension ServerPlanCLI.Runner {
             let rows = added.map { ["key": $0["key"] ?? NSNull(), "is_secret": $0["is_secret"] ?? false] }
             return ServerPlanCLI.Outcome(json: ServerPlanCLI.data(["dry_run": dryRun, "added": rows]), text: text)
 
+        case "env-rm":
+            // One env row (e.g. a duplicate key). The panel's 428 names the key, which is the
+            // owner's confirmation. A 404 is a real answer (no such row), not an older panel.
+            let project = try await projectID(form["project"])
+            guard let id = Int(form["id"] ?? ""), id > 0 else {
+                throw Refusal(outcome: .error(400, "bad_id", "an env row id (see server env get)", exit: .usage))
+            }
+            let data = try await gated(command, "DELETE", "/projects/\(project)/env/\(id)", target: "env #\(id)", timeout: 60)
+            let object = ServerPlanCLI.object(data) ?? [:]
+            let key = ServerPlanCLI.value(object, "key") ?? "env #\(id)"
+            let remaining = ServerPlanCLI.int(object["remaining_copies"]) ?? 0
+            log("env rm \(key) (#\(id)) in project #\(project)")
+            let text = "deleted \(key) (#\(id)); " + (remaining == 0 ? "no other copy: the key is gone from the deploy env"
+                : "\(remaining) other cop\(remaining == 1 ? "y" : "ies") of \(key) remain\(remaining == 1 ? "s" : "")")
+            return ServerPlanCLI.Outcome(json: data, text: text)
+
         case "sql":
             return try await sql(command, form)
 
@@ -115,9 +131,11 @@ extension ServerPlanCLI.Runner {
             let target = ServerPlanCLI.value(object, "target|local_env.DB_NAME") ?? form["target"] ?? "\(source)_dev"
             log("db clone-for-local \(source) → \(target) (project #\(project))")
             let job = ServerPlanCLI.value(object, "job_id") ?? "?"
+            var text = "clone job \(job): \(source) → \(target)\nthe project's local env DB_NAME is now \(target) (the deploy env is unchanged)"
+            // Newer panels grant the project's own DB user access to the copy once it's done.
+            if let user = ServerPlanCLI.value(object, "grant_db_user") { text += "\n\(user) gets access to \(target) when the clone finishes" }
             // `next`: the job, for `--wait`.
-            return ServerPlanCLI.Outcome(json: data, text: "clone job \(job): \(source) → \(target)\nthe project's local env DB_NAME is now \(target) (the deploy env is unchanged)",
-                           next: job)
+            return ServerPlanCLI.Outcome(json: data, text: text, next: job)
         case "clone-status":
             return try await cloneStatus(form)
 

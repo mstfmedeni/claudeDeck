@@ -70,6 +70,7 @@ public enum ServerPlanCLI {
             Command("static-add", "POST", v11: true, scope: "domains"),
             Command("sync", "POST", v11: true, scope: "deploy"),
             Command("env-rescan", "POST", v11: true, scope: "projects_write"),
+            Command("env-rm", "POST", v11: true, scope: "projects_write", gate: .owner),
             // v1.2 (ServerPlanCLIV12.swift). `method` is how the script calls the app, not the panel's verb.
             Command("sql", "POST", v11: true, scope: "sql", gate: .owner),
             Command("local-run", "POST", v11: true, scope: "local"),
@@ -324,11 +325,16 @@ public enum ServerPlanCLI {
                 let project = try await projectID(form["project"])
                 let data = try await raw("GET", "/projects/\(project)/env")
                 // Secrets never come back; a value the panel sends for one is still not shown.
-                let rows = (ServerPlanCLI.array(data) ?? []).map { row -> [String] in
+                // The row id (for `env rm`) when the panel sends one.
+                let list = ServerPlanCLI.array(data) ?? []
+                let ids = list.contains { $0["id"] != nil }
+                let rows = list.map { row -> [String] in
                     let secret = (row["is_secret"] as? Bool) == true
-                    return [ServerPlanCLI.value(row, "key") ?? "", secret ? "(secret)" : ServerPlanCLI.value(row, "value") ?? "", ServerPlanCLI.value(row, "source") ?? "-"]
+                    let cells = [ServerPlanCLI.value(row, "key") ?? "", secret ? "(secret)" : ServerPlanCLI.value(row, "value") ?? "", ServerPlanCLI.value(row, "source") ?? "-"]
+                    return ids ? [ServerPlanCLI.value(row, "id") ?? "-"] + cells : cells
                 }
-                return Outcome(json: ServerPlanCLI.redactedEnv(data), text: SessionCLI.table([["KEY", "VALUE", "SOURCE"]] + rows))
+                let header = ids ? ["ID", "KEY", "VALUE", "SOURCE"] : ["KEY", "VALUE", "SOURCE"]
+                return Outcome(json: ServerPlanCLI.redactedEnv(data), text: SessionCLI.table([header] + rows))
             case "env-set":
                 let project = try await projectID(form["project"])
                 let vars = ServerPlanCLI.envAssignments(form["vars"] ?? "")

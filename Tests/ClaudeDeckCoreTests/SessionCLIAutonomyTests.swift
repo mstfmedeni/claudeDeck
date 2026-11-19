@@ -310,6 +310,10 @@ private final class Box<T>: @unchecked Sendable {
         // Secrets never shown, even if the panel sent one.
         let env = await r.run("env-get", method: "GET", form: ["project": "9"])
         #expect(!env.text.contains("leaked-if-shown") && !String(decoding: env.json, as: UTF8.self).contains("leaked-if-shown"))
+        // Row ids (for env rm) when the panel sends them.
+        let envLines = env.text.split(separator: "\n").map(String.init)
+        #expect(envLines.first?.hasPrefix("ID") == true && envLines.dropFirst().first?.hasPrefix("1 ") == true)
+        #expect(String(decoding: env.json, as: UTF8.self).contains("\"id\":2"))
         let written = await r.run("env-set", method: "POST", form: ["project": "9", "vars": "API_KEY=s3cret\n# c\nexport DEBUG='1'\n", "secret": "API_KEY"])
         #expect(written.exit == .ok && !written.text.contains("s3cret") && !String(decoding: written.json, as: UTF8.self).contains("s3cret"))
         let bulk = try #require(transport.posts.last?["env_vars"] as? [[String: Any]])
@@ -469,6 +473,43 @@ private final class Box<T>: @unchecked Sendable {
         #expect(none.exit == .unknown && none.status == 404 && none.text.contains("NOPE") && String(decoding: none.json, as: UTF8.self).contains("no_local_override"))
     }
 
+    @Test func envRmIsOwnerGatedWithTheKey() async throws {
+        let gate = (428, #"{"error":"confirm_required","summary":"env LOG_LEVEL (#3) silinecek; ayni anahtarin 1 kopyasi daha kalacak","confirm":"LOG_LEVEL"}"#)
+        let replies: [String: [(Int, String)]] = [
+            "GET /projects": [(200, Self.projects)],
+            "DELETE /projects/9/env/3": [gate],
+        ]
+        #expect(ServerPlanCLI.commands["env-rm"]?.gate == .owner && ServerPlanCLI.commands["env-rm"]?.scope == "projects_write")
+        // Refused: asked with the panel's key, never confirmed.
+        let refusedT = RouteTransport(replies)
+        let asked = Box<[String]>([])
+        let refused = await (try runner(refusedT, me: fixture("v12-me.json"), approve: false, asked: asked)).run(
+            "env-rm", method: "POST", form: ["project": "new-api", "id": "3"])
+        #expect(refused.exit == .refused && asked.value == ["env-rm LOG_LEVEL"])
+        #expect(refusedT.requests.last?.httpMethod == "DELETE" && refusedT.posts.allSatisfy { $0["confirm"] == nil })
+
+        // Approved: sent again with confirm = the key; the copies left are said.
+        let approvedT = RouteTransport(replies.merging(["DELETE /projects/9/env/3": [gate, (200, #"{"deleted":3,"key":"LOG_LEVEL","remaining_copies":1}"#)]]) { $1 })
+        let done = await (try runner(approvedT, me: fixture("v12-me.json"), approve: true)).run(
+            "env-rm", method: "POST", form: ["project": "9", "id": "3"])
+        #expect(done.exit == .ok && done.text == "deleted LOG_LEVEL (#3); 1 other copy of LOG_LEVEL remains")
+        #expect(approvedT.posts.last?["confirm"] as? String == "LOG_LEVEL")
+        #expect(String(decoding: done.json, as: UTF8.self).contains("\"remaining_copies\":1"))
+        let lastT = RouteTransport(["GET /projects": [(200, Self.projects)],
+                                    "DELETE /projects/9/env/4": [(200, #"{"deleted":4,"key":"LOG_LEVEL","remaining_copies":0}"#)]])
+        let last = await (try runner(lastT, me: fixture("v12-me.json"))).run("env-rm", method: "POST", form: ["project": "9", "id": "4"])
+        #expect(last.exit == .ok && last.text.contains("no other copy"))
+
+        // A bad id is never sent; an unknown row is exit 5, not "not available".
+        let r = try runner(RouteTransport(["GET /projects": [(200, Self.projects)]]), me: fixture("v12-me.json"))
+        #expect(await r.run("env-rm", method: "POST", form: ["project": "9", "id": "abc"]).exit == .usage)
+        let unknown = await r.run("env-rm", method: "POST", form: ["project": "9", "id": "77"])
+        #expect(unknown.exit == .unknown && !unknown.text.contains("doesn't offer"))
+        // A token without projects_write doesn't get it.
+        let noScope = try runner(RouteTransport([:]), me: #"{"user":{"id":2,"username":"bot"},"role":"user","scopes":["read","deploy"],"server_version":"1.2.0","features":[]}"#)
+        #expect(await noScope.run("env-rm", method: "POST", form: ["project": "9", "id": "3"]).exit == .refused)
+    }
+
     @Test func localRunAndStatus() async throws {
         let transport = RouteTransport([
             "GET /projects": [(200, Self.projects)],
@@ -507,7 +548,7 @@ private final class Box<T>: @unchecked Sendable {
             "GET /projects": [(200, Self.projects)],
             "GET /projects/9/settings": [(200, fixture("v11-settings.json"))],
             "GET /projects/9/env": [(200, fixture("v11-env.json"))],
-            "POST /servers/2/pg/databases/new_api/clone-for-local": [(202, #"{"job_id":"ab12","source":"new_api","target":"new_api_dev","local_env":{"DB_NAME":"new_api_dev"}}"#)],
+            "POST /servers/2/pg/databases/new_api/clone-for-local": [(202, #"{"job_id":"ab12","source":"new_api","target":"new_api_dev","local_env":{"DB_NAME":"new_api_dev"},"grant_db_user":"new_api_user"}"#)],
             "GET /pg/clone-jobs/ab12": [(200, #"{"id":"ab12","status":"running","events":[{"step":"prepare","message":"creating","progress":10}]}"#),
                                        (200, #"{"id":"ab12","status":"success","events":[{"step":"prepare","message":"creating","progress":10},{"step":"done","message":"done","progress":100}]}"#)],
             "POST /servers/1/pg/databases/shop/clone": [(202, #"{"job_id":"cd34","source":"shop","target":"shop_copy"}"#)],
@@ -517,6 +558,7 @@ private final class Box<T>: @unchecked Sendable {
         // Server and source database from the project (settings, DB_NAME).
         let clone = await r.run("db-clone-local", method: "POST", form: ["project": "new-api"])
         #expect(clone.exit == .ok && clone.next == "ab12" && clone.text.contains("new_api → new_api_dev") && clone.text.contains("deploy env is unchanged"))
+        #expect(clone.text.contains("new_api_user gets access to new_api_dev"))
         #expect(transport.posts.last?["project_id"] as? Int == 9 && transport.posts.last?["target_name"] == nil)
         let first = await r.run("clone-status", method: "GET", form: ["id": "ab12", "wait": "25", "since": "0"])
         #expect(first.exit == .timeout && first.text == "[10%] creating" && first.next == "1")

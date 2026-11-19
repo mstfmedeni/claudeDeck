@@ -129,6 +129,7 @@ extension SessionCLI {
       claudedeck server sync DOMAIN FOLDER          (upload a static site's files)
       claudedeck server dns sync DOMAIN | zone add NAME | ns set DOMAIN
       claudedeck server env rescan PROJECT [--dry-run]   (new keys from .env.example)
+      claudedeck server env rm PROJECT ENV_ID   (one row by its id from env get; the owner confirms)
       claudedeck server sql PROJECT QUERY|- [--local] [--write]   (--write: the owner confirms)
       claudedeck server local run PROJECT [--server S] [--port N] [--no-cache] [--wait]
       claudedeck server local status PROJECT [--wait] | local logs PROJECT [--tail N] | local stop PROJECT
@@ -1116,12 +1117,12 @@ extension SessionCLI {
       kind=$1; shift
       action=${1:-}; [ $# -gt 0 ] && shift
       case "$kind:$action" in
-        env:get|env:set|env:rescan|local-env:get|local-env:set|local-env:unset|server-env:get|server-env:set) ;;
-        env:*) die "server env: get, set or rescan" ;;
+        env:get|env:set|env:rescan|env:rm|local-env:get|local-env:set|local-env:unset|server-env:get|server-env:set) ;;
+        env:*) die "server env: get, set, rescan or rm" ;;
         local-env:*) die "server local-env: get, set or unset" ;;
         *) die "server server-env: get or set" ;;
       esac
-      project=""; vars=""; keys=""; secrets=""; file=""; stdin=0; dry_run=0
+      project=""; vars=""; keys=""; secrets=""; file=""; stdin=0; dry_run=0; env_id=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
@@ -1136,6 +1137,7 @@ extension SessionCLI {
           *)
             if [ -z "$project" ]; then project=$1
             elif [ "$action" = unset ]; then keys="$keys${keys:+,}$1"
+            elif [ "$action" = rm ]; then [ -z "$env_id" ] || die "env rm PROJECT ENV_ID (one row)"; env_id=$1
             else
               case "$1" in *=*) vars="$vars$1
     " ;; *) die "$kind set: KEY=VALUE, not $1" ;; esac
@@ -1159,6 +1161,12 @@ extension SessionCLI {
         env:rescan)
           need_session
           srv env-rescan --data-urlencode "$ref" --data-urlencode "dry_run=$dry_run"
+          finish ;;
+        env:rm)
+          # One row by id (env get shows them); the owner confirms (with the key) in ClaudeDeck.
+          case "$env_id" in ''|*[!0-9]*) die "env rm PROJECT ENV_ID (a row id from env get)" ;; esac
+          need_session
+          max_time=150; srv env-rm --data-urlencode "$ref" --data-urlencode "id=$env_id"
           finish ;;
         local-env:unset)
           [ -n "$keys" ] || die "local-env unset PROJECT KEY..."
@@ -1465,7 +1473,13 @@ extension SessionCLI {
     claudedeck server domain add --static SERVER docs example.com [--target /opt/static/DIR] [--no-clean-urls]
     claudedeck server sync DOMAIN FOLDER           # upload FOLDER (inside a registered dir) to the site
     claudedeck server env rescan PROJECT [--dry-run]   # import keys new in .env.example
+    claudedeck server env rm PROJECT ENV_ID        # one row (ID column of env get); the user must approve
     ```
+
+    - A key set twice in the project env: the row updated last wins. Remove the stale copy with
+      `env rm` (it says how many copies of that key remain).
+    - A server-level `DATABASE_URL` is rewritten to the project's own database unless the project
+      env (or, for local runs, the local env) sets `DATABASE_URL` itself.
 
     ServerPlan v1.2 (same gating; new token scopes `sql`, `sql_write`, `local`):
 
