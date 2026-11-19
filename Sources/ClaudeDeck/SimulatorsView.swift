@@ -407,6 +407,7 @@ private struct SimulatorRow: View {
             }
             .help(device.udid)
             Spacer(minLength: 8)
+            holder
             usage
             if device.state != "Shutdown" {
                 memory.frame(minWidth: 70, alignment: .trailing)
@@ -444,6 +445,23 @@ private struct SimulatorRow: View {
                 .help("\(memory.processes) processes")
         } else {
             Text("—").foregroundStyle(.secondary)
+        }
+    }
+
+    /// The session that reserved it with `claudedeck sim acquire`.
+    @ViewBuilder private var holder: some View {
+        if let id = model.simHolds.holder(of: device.udid) {
+            let name = model.deck.session(id)?.name ?? String(localized: "Closed session")
+            Button {
+                if model.deck.session(id) != nil { model.selectedSessionID = id }
+            } label: {
+                Label(name, systemImage: "lock.fill").lineLimit(1)
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+            .help(String(localized: "Reserved by \(name) (claudedeck sim acquire); no other session gets it until it's released"))
         }
     }
 

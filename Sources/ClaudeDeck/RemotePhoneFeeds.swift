@@ -135,8 +135,21 @@ final class RemotePhoneFeeds {
             waiting: states.filter(\.isBlocked).count,
             yourTurn: claude.filter { model.isUnseenIdle($0.id) }.count,
             linesAdded: lines?.added, linesRemoved: lines?.removed,
-            waitingList: top.list, moreWaiting: top.more, fiveHour: five, week: week
+            waitingList: top.list, moreWaiting: top.more, fiveHour: five, week: week,
+            projects: Self.projectShares(model)
         )
+    }
+
+    /// Each project's part of the usage windows (read in the background, at most once a minute).
+    private static func projectShares(_ model: AppModel) -> [RemoteDashboard.ProjectShare]? {
+        let monitor = ProjectUsageMonitor.shared
+        Task { @MainActor in await monitor.refresh(model: model) }
+        guard monitor.loaded else { return nil }
+        return monitor.shares.prefix(RemoteDashboard.maxProjects).map { share in
+            RemoteDashboard.ProjectShare(projectID: share.projectID, name: share.name, fiveHourPercent: share.fiveHourPercent,
+                                         weekPercent: share.weekPercent, fiveHourShare: share.fiveHourShare, weekShare: share.weekShare,
+                                         fiveHourTokens: share.fiveHour.tokens, weekTokens: share.week.tokens, weekCost: share.week.cost)
+        }
     }
 
     // MARK: Simulators
@@ -149,10 +162,11 @@ final class RemotePhoneFeeds {
                 uses.reduce(into: [UUID]()) { if !$0.contains($1.session) { $0.append($1.session) } }
             } ?? []
             let sessions = (live.isEmpty ? controller.lastUse[device.udid]?.sessions ?? [] : live).filter { model.deck.session($0) != nil }
-            guard device.state != "Shutdown" || !sessions.isEmpty else { return nil }
+            let holder = model.simHolds.holder(of: device.udid)
+            guard device.state != "Shutdown" || !sessions.isEmpty || holder != nil else { return nil }
             return RemoteSimulator(udid: device.udid, name: device.name, runtime: device.runtime.displayName, state: device.state,
                                    memoryBytes: device.isBooted ? controller.memory[device.udid].map { roundedMemory($0.bytes) } : nil,
-                                   sessionIDs: sessions)
+                                   sessionIDs: sessions, heldBy: holder)
         }
         return RemoteSimulator.forRemote(list)
     }

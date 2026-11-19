@@ -102,6 +102,12 @@ extension AppModel {
             return cliDecisions(form: form, json: json)
         case .decision(let id):
             return cliDecision(id, json: json)
+        case .simList, .simAcquire, .simRelease:
+            return await cliSimulators(caller, route: route, form: form, json: json)
+        case .usage:
+            return await cliUsage(form: form, json: json)
+        case .status(let ref):
+            return target(ref, caller: caller).flatMapResponse { cliStatus($0, json: json) }
         }
     }
 
@@ -147,6 +153,34 @@ extension AppModel {
         case .blocked(let state): return state
         case .stopped: return "stopped"
         }
+    }
+
+    /// `claudedeck status ID`: state, who started it, the stall watch, the simulators it holds.
+    private func cliStatus(_ session: DeckSession, json: Bool) -> AgentHTTPResponse {
+        let info = SessionCLIStatus(id: session.id, name: session.name, kind: session.kind == .shell ? "terminal" : "claude",
+                                    state: cliState(session), detail: status(of: session.id).detail,
+                                    project: deck.project(session.projectID)?.name ?? "", startedBy: session.startedBy,
+                                    stall: stallStatus(session.id), simulators: simHolds.held(by: session.id).map(\.udid))
+        return SessionCLI.answer(200, info, text: info.text, exit: .ok, json: json)
+    }
+
+    /// `claudedeck usage [--project P]`: each project's share of the 5-hour and weekly windows.
+    private func cliUsage(form: [String: String], json: Bool) async -> AgentHTTPResponse {
+        await usage.refresh()
+        let monitor = ProjectUsageMonitor.shared
+        await monitor.refresh(model: self, maxAge: 30)
+        var shares = monitor.shares
+        let ref = (form["project"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ref.isEmpty {
+            switch SessionCLI.project(ref, callerProject: nil, projects: deck.projects) {
+            case .found(let id): shares = shares.filter { $0.projectID == id }
+            case .unknown: return SessionCLI.failure(404, "unknown_project", exit: .unknown)
+            case .ambiguous: return SessionCLI.failure(400, "ambiguous", exit: .usage)
+            }
+        }
+        let plan = usage.state.usage
+        return SessionCLI.answer(200, SessionCLIUsage(usage: plan, projects: shares),
+                                 text: ProjectUsageReport.text(shares, usage: plan), exit: .ok, json: json)
     }
 
     private func cliOpen(_ caller: UUID, form: [String: String], json: Bool) -> AgentHTTPResponse {

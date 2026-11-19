@@ -145,7 +145,52 @@ struct AgentsSettingsSection: View {
             .disabled(!ServerPlanController.shared.isConfigured && !model.deck.settings.sessionsMayUseServerPlan)
             Text("claudedeck server: servers, containers, logs and deploys through ClaudeDeck (sessions never get the ServerPlan token). Deploys start without asking; stopping or restarting a container, and other actions ServerPlan asks to confirm, wait for your answer here.")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Sessions may reserve simulators", isOn: Binding(
+                get: { model.deck.settings.sessionsMayUseSimulators },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayUseSimulators = on } }
+            ))
+            if model.deck.settings.sessionsMayUseSimulators {
+                Toggle("Shut down simulators ClaudeDeck created when they're released", isOn: Binding(
+                    get: { model.deck.settings.simulatorsShutDownOnRelease },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.simulatorsShutDownOnRelease = on } }
+                ))
+            }
+            Text("claudedeck sim acquire gives a session simulators of its own (at most 4): a free one ClaudeDeck created earlier, or a new one it creates and boots. Your own simulators are never used. They're released with claudedeck sim release, or when the session ends or is closed.")
+                .font(.caption).foregroundStyle(.secondary)
+            StallWatchRows()
         }
+    }
+}
+
+/// Stall watch for sessions other sessions started (StallWatch.swift); off by default.
+private struct StallWatchRows: View {
+    @Environment(AppModel.self) private var model
+
+    private func binding<T>(_ path: WritableKeyPath<StallSettings, T>) -> Binding<T> {
+        Binding(get: { model.deck.settings.stallWatch[keyPath: path] },
+                set: { value in model.mutate(userInitiated: false) { $0.settings.stallWatch[keyPath: path] = value } })
+    }
+
+    var body: some View {
+        Toggle("Watch sessions other sessions started for stalls", isOn: binding(\.enabled))
+        if model.deck.settings.stallWatch.enabled {
+            Stepper(value: binding(\.minutes), in: StallSettings.minuteRange) {
+                Text("Stalled after \(model.deck.settings.stallWatch.minutes) minutes without progress while working")
+            }
+            Toggle("The same error 3 times in a row counts as a stall", isOn: Binding(
+                get: { model.deck.settings.stallWatch.errorRepeats > 1 },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.stallWatch.errorRepeats = on ? 3 : 0 } }
+            ))
+            Picker("When a session stalls", selection: binding(\.action)) {
+                ForEach(StallAction.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            if model.deck.settings.stallWatch.action != .notify {
+                TextField("Nudge message", text: binding(\.nudgeMessage), prompt: Text(AppModel.defaultStallNudge))
+            }
+            Toggle("Leave a note beside the session that started it", isOn: binding(\.tellParent))
+        }
+        Text("Only Claude sessions started with claudedeck new. Progress is a hook event or a new transcript line, so a long build that prints nothing to Claude can look stalled: pick enough minutes. Nudges and restarts: at most 3 per session an hour, then notifications only. Everything is in the activity log.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 }
 
