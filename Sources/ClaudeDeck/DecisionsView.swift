@@ -100,14 +100,14 @@ struct DecisionsView: View {
     /// − 15 pt + : the text size of the whole tab (also ⌘+ / ⌘- / ⌘0).
     private var textSizeControl: some View {
         HStack(spacing: 2) {
-            Button { DecisionsTextSize.zoom(by: -1) } label: { Image(systemName: "textformat.size.smaller") }
+            Button { DecisionsTextSize.zoom(by: -1) } label: { Image(systemName: "minus") }
                 .disabled(size <= DecisionsTextSize.range.lowerBound)
                 .help("Smaller Text (⌘-)")
             Button { DecisionsTextSize.zoom(by: nil) } label: {
                 Text("\(Int(size)) pt").font(.caption.monospacedDigit()).frame(minWidth: 38)
             }
             .help("Actual Size (⌘0)")
-            Button { DecisionsTextSize.zoom(by: 1) } label: { Image(systemName: "textformat.size.larger") }
+            Button { DecisionsTextSize.zoom(by: 1) } label: { Image(systemName: "plus") }
                 .disabled(size >= DecisionsTextSize.range.upperBound)
                 .help("Larger Text (⌘+)")
         }
