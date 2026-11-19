@@ -665,4 +665,80 @@ import Testing
         #expect(try run(["server", "cloudflare", "frob", "example.com"]).code == 2)
         #expect(try run(["server", "cloudflare"], answers: [("ok", "200 0")]).curlCalls.first?.last == base + "cloudflare")
     }
+
+    // MARK: new options, presets, queue, wait --all|--any
+
+    @Test func newSendsItsOptions() throws {
+        let new = try run(["new", "--project", "web", "--permission-mode", "dontAsk", "--allow", "Bash(git *)", "--allow=Edit",
+                           "--model", "opus", "--effort=high", "--skill", "/review", "--queue", "--prompt", "the cart"],
+                          answers: [("SID", "200 0")])
+        #expect(new.code == 0 && new.out == "SID\n")
+        let call = try #require(new.curlCalls.first)
+        #expect(call.contains("permission_mode=dontAsk") && call.contains("allow=Bash(git *)\nEdit"))
+        #expect(call.contains("model=opus") && call.contains("effort=high") && call.contains("skill=review") && call.contains("queue=1"))
+        #expect(call.contains("prompt=the cart") && call.last == "http://127.0.0.1:47832/v1/cli/projects/web/sessions")
+        // Without them: empty values, as before.
+        let plain = try #require(try run(["new"], answers: [("SID", "200 0")]).curlCalls.first)
+        #expect(plain.contains("permission_mode=") && plain.contains("allow=") && plain.contains("queue=0"))
+
+        // Checked before anything is sent.
+        for args in [["new", "--permission-mode", "yolo"], ["new", "--effort", "extreme"], ["new", "--skill", "a/b"],
+                     ["new", "--allow"], ["new", "--allow", ""], ["new", "--model"]] {
+            let bad = try run(args)
+            #expect(bad.code == 2 && bad.curlCalls.isEmpty, "\(args)")
+        }
+        let off = try run(["new", "--permission-mode", "bypassPermissions"], answers: [(#"{"error":"bypass_off"}"#, "403 4")])
+        #expect(off.code == 4 && off.err.contains("bypass_off") && off.err.contains("Settings"))
+        // Queued: the queue id is the answer.
+        let queued = try run(["new", "--queue"], answers: [("q_0123456789ab", "200 0")])
+        #expect(queued.code == 0 && queued.out == "q_0123456789ab\n")
+    }
+
+    @Test func presetCommands() throws {
+        let set = try run(["preset", "set", "./app", "--permission-mode", "acceptEdits", "--allow", "Bash(swift test *)", "--json"],
+                          answers: [("{}", "200 0")], cwd: URL(fileURLWithPath: "/tmp"))
+        let call = try #require(set.curlCalls.first)
+        #expect(set.code == 0 && call.contains("permission_mode=acceptEdits") && call.contains("allow=Bash(swift test *)"))
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/projects/%2Fprivate%2Ftmp%2Fapp/preset" && !call.contains("-G"))
+        let show = try #require(try run(["preset", "show", "self"], answers: [("web: model opus", "200 0")]).curlCalls.first)
+        #expect(show.contains("-G") && show.last == "http://127.0.0.1:47832/v1/cli/projects/self/preset")
+        #expect(try run(["preset"], answers: [("no presets", "200 0")]).curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/presets")
+        let clear = try #require(try run(["preset", "clear", "web"], answers: [("web: no preset", "200 0")]).curlCalls.first)
+        #expect(clear.contains("clear=1"))
+        #expect(try run(["preset", "set", "web"]).code == 2) // nothing to set
+        #expect(try run(["preset", "set"]).code == 2)
+        #expect(try run(["preset", "show", "web", "--model", "opus"]).code == 2)
+        #expect(try run(["preset", "frob"]).code == 2)
+    }
+
+    @Test func queueCommands() throws {
+        #expect(try run(["queue"], answers: [("the queue is empty", "200 0")]).curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/queue")
+        let show = try run(["queue", "show", "q_0123456789ab"], answers: [("SID", "200 0")])
+        #expect(show.out == "SID\n" && show.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/queue/q_0123456789ab")
+        let cancel = try #require(try run(["queue", "cancel", "q_0123456789ab"], answers: [("cancelled", "200 0")]).curlCalls.first)
+        #expect(!cancel.contains("-G") && cancel.last == "http://127.0.0.1:47832/v1/cli/queue/q_0123456789ab/cancel")
+        let theirs = try run(["queue", "cancel", "q_0123456789ab"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(theirs.code == 4)
+        #expect(try run(["queue", "show"]).code == 2)
+        #expect(try run(["queue", "show", "q_../x"]).code == 2)
+        #expect(try run(["queue", "drop", "q_1"]).code == 2)
+    }
+
+    @Test func waitForSeveral() throws {
+        let all = try run(["wait", "--all", "abcd1234", "q_0123456789ab", "--timeout", "60"],
+                          answers: [("timeout", "200 124"), ("abcd1234: finished (exit 0)", "200 0")])
+        #expect(all.code == 0 && all.curlCalls.count == 2)
+        let call = all.curlCalls[0]
+        #expect(call.contains("ids=abcd1234,q_0123456789ab") && call.contains("mode=all") && call.contains("timeout=25"))
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/wait")
+        let any = try run(["wait", "--any", "abcd", "ef01"], answers: [("ef01: blocked: needs permission", "200 3")])
+        #expect(any.code == 3 && any.curlCalls.first?.contains("mode=any") == true)
+        // A queue id on its own goes to the single wait.
+        #expect(try run(["wait", "q_0123456789ab"], answers: [("finished", "200 0")]).curlCalls.first?.last
+            == "http://127.0.0.1:47832/v1/cli/sessions/q_0123456789ab/wait")
+        #expect(try run(["wait", "abcd", "ef01"]).code == 2) // several without --all/--any
+        #expect(try run(["wait", "--all"]).code == 2)
+        #expect(try run(["wait", "--all", "--any", "abcd"]).code == 2)
+        #expect(try run(["wait", "--any", "abcd", "x/y"]).code == 2)
+    }
 }

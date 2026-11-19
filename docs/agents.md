@@ -157,6 +157,7 @@ claudedeck open [--split right|left|down|none] [--cwd DIR] [--name NAME] [--json
 claudedeck send ID TEXT [--enter] [--json]
 claudedeck capture ID [--lines N] [--trim] [--json]
 claudedeck wait ID [--timeout SECONDS] [--json]
+claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck skill setup [--user|--project] [--force]
@@ -184,7 +185,17 @@ claudedeck skill setup [--user|--project] [--force]
   for shells without one, like `sh`) and the output has settled; a typed command's exit code isn't
   known (`finished`). After a send to a Claude session, only a newer hook state counts. A
   terminal with Program Status answers from it: blocked ends the wait with 3, and a typed command's
-  result (shell integration) gives its exit code. No `--timeout` (or `0`): no limit.
+  result (shell integration) gives its exit code. No `--timeout` (or `0`): no limit. `ID` may
+  be a queue id from `new --queue` (`q_…`): it waits for the start (`timeout: still queued`,
+  124), then for the session; a start that was cancelled or failed is exit 1
+  (`queue_cancelled` / `queue_failed`).
+- **wait --all|--any:** the same over several ids (sessions, terminals or queue ids; at most 50).
+  `--all` ends once every one has stopped running (idle, needs you, finished, failed or
+  stopped): exit 3 if any needs you, else 1 if any failed (or its queued start won't come),
+  else 0. `--any` ends at the first one, with that one's exit code (the first in the order
+  given when several did). Timeout: 124. One line per id (`--json`: `{mode, result, first,
+  sessions: [{ref, id, queue_id, result, exit_code, state, detail}]}`). Every id is checked
+  first: an unknown one is exit 5, `self` exit 2.
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -202,7 +213,7 @@ claudedeck skill setup [--user|--project] [--force]
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
-| 5 | Unknown id, project, server, container or deployment |
+| 5 | Unknown id, project, server, container, deployment, skill or queue id |
 | 124 | `wait` timed out; still running |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
@@ -237,12 +248,17 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/terminals` | `command, cwd, name, split` | open |
 | POST | `/v1/cli/sessions/{ref}/send` | `text, enter=1` | send |
 | GET | `/v1/cli/sessions/{ref}/screen` | `lines, trim=1` | capture |
-| GET | `/v1/cli/sessions/{ref}/wait` | `timeout` (seconds, at most 25 per request) | wait |
+| GET | `/v1/cli/sessions/{ref}/wait` | `timeout` (seconds, at most 25 per request); `{ref}` may be a queue id | wait |
+| GET | `/v1/cli/wait` | `ids` (comma-separated), `mode` (`all`/`any`), `timeout` | wait |
 | POST | `/v1/cli/notify` | `text` | notify |
 | POST | `/v1/cli/ask` | `question, agent` | ask |
 | GET | `/v1/cli/projects` | | projects |
 | POST | `/v1/cli/projects` | `path, name, group, create=1` | start |
-| POST | `/v1/cli/projects/{ref}/sessions` | `name, prompt, worktree` | start |
+| POST | `/v1/cli/projects/{ref}/sessions` | `name, prompt, worktree, permission_mode, allow, model, effort, skill, queue=1` (`allow`: one rule per line) | start |
+| GET | `/v1/cli/presets` | | start |
+| GET/POST | `/v1/cli/projects/{ref}/preset` | POST: `permission_mode, allow, model, effort` or `clear=1` | start |
+| GET | `/v1/cli/queue` · `/v1/cli/queue/{id}` | | start |
+| POST | `/v1/cli/queue/{id}/cancel` | | start |
 | GET/POST | `/v1/cli/server/{command}` | per command (below) | server |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
@@ -250,7 +266,10 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 `409 not_running` / `blocked` / `not_started`, `429 too_many`; for the commands below also
 `403 setting_off` / `system_path` / `outside_home` / `owner_refused` / `serverplan_off`,
 `404 unknown_project` / `no_such_folder`, `429 too_many_starts` / `too_many_projects` /
-`too_many_running`, `501 not_available`. The routes for agents above (`/v1/projects`,
+`too_many_running`, `501 not_available`; for `new`, `preset`, `queue` and `wait --all|--any`
+also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
+`bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
+`not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
 
 ### Projects and Claude sessions
@@ -258,7 +277,13 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 ```sh
 claudedeck projects [--json]
 claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
-claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME] [--json]
+claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME]
+               [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
+               [--skill NAME] [--queue] [--json]
+claudedeck preset show [PROJECT] [--json]
+claudedeck preset set PROJECT [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL] [--json]
+claudedeck preset clear PROJECT
+claudedeck queue list [--json] | queue show QID [--json] | queue cancel QID
 ```
 
 They need **Sessions may add projects and start Claude sessions** (Settings › Agents ›
@@ -295,8 +320,69 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   (Activity Log only; it may already be trusted). Sessions the owner starts keep asking as before. The
   demo uses its own `~/.claude.json` (in its home), never the real one, and its stand-in `claude`
   shows the question in folders that aren't trusted.
+- **How the session runs** (`new`, all optional; without them `claude` starts exactly as before):
+  - `--permission-mode MODE`: `claude --permission-mode MODE`. MODE is what Claude Code takes:
+    `default`, `acceptEdits`, `plan`, `auto`, `dontAsk`, `manual` (2.1's name for `default`) or
+    `bypassPermissions`. `bypassPermissions` also needs **Sessions may start sessions that skip
+    all permission prompts** (under the setting above; off by default): off, `403 bypass_off`
+    (exit 4), and a session that was started with it while it was on starts in Claude Code's
+    default mode after it's turned off (logged).
+  - `--allow RULE` (repeatable): `claude --allowedTools RULE…`. A rule is a tool name, with a
+    pattern in parentheses if wanted: `Edit`, `"Bash(git *)"`, `WebFetch(domain:example.com)`,
+    `mcp__server__tool`. One line, at most 300 characters, never starting with `-`; at most 50.
+    A rule that allows every shell command (`Bash`, `Bash(*)`, `Bash(:*)`, the same for
+    `PowerShell`) is as good as skipping permissions, so it needs the bypass setting too
+    (`bypass_off`), and is left out when the session starts after the setting was turned off.
+  - `--model MODEL`: `claude --model` (an alias like `opus` / `sonnet` or a full id; letters,
+    digits and `. _ - [ ] : / @`). `--effort LEVEL`: `claude --effort` (`low`, `medium`, `high`,
+    `xhigh`, `max`).
+  - Each value goes to `claude` as its own argument (no shell in between), between the Pencil
+    MCP option and `--name`, so `--allowedTools` (which takes several values) ends at `--name`.
+    The options are kept with the session (`launchOptions` in deck.json) and passed again on
+    every start, a resume or a restart included.
+  - **claudedeck keeps working:** a session started with a mode or rules (from the flags or the
+    preset) is also allowed `Bash(claudedeck *)` and `Bash(<the script's absolute path> *)`, so
+    `send`, `wait`, `capture` and the rest still run in a mode that refuses what wasn't allowed
+    (`dontAsk`) and don't stop at a prompt in the others. Messaging between sessions is
+    `claudedeck send` (the rule above, unchanged): the session that started another may type into
+    it; anyone else's text is a note unless **May type into Claude** is on. (Claude Code's own
+    `SendMessage` is between agents inside one `claude` process and isn't affected.)
+  - `--skill NAME`: the first thing typed is `/NAME` (and the prompt after it, as the skill's
+    arguments), once Claude is up, as `--prompt` is. NAME is a skill (`skills/NAME/SKILL.md`, or
+    a `SKILL.md` whose `name:` is NAME) or a command (`commands/NAME.md`) in `~/.claude` (and
+    `$CLAUDE_CONFIG_DIR`), in the project's `.claude`, or in an installed plugin (`plugin:NAME`,
+    or a plain NAME any plugin has). Not found: `404 unknown_skill`, exit 5, nothing starts.
+- **Presets:** `preset set PROJECT …` keeps options for the sessions `new` starts in PROJECT
+  (`self`, an id, a name or a path, as for `new`). `new` uses the preset for every option it
+  isn't given: a flag replaces that one field (`--allow` the whole list), and
+  `--permission-mode default` overrides a preset's mode. `set` replaces the whole preset; `clear`
+  removes it; `show` prints one project's (or, without PROJECT, every one). Presets are in
+  deck.json (`cliPresets`), apply only to sessions `new` starts (never to the owner's), and the
+  preset in effect when the session starts counts (also for a queued one). A preset with
+  `bypassPermissions` can only be set while that setting is on. Setting and clearing are in the
+  Activity Log.
+- **Queue (`new --queue`):** when the start would be refused for the running cap
+  (`too_many_running`) or the caller's rate limit (`too_many_starts`), it waits in a queue
+  instead and the command prints the queue id (`--json`: `{"queued": true, "queue_id": "q_…",
+  "position": N, "reason": "too_many_running"}`), exit 0. Every other refusal (setting off,
+  unknown project or skill, `bypass_off`, a bad value) is answered at once, as without
+  `--queue`. The queue is checked every 2 seconds while something waits; oldest first, each starts
+  once the cap has room and its caller's rate limit allows (a caller over its limit doesn't hold
+  up the others), with the same start, notification and log as `new`. It's kept in deck.json
+  (`cliQueue`), so it survives a restart and drains once the app runs again. A queued start
+  fails instead of starting when the setting was turned off (`setting_off`), the caller's
+  session was removed (`caller_gone`) or the project is gone. At most 20 waiting per caller and
+  50 in all (`429 too_many_queued`); finished entries are kept 24 hours.
+  - `queue list`: every entry (who queued it, `#N` while waiting, the session once started).
+  - `queue show QID`: the session id once it started (exit 0), `queued #N` (exit 0), or
+    `cancelled` / `failed (reason)` (exit 1).
+  - `queue cancel QID`: only the session that queued it (`403 not_yours`), only while it waits
+    (`409 not_queued`).
+  - `wait QID` (and `--all|--any`) waits for the start and then for the session; `send` and
+    `capture` take a started queue id too (`409 queued` before).
 - **Guardrails:** per calling session at most 5 `new` in 10 minutes and 10 new projects an hour;
-  at most 8 sessions started this way running at once (all callers). Over a limit: `429`, exit 4.
+  at most 8 sessions started this way running at once (all callers). Over a limit: `429`, exit 4
+  (`new --queue` waits for room instead).
   Every action is in the agent Activity Log, and the owner gets a notification "started Y in Z"
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).

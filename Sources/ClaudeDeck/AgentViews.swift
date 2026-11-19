@@ -130,6 +130,14 @@ struct AgentsSettingsSection: View {
             ))
             Text("claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, 8 running at once. Each is in the activity log and a notification. Terminals a session opened can't.")
                 .font(.caption).foregroundStyle(.secondary)
+            if model.deck.settings.sessionsMayStartSessions {
+                Toggle("Sessions may start sessions that skip all permission prompts (bypassPermissions)", isOn: Binding(
+                    get: { model.deck.settings.sessionsMayBypassPermissions },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayBypassPermissions = on } }
+                ))
+                Text("claudedeck new --permission-mode bypassPermissions or --allow Bash (every shell command), also from a project preset. Such a session runs commands without asking. Off: refused; sessions started that way earlier start without it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Toggle("Sessions may use ServerPlan", isOn: Binding(
                 get: { model.deck.settings.sessionsMayUseServerPlan },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayUseServerPlan = on } }

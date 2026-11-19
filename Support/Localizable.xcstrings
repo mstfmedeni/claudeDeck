@@ -18230,6 +18230,26 @@
           }
         }
       }
+    },
+    "Sessions may start sessions that skip all permission prompts (bypassPermissions)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar hiçbir izin sormayan oturumlar başlatabilir (bypassPermissions)"
+          }
+        }
+      }
+    },
+    "claudedeck new --permission-mode bypassPermissions or --allow Bash (every shell command), also from a project preset. Such a session runs commands without asking. Off: refused; sessions started that way earlier start without it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck new --permission-mode bypassPermissions ya da --allow Bash (her kabuk komutu), bir proje ön ayarından gelse de. Böyle bir oturum komutları sormadan çalıştırır. Kapalıyken reddedilir; daha önce bu şekilde başlatılmış oturumlar bunlar olmadan başlar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

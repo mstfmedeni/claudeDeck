@@ -78,6 +78,10 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     /// Claude sessions another session started with `claudedeck new`: that session (it may type
     /// into this one without "May type into Claude"; counts toward the running cap).
     public var startedBy: UUID?
+    /// Claude sessions `claudedeck new` started with a permission mode, allowed tools, a model or
+    /// an effort (its flags or the project's preset): passed to `claude` on every start, resumes
+    /// included (SessionCLILaunch.swift).
+    public var launchOptions: ClaudeLaunchOptions?
     /// Shell sessions that are a ServerPlan server's terminal (its SSH session through the panel)
     /// instead of a local shell. Older versions read such a session as a plain terminal.
     public var serverPlanTerminal: ServerPlanTerminalTarget?
@@ -125,6 +129,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         showProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .showProgramStatus)
         openedBy = try? c.decodeIfPresent(UUID.self, forKey: .openedBy)
         startedBy = try? c.decodeIfPresent(UUID.self, forKey: .startedBy)
+        launchOptions = try? c.decodeIfPresent(ClaudeLaunchOptions.self, forKey: .launchOptions)
         serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
         helperHost = try? c.decodeIfPresent(PtydHost.self, forKey: .helperHost)
     }
@@ -224,6 +229,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// `claudedeck project add` and `claudedeck new`: sessions add projects and start Claude
     /// sessions on their own (rate-limited, capped, logged). Off by default.
     public var sessionsMayStartSessions = false
+    /// `claudedeck new --permission-mode bypassPermissions` (or a preset with it): sessions may
+    /// start Claude sessions that skip every permission prompt. Off by default; off, such a
+    /// start is refused (`bypass_off`) and a session that had it starts in the default mode.
+    public var sessionsMayBypassPermissions = false
     /// `claudedeck server …`: sessions use ServerPlan through the app (never its token). Off by default.
     public var sessionsMayUseServerPlan = false
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
@@ -282,6 +291,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionCLIEnabled = try c.decodeIfPresent(Bool.self, forKey: .sessionCLIEnabled) ?? d.sessionCLIEnabled
         sessionsMayTypeIntoClaude = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayTypeIntoClaude) ?? d.sessionsMayTypeIntoClaude
         sessionsMayStartSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayStartSessions) ?? d.sessionsMayStartSessions
+        sessionsMayBypassPermissions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayBypassPermissions) ?? d.sessionsMayBypassPermissions
         sessionsMayUseServerPlan = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseServerPlan) ?? d.sessionsMayUseServerPlan
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
@@ -312,6 +322,10 @@ public struct DeckData: Codable, Sendable, Equatable {
     public var ciRepairRequests: [CIRepairRequest] = []
     /// "Fix with Claude" requests for failed ServerPlan deploys (see ServerPlanRepair.swift).
     public var deployRepairRequests: [DeployRepairRequest] = []
+    /// `claudedeck preset set`: per project, the options for sessions `claudedeck new` starts there.
+    public var cliPresets: [CLIPreset] = []
+    /// `claudedeck new --queue`: starts waiting for room (and recently finished ones).
+    public var cliQueue: [CLIQueuedStart] = []
 
     public static let maxPanes = 4
 
@@ -331,6 +345,8 @@ public struct DeckData: Codable, Sendable, Equatable {
         automationRuns = try c.decodeIfPresent([AutomationRun].self, forKey: .automationRuns) ?? []
         ciRepairRequests = (try? c.decodeIfPresent([Lossy<CIRepairRequest>].self, forKey: .ciRepairRequests))?.compactMap(\.value) ?? []
         deployRepairRequests = (try? c.decodeIfPresent([Lossy<DeployRepairRequest>].self, forKey: .deployRepairRequests))?.compactMap(\.value) ?? []
+        cliPresets = (try? c.decodeIfPresent([Lossy<CLIPreset>].self, forKey: .cliPresets))?.compactMap(\.value) ?? []
+        cliQueue = (try? c.decodeIfPresent([Lossy<CLIQueuedStart>].self, forKey: .cliQueue))?.compactMap(\.value) ?? []
     }
 
     // MARK: Mutations

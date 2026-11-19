@@ -27,6 +27,10 @@ extension SessionCLI {
           The screen and scrollback as text.
       claudedeck wait ID [--timeout SECONDS] [--json]
           Until the terminal's command finishes, or a Claude session is idle or needs the user.
+          ID may be a queue id (new --queue): it waits for the start, then for the session.
+      claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
+          --all: until every one stopped running (3 if any needs the user, else 1 if any
+          failed, else 0). --any: until the first one does, with its code.
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -40,9 +44,21 @@ extension SessionCLI {
       claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
           Adds a folder as a project (an existing one: returns it). --create makes the folder,
           only under your home folder. Prints the project id.
-      claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME] [--json]
+      claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME]
+                     [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
+                     [--skill NAME] [--queue] [--json]
           Starts a Claude session (in this session's project by default) and types TEXT once
           Claude is up. Prints the session id; wait, capture and send work on it.
+          MODE: default, acceptEdits, plan, auto, dontAsk, manual, bypassPermissions (needs its
+          own setting, as does a rule allowing every shell command: Bash, "Bash(*)"). RULE: a tool rule for claude --allowedTools ("Bash(git *)", Edit).
+          LEVEL: low, medium, high, xhigh, max. --skill starts with /NAME (TEXT as its arguments).
+          --queue: over the cap or rate limit, waits in a queue instead; prints a queue id (q_...).
+      claudedeck preset show [PROJECT] [--json]
+      claudedeck preset set PROJECT [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
+      claudedeck preset clear PROJECT
+          Options new uses in PROJECT when it isn't given them (a flag replaces that field).
+      claudedeck queue list [--json] | queue show QID [--json] | queue cancel QID
+          Queued starts; show prints the session id once it started.
 
     ServerPlan (Settings > Agents: "Sessions may use ServerPlan"):
       claudedeck server list | projects | dirs | features | cloudflare | deployments [--project P]
@@ -104,7 +120,7 @@ extension SessionCLI {
 
     check_id() {
       [ -n "$1" ] || die "$2: which one? See claudedeck list."
-      case "$1" in *[!A-Za-z0-9-]*) die "$2: not an id: $1" ;; esac
+      case "$1" in *[!A-Za-z0-9_-]*) die "$2: not an id: $1" ;; esac
     }
 
     # call PATH CURL-ARGS...: the answer's body in $body, its exit code in $code.
@@ -143,7 +159,16 @@ extension SessionCLI {
             message=$(printf '%s' "$body" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
             case "$reason" in
               setting_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > Command-line tool)" ;;
-              too_many_starts|too_many_projects|too_many_running) hint=" (rate limit or cap; try later)" ;;
+              too_many_starts|too_many_projects|too_many_running) hint=" (rate limit or cap; try later, or new --queue)" ;;
+              too_many_queued) hint=" (the queue is full; try later)" ;;
+              bypass_off) hint=" (bypassPermissions is off in ClaudeDeck: Settings > Agents > Command-line tool)" ;;
+              bad_permission_mode) hint=" (default, acceptEdits, plan, auto, dontAsk, manual or bypassPermissions)" ;;
+              bad_effort) hint=" (low, medium, high, xhigh or max)" ;;
+              bad_allow) hint=" (a tool rule like Edit or \"Bash(git *)\")" ;;
+              unknown_skill) hint=" (no such skill in ~/.claude/skills, the project's .claude/skills or a plugin)" ;;
+              unknown_queue_id) hint=" (see claudedeck queue list)" ;;
+              queued) hint=" (still queued; claudedeck wait QID)" ;;
+              queue_cancelled|queue_failed) hint=" (see claudedeck queue show QID)" ;;
               unknown_project) hint=" (see claudedeck projects)" ;;
               owner_refused) hint=" (the owner refused or didn't answer in ClaudeDeck)" ;;
               serverplan_off) hint=" (ServerPlan isn't set up in ClaudeDeck)" ;;
@@ -264,18 +289,24 @@ extension SessionCLI {
     }
 
     cmd_wait() {
-      id=""; timeout=0
+      id=""; ids=""; mode=""; timeout=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --timeout) [ $# -ge 2 ] || die "wait: --timeout needs seconds"; timeout=$2; shift ;;
           --timeout=*) timeout=${1#*=} ;;
+          --all|--any) [ -z "$mode" ] || [ "$mode" = "${1#--}" ] || die "wait: --all or --any, not both"; mode=${1#--} ;;
           --json) json=1 ;;
           -*) die "wait: unknown option $1" ;;
-          *) [ -z "$id" ] || die "wait: one ID only"; id=$1 ;;
+          *)
+            check_id "$1" wait
+            if [ -z "$id" ]; then id=$1; fi
+            ids="$ids${ids:+,}$1"
+            ;;
         esac
         shift
       done
       check_id "$id" wait
+      [ -n "$mode" ] || [ "$id" = "$ids" ] || die "wait: one ID only (or --all / --any ID...)"
       case "$timeout" in ""|*[!0-9]*) die "wait: --timeout needs whole seconds (0: no limit)" ;; esac
       need_session
       start=$(date +%s)
@@ -287,7 +318,12 @@ extension SessionCLI {
           [ "$left" -lt "$window" ] && window=$left
         fi
         max_time=$((window + 15))
-        call "/sessions/$id/wait" -G --data-urlencode "timeout=$window" --data-urlencode "format=$(fmt)"
+        if [ -n "$mode" ]; then
+          call /wait -G --data-urlencode "ids=$ids" --data-urlencode "mode=$mode" --data-urlencode "timeout=$window" \
+            --data-urlencode "format=$(fmt)"
+        else
+          call "/sessions/$id/wait" -G --data-urlencode "timeout=$window" --data-urlencode "format=$(fmt)"
+        fi
         if [ "$code" = 124 ] && { [ "$timeout" -eq 0 ] || [ $((timeout - ($(date +%s) - start))) -gt 0 ]; }; then
           continue
         fi
@@ -366,10 +402,55 @@ extension SessionCLI {
       finish
     }
 
+    # Launch options shared by new and preset set: permission mode, allowed tools (one per line),
+    # model, effort. Returns 1 when $1 isn't one of them (the caller handles it); sets $taken.
+    launch_option() {
+      taken=1
+      case "$1" in
+        --permission-mode) [ $# -ge 2 ] || die "$cmd: --permission-mode needs a mode"; mode=$2; taken=2 ;;
+        --permission-mode=*) mode=${1#*=} ;;
+        --allow) [ $# -ge 2 ] || die "$cmd: --allow needs a tool rule"; add_allow "$2"; taken=2 ;;
+        --allow=*) add_allow "${1#*=}" ;;
+        --model) [ $# -ge 2 ] || die "$cmd: --model needs a model"; model=$2; taken=2 ;;
+        --model=*) model=${1#*=} ;;
+        --effort) [ $# -ge 2 ] || die "$cmd: --effort needs low, medium, high, xhigh or max"; effort=$2; taken=2 ;;
+        --effort=*) effort=${1#*=} ;;
+        *) return 1 ;;
+      esac
+      return 0
+    }
+
+    add_allow() {
+      case "$1" in *"
+    "*) die "$cmd: --allow takes one rule per flag" ;; esac
+      [ -n "$1" ] || die "$cmd: --allow needs a tool rule"
+      allow="$allow${allow:+
+    }$1"
+    }
+
+    check_launch_options() {
+      case "$mode" in ""|default|manual|acceptEdits|plan|auto|dontAsk|bypassPermissions) ;;
+        *) die "$cmd: --permission-mode is default, acceptEdits, plan, auto, dontAsk, manual or bypassPermissions" ;; esac
+      case "$effort" in ""|low|medium|high|xhigh|max) ;; *) die "$cmd: --effort is low, medium, high, xhigh or max" ;; esac
+    }
+
+    # A project reference in a URL path (an absolute path for ./ and ../).
+    project_ref() {
+      p=$1
+      case "$p" in
+        /*|./*|../*) p=$(abs_path "$p") ;;
+      esac
+      printf '%s' "$p" | sed 's/%/%25/g; s/\//%2F/g; s/ /%20/g; s/?/%3F/g; s/#/%23/g'
+    }
+
     cmd_new() {
-      project=self; name=""; prompt=""; worktree=""
+      cmd=new; project=self; name=""; prompt=""; worktree=""; mode=""; allow=""; model=""; effort=""; skill=""; queue=0
       while [ $# -gt 0 ]; do
+        if launch_option "$@"; then shift "$taken"; continue; fi
         case "$1" in
+          --skill) [ $# -ge 2 ] || die "new: --skill needs a skill name"; skill=$2; shift ;;
+          --skill=*) skill=${1#*=} ;;
+          --queue) queue=1 ;;
           --project) [ $# -ge 2 ] || die "new: --project needs an id, name or path"; project=$2; shift ;;
           --project=*) project=${1#*=} ;;
           --name) [ $# -ge 2 ] || die "new: --name needs a name"; name=$2; shift ;;
@@ -385,13 +466,69 @@ extension SessionCLI {
       done
       [ -n "$project" ] || die "new: --project needs an id, name or path"
       [ "$prompt" = "-" ] && prompt=$(cat)
-      case "$project" in
-        /*|./*|../*) project=$(abs_path "$project") ;;
-      esac
-      ref=$(printf '%s' "$project" | sed 's/%/%25/g; s/\//%2F/g; s/ /%20/g; s/?/%3F/g; s/#/%23/g')
+      check_launch_options
+      skill=${skill#/}
+      case "$skill" in *[!A-Za-z0-9._:-]*) die "new: --skill is a skill name (letters, digits, . _ - and plugin:name)" ;; esac
+      ref=$(project_ref "$project")
       need_session
       call "/projects/$ref/sessions" --data-urlencode "name=$name" --data-urlencode "prompt=$prompt" \
-        --data-urlencode "worktree=$worktree" --data-urlencode "format=$(fmt)"
+        --data-urlencode "worktree=$worktree" --data-urlencode "permission_mode=$mode" --data-urlencode "allow=$allow" \
+        --data-urlencode "model=$model" --data-urlencode "effort=$effort" --data-urlencode "skill=$skill" \
+        --data-urlencode "queue=$queue" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_preset() {
+      cmd=preset; action=${1:-show}
+      [ $# -gt 0 ] && shift
+      case "$action" in show|set|clear) ;; *) die "preset: try claudedeck preset show|set|clear PROJECT" ;; esac
+      cmd="preset $action"; project=""; mode=""; allow=""; model=""; effort=""
+      while [ $# -gt 0 ]; do
+        if [ "$action" = set ] && launch_option "$@"; then shift "$taken"; continue; fi
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "$cmd: unknown option $1" ;;
+          *) [ -z "$project" ] || die "$cmd: one PROJECT only"; project=$1 ;;
+        esac
+        shift
+      done
+      check_launch_options
+      need_session
+      if [ "$action" = show ] && [ -z "$project" ]; then
+        call /presets -G --data-urlencode "format=$(fmt)"
+        finish
+      fi
+      [ -n "$project" ] || die "$cmd: which project? (an id, a name, a path or self)"
+      ref=$(project_ref "$project")
+      case "$action" in
+        show) call "/projects/$ref/preset" -G --data-urlencode "format=$(fmt)" ;;
+        set)
+          [ -n "$mode$allow$model$effort" ] || die "preset set: give --permission-mode, --allow, --model or --effort (preset clear removes it)"
+          call "/projects/$ref/preset" --data-urlencode "permission_mode=$mode" --data-urlencode "allow=$allow" \
+            --data-urlencode "model=$model" --data-urlencode "effort=$effort" --data-urlencode "format=$(fmt)" ;;
+        clear) call "/projects/$ref/preset" --data-urlencode "clear=1" --data-urlencode "format=$(fmt)" ;;
+      esac
+      finish
+    }
+
+    cmd_queue() {
+      action=${1:-list}
+      [ $# -gt 0 ] && shift
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "queue $action: unknown option $1" ;;
+          *) [ -z "$id" ] || die "queue $action: one QID only"; id=$1 ;;
+        esac
+        shift
+      done
+      case "$action" in
+        list) [ -z "$id" ] || die "queue list takes no id"; need_session; call /queue -G --data-urlencode "format=$(fmt)" ;;
+        show) check_id "$id" "queue show"; need_session; call "/queue/$id" -G --data-urlencode "format=$(fmt)" ;;
+        cancel) check_id "$id" "queue cancel"; need_session; call "/queue/$id/cancel" --data-urlencode "format=$(fmt)" ;;
+        *) die "queue: try claudedeck queue list | show QID | cancel QID" ;;
+      esac
       finish
     }
 
@@ -811,6 +948,8 @@ extension SessionCLI {
       projects) cmd_projects "$@" ;;
       project) cmd_project "$@" ;;
       new) cmd_new "$@" ;;
+      preset) cmd_preset "$@" ;;
+      queue) cmd_queue "$@" ;;
       server) cmd_server "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
@@ -869,6 +1008,22 @@ extension SessionCLI {
                                                    # prints the new session's id (default: your project)
     ```
 
+    ```sh
+    claudedeck new --permission-mode acceptEdits --allow "Bash(npm test *)" --allow Edit \
+      --model sonnet --effort high --skill review --prompt "the cart module"
+    claudedeck new --queue --prompt "…"            # over a limit: prints q_…; `wait q_…` works
+    claudedeck wait --all ID1 ID2 [--timeout S]    # or --any: the first one to stop
+    claudedeck preset set self --permission-mode acceptEdits --allow "Bash(swift test *)"
+    claudedeck preset show [PROJECT] · preset clear PROJECT
+    claudedeck queue list · queue show QID · queue cancel QID
+    ```
+
+    - `--permission-mode`: default, acceptEdits, plan, auto, dontAsk, manual; bypassPermissions
+      only if the user allowed it (else exit 4 `bypass_off`; don't retry). `--allow` is a Claude
+      Code tool rule, repeatable. A project's preset fills in what `new` doesn't give.
+      Sessions started with a mode or rules may always run `claudedeck`.
+    - `--skill NAME` starts the session with `/NAME` (the prompt becomes its arguments); the
+      skill must exist (exit 5 `unknown_skill`).
     - `--create` makes the folder, only under the user's home folder.
     - `new` types `--prompt` once Claude is up. You may `send` to sessions you started, and
       `wait`/`capture` them like terminals.
@@ -877,7 +1032,8 @@ extension SessionCLI {
       ~/Library). Elsewhere the
       session waits for the user at that question: `capture` shows it; tell the user.
     - Limits: 5 new sessions per 10 minutes and 10 new projects per hour per session, 8
-      started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it.
+      started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it
+      (`--queue` waits for you: the start happens once there's room).
     - The user gets a notification for each and can see them in the activity log. Start
       sessions only when parallel work really helps, and say why in the prompt.
 
