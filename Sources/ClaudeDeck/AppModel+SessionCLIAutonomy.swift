@@ -110,12 +110,12 @@ extension AppModel {
                                      worktree: worktree, skill: skill.isEmpty ? nil : skill, options: given)
         request.account = account
         let running = cliRunningStarted
-        if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, book: &cli) {
+        if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, cap: deck.settings.maxStartedSessions, book: &cli) {
             guard form["queue"] == "1", refusal.status == 429 else {
                 logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (rate limit or cap)", ok: false)
                 return refusal
             }
-            return cliEnqueue(request, reason: running >= SessionCLI.maxRunningStarted ? "too_many_running" : "too_many_starts", json: json)
+            return cliEnqueue(request, reason: running >= deck.settings.maxStartedSessions ? "too_many_running" : "too_many_starts", json: json)
         }
         switch await cliStart(request) {
         case .failure(let refusal): return refusal.response

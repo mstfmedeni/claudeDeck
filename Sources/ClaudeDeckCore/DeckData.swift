@@ -261,6 +261,11 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// `claudedeck close`: a session may end itself and the sessions it started (never the
     /// owner's). Off by default.
     public var sessionsMayCloseSessions = false
+    /// The cap on Claude sessions started with `claudedeck new` running at once (1–40).
+    public var maxStartedSessions = SessionCLI.maxRunningStarted
+    /// A session started with `claudedeck new` finishing its turn is news for the session that
+    /// started it (which waits on it), not for the user: no notification, not "your turn".
+    public var startedSessionsTurnGoesToStarter = true
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
@@ -346,6 +351,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
+        startedSessionsTurnGoesToStarter = try c.decodeIfPresent(Bool.self, forKey: .startedSessionsTurnGoesToStarter) ?? d.startedSessionsTurnGoesToStarter
+        maxStartedSessions = min(max(try c.decodeIfPresent(Int.self, forKey: .maxStartedSessions) ?? d.maxStartedSessions, 1), 40)
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators

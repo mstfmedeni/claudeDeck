@@ -20103,6 +20103,56 @@
           }
         }
       }
+    },
+    "claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, and a cap on how many run at once. Each is in the activity log and a notification. Terminals a session opened can't.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck project add ve claudedeck new, her seferinde sormadan: oturum başına 10 dakikada en fazla 5 yeni oturum ve saatte 10 proje, aynı anda çalışan oturum sayısı da sınırlı. Her biri aktivite günlüğüne yazılır ve bildirim gelir. Bir oturumun açtığı terminaller bunu yapamaz."
+          }
+        }
+      }
+    },
+    "At most %lld sessions started by sessions running at once": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumların başlattığı oturumlardan aynı anda en fazla %lld tanesi çalışsın"
+          }
+        }
+      }
+    },
+    "Sessions started with claudedeck new count while they run, idle or working; more starts wait with new --queue. Your own sessions don't count.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck new ile başlatılan oturumlar çalıştıkları sürece sayılır (boşta ya da çalışıyor); fazlası new --queue ile sırada bekler. Senin açtığın oturumlar sayılmaz."
+          }
+        }
+      }
+    },
+    "Their finished turns go to the session that started them": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitirdikleri turlar onları başlatan oturuma gitsin"
+          }
+        }
+      }
+    },
+    "A session started with claudedeck new that finishes its turn is marked read and doesn't notify you: the session that started it waits on it. Permission prompts and questions still come to you.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck new ile başlatılan bir oturum turunu bitirince okundu işaretlenir ve sana bildirim gelmez: onu başlatan oturum bekler. İzin istekleri ve sorular yine sana gelir."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

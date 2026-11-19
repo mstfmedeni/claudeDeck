@@ -5,13 +5,15 @@ import Foundation
 /// off by default). No prompt per action; the guardrails are here: rate limits per calling
 /// session, a cap on running sessions started this way, and the path rules for `project add`.
 extension SessionCLI {
-    /// At most this many Claude sessions started with `claudedeck new` run at once (all callers).
+    /// By default at most this many Claude sessions started with `claudedeck new` run at once (all
+    /// callers); Settings › Agents changes it (`DeckSettings.maxStartedSessions`).
     public static let maxRunningStarted = 8
 
     /// Whether another session may start: the global cap first (it consumes nothing), then the
     /// caller's rate limit.
-    public static func admitStart(caller: UUID, runningStarted: Int, book: inout SessionCLIBook, now: Date = Date()) -> AgentHTTPResponse? {
-        guard runningStarted < maxRunningStarted else { return failure(429, "too_many_running", exit: .refused) }
+    public static func admitStart(caller: UUID, runningStarted: Int, cap: Int = maxRunningStarted, book: inout SessionCLIBook,
+                                  now: Date = Date()) -> AgentHTTPResponse? {
+        guard runningStarted < cap else { return failure(429, "too_many_running", exit: .refused) }
         guard book.starts.allow(caller, now: now) else { return failure(429, "too_many_starts", exit: .refused) }
         return nil
     }

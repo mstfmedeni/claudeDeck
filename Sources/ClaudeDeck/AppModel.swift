@@ -384,7 +384,14 @@ final class AppModel {
         let s = status(of: id)
         guard s.display.isIdle, let at = s.updatedAt else { return false }
         if hookStatuses[id]?.event == "SessionStart" { return false }
+        if turnGoesToStarter(id) { return false }
         return at > (seenAt[id] ?? .distantPast)
+    }
+
+    /// A session another session started, whose starter is still there to pick up its turn.
+    func turnGoesToStarter(_ id: UUID) -> Bool {
+        guard deck.settings.startedSessionsTurnGoesToStarter, let starter = deck.session(id)?.startedBy else { return false }
+        return deck.session(starter) != nil
     }
 
     func needsAttention(_ id: UUID) -> Bool { status(of: id).display.isBlocked || isUnseenIdle(id) }
@@ -560,6 +567,11 @@ final class AppModel {
             }
             // Startup / resume sessions land in idle — that's not news.
             if activity == .idle, hookStatuses[session.id]?.event == "SessionStart" { continue }
+            // Its starter waits on it: the turn is the starter's, already "read" for the user.
+            if activity == .idle, turnGoesToStarter(session.id) {
+                seenAt[session.id] = Date()
+                continue
+            }
             let project = deck.project(session.projectID)?.name ?? ""
             let title = session.name == project || project.isEmpty ? session.name : "\(session.name) — \(project)"
             let body: String = switch activity {

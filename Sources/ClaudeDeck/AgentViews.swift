@@ -142,9 +142,26 @@ struct AgentsSettingsSection: View {
                 get: { model.deck.settings.sessionsMayStartSessions },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayStartSessions = on } }
             ))
-            Text("claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, 8 running at once. Each is in the activity log and a notification. Terminals a session opened can't.")
+            Text("claudedeck project add and claudedeck new, without asking each time: at most 5 new sessions in 10 minutes and 10 projects an hour per session, and a cap on how many run at once. Each is in the activity log and a notification. Terminals a session opened can't.")
                 .font(.caption).foregroundStyle(.secondary)
             if model.deck.settings.sessionsMayStartSessions {
+                Stepper(value: Binding(
+                    get: { model.deck.settings.maxStartedSessions },
+                    set: { value in
+                        model.mutate(userInitiated: false) { $0.settings.maxStartedSessions = min(max(value, 1), 40) }
+                        model.drainCLIQueueSoon()
+                    }
+                ), in: 1...40) {
+                    Text("At most \(model.deck.settings.maxStartedSessions) sessions started by sessions running at once")
+                }
+                Text("Sessions started with claudedeck new count while they run, idle or working; more starts wait with new --queue. Your own sessions don't count.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Their finished turns go to the session that started them", isOn: Binding(
+                    get: { model.deck.settings.startedSessionsTurnGoesToStarter },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.startedSessionsTurnGoesToStarter = on } }
+                ))
+                Text("A session started with claudedeck new that finishes its turn is marked read and doesn't notify you: the session that started it waits on it. Permission prompts and questions still come to you.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Sessions may start sessions that skip all permission prompts (bypassPermissions)", isOn: Binding(
                     get: { model.deck.settings.sessionsMayBypassPermissions },
                     set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayBypassPermissions = on } }

@@ -155,7 +155,7 @@ extension AppModel {
             }
             guard deck.session(entry.caller) != nil else { finishQueued(entry.id, .failed, reason: "caller_gone"); continue }
             guard deck.project(entry.projectID) != nil else { finishQueued(entry.id, .failed, reason: "unknown_project"); continue }
-            if let refusal = SessionCLI.admitStart(caller: entry.caller, runningStarted: cliRunningStarted, book: &cli) {
+            if let refusal = SessionCLI.admitStart(caller: entry.caller, runningStarted: cliRunningStarted, cap: deck.settings.maxStartedSessions, book: &cli) {
                 if SessionCLI.errorCode(of: refusal) == "too_many_running" { return }
                 continue
             }
