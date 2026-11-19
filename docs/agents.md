@@ -163,6 +163,8 @@ claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
 claudedeck decision get ID [--json]
 claudedeck decisions [--pending] [--json]
+claudedeck account list|current [--json]
+claudedeck account switch [--to NAME] [--json]
 claudedeck skill setup [--user|--project] [--force]
 ```
 
@@ -171,7 +173,11 @@ claudedeck skill setup [--user|--project] [--force]
   `-` when not on screen) and whose it is (`self`, `mine` for terminals it opened). A terminal's
   state is `running` (a command has the terminal), `idle` (at its prompt), `failed` (its first
   command exited non-zero), `blocked` (its program says it waits for you; terminals with Program
-  Status) or `stopped`; a Claude session's is as in `/v1/projects`.
+  Status) or `stopped`; a Claude session's is as in `/v1/projects`, plus `limit_reached` (it
+  stopped on its plan's usage limit and waits for the reset; `limit_resets_at` says when) and
+  `switching_account` (it is being moved to another account, or is about to be: see
+  [Claude accounts](#claude-accounts-and-usage-limits)). `--json` also has `account` (the
+  Claude account a Claude session runs on; null for terminals) and `limit_resets_at`.
 - **open:** a plain terminal in the session's project, in the session's folder (or `--cwd`), running
   `COMMAND`; prints the new id. One argument is a shell command line (`"npm run dev && open …"`),
   several are run as given. The terminal goes in a pane beside the caller when the caller is on
@@ -191,11 +197,13 @@ claudedeck skill setup [--user|--project] [--force]
   result (shell integration) gives its exit code. No `--timeout` (or `0`): no limit. `ID` may
   be a queue id from `new --queue` (`q_…`): it waits for the start (`timeout: still queued`,
   124), then for the session; a start that was cancelled or failed is exit 1
-  (`queue_cancelled` / `queue_failed`).
+  (`queue_cancelled` / `queue_failed`). A Claude session that stopped on its usage limit ends
+  the wait with **6** (`limited`; `--json` adds `resets_at`) while it waits for the reset; one
+  that ClaudeDeck moves to another account keeps counting as running, so the wait goes on.
 - **wait --all|--any:** the same over several ids (sessions, terminals or queue ids; at most 50).
-  `--all` ends once every one has stopped running (idle, needs you, finished, failed or
-  stopped): exit 3 if any needs you, else 1 if any failed (or its queued start won't come),
-  else 0. `--any` ends at the first one, with that one's exit code (the first in the order
+  `--all` ends once every one has stopped running (idle, needs you, finished, failed, limited
+  or stopped): exit 3 if any needs you, else 6 if any waits for its usage limit, else 1 if any
+  failed (or its queued start won't come), else 0. `--any` ends at the first one, with that one's exit code (the first in the order
   given when several did). Timeout: 124. One line per id (`--json`: `{mode, result, first,
   sessions: [{ref, id, queue_id, result, exit_code, state, detail}]}`). Every id is checked
   first: an unknown one is exit 5, `self` exit 2.
@@ -204,6 +212,8 @@ claudedeck skill setup [--user|--project] [--force]
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
 - **decide**, **decision get**, **decisions:** a decision for the owner that doesn't block; see
   [Decisions](#decisions-for-the-owner) below.
+- **account list|current|switch:** the Claude accounts; see
+  [Claude accounts](#claude-accounts-and-usage-limits) below.
 - **skill setup:** writes a Claude Code skill (`SKILL.md`) explaining the command to
   `~/.claude/skills/claudedeck/` (`--user`, the default; `$CLAUDE_CONFIG_DIR` if set) or the
   repository's `.claude/skills/claudedeck/` (`--project`). The last line holds a hash of what
@@ -218,16 +228,19 @@ claudedeck skill setup [--user|--project] [--force]
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
-| 5 | Unknown id, project, server, container, deployment, skill, queue id or decision |
+| 5 | Unknown id, project, server, container, deployment, skill, queue id, decision or account |
+| 6 | `wait`: the Claude session stopped on its plan's usage limit and waits for the reset (a session being moved to another account isn't this: it counts as running) |
 | 124 | `wait` timed out; still running |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | account |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | |
+
+`account list` and `account current` need `list`; `account switch` needs `account`.
 
 `start` (project add, new) and `server` also need their settings (below).
 
@@ -259,7 +272,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/ask` | `question, agent` | ask |
 | GET | `/v1/cli/projects` | | projects |
 | POST | `/v1/cli/projects` | `path, name, group, create=1` | start |
-| POST | `/v1/cli/projects/{ref}/sessions` | `name, prompt, worktree, permission_mode, allow, model, effort, skill, queue=1` (`allow`: one rule per line) | start |
+| POST | `/v1/cli/projects/{ref}/sessions` | `name, prompt, worktree, permission_mode, allow, model, effort, skill, account, queue=1` (`allow`: one rule per line) | start |
 | GET | `/v1/cli/presets` | | start |
 | GET/POST | `/v1/cli/projects/{ref}/preset` | POST: `permission_mode, allow, model, effort` or `clear=1` | start |
 | GET | `/v1/cli/queue` · `/v1/cli/queue/{id}` | | start |
@@ -268,6 +281,8 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/decisions` | `question, options, recommend, context, project` | decide |
 | GET | `/v1/cli/decisions` | `pending=1` | decide |
 | GET | `/v1/cli/decisions/{id}` | | decide |
+| GET | `/v1/cli/accounts` · `/v1/cli/accounts/current` | | list |
+| POST | `/v1/cli/accounts/switch` | `to` (empty or `auto`: the first account with room) | account |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -278,8 +293,64 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
 `bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
 `not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
-`404 unknown_decision`, `429 too_many_pending`. The routes for agents above (`/v1/projects`,
+`404 unknown_decision`, `429 too_many_pending`; for accounts `400 not_claude`, `404 unknown_account`,
+`409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
+
+### Claude accounts and usage limits
+
+The owner may add Claude accounts besides the default one in **Settings › Accounts** (none by
+default; with none nothing below changes). Each account is a Claude Code config folder
+(`CLAUDE_CONFIG_DIR`, under Application Support/ClaudeDeck/accounts/NAME) that the owner logs in
+to with `claude auth login` in a ClaudeDeck terminal; Claude Code keeps that login in its own
+Keychain item for the folder. ClaudeDeck never handles a password or a token, and nothing about
+the login is put in a session's environment or transcript (only `CLAUDE_CONFIG_DIR`). Account
+folders link the owner's `~/.claude` setup (settings and hooks, CLAUDE.md, skills, agents,
+commands, plugins) and its `projects` folder, so every account writes the same transcripts; the
+owner's MCP servers, onboarding answers and each folder's trust are copied into the account's
+`.claude.json` before a session starts there.
+
+- **Which account a session runs on:** a project pinned to an account (its menu › Account) runs
+  every session there; otherwise `new --account NAME|auto`, else the setting **New sessions start
+  on** (an account, or Automatic: the first by priority with room). A start that nobody chose an
+  account for skips one that is at its limit or near it (**Near the limit at**, 95 % of the
+  5-hour or weekly window by default) while another has room; so does the `--queue` drain.
+- **When a session hits the usage limit** (detected from its transcript, as for "continue when the
+  limit resets"), with **Switch to another account**: ClaudeDeck waits for the old `claude` to exit
+  (never resumes one that may still run), then starts `claude --resume <same id>` on the first
+  account by priority that is logged in, not at its limit and not near it, in the same pane, with
+  the same ClaudeDeck session id, name, folder or worktree, options (`--permission-mode`,
+  `--allowedTools`, `--model`, `--effort`), Pencil MCP and `startedBy`. Its `claudedeck` token
+  stays valid, so `send`, `wait`, decisions and their delivery keep working. If it was in the
+  middle of something it gets:
+  `[ClaudeDeck] Account switched after a usage limit. Continue exactly where you left off: re-read docs/AGENDA.md (and HANDOFF.md if present), then resume the current task.`
+  An idle session is resumed silently. When every account is at its limit, the session waits:
+  it moves as soon as another account has room, or gets the usual continue message when its own
+  limit resets. Every move is in the activity log and a notification (and a push to the phone
+  when remote mode is on). **Notify me** instead offers the move in a notification with a
+  **Switch Account** button. Pinned sessions (their menu › Account › Keep on This Account) and
+  sessions in a pinned project never move.
+- **What a session should do:** nothing special. Keep durable state in files (`docs/AGENDA.md`
+  for what's done and next, `HANDOFF.md` for anything mid-flight) so a resumed session can pick
+  up from them.
+
+```sh
+claudedeck account list [--json]
+# PRIO  NAME     5H    WEEK  STATE    RESET  SESSIONS
+# 1     default  100%  41%   limited  1h 12m 3
+# 2     work     12%   8%    ok       -      1         current
+claudedeck account current            # work
+claudedeck account switch [--to NAME] # ends this session and resumes it on NAME a moment later
+claudedeck new --account auto --prompt "…"
+```
+
+`account list --json`: `[{name, label, priority, active, current, logged_in, five_hour, weekly,
+limited, near_limit, reset_at, sessions}]` (`active`: where new sessions start; `current`: the
+caller's; percentages null when unknown). `account switch` answers first (`{from, to,
+scheduled: true}`) and moves the session two seconds later; it is refused for a pinned session
+(`pinned`), an account nobody is logged in on (`not_logged_in`) or one at its limit
+(`account_limited`); without `--to` it picks the first account with room (`no_account` when there
+is none).
 
 ### Decisions for the owner
 
