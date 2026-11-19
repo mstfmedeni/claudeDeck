@@ -101,7 +101,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
         }
         .navigationTitle(category.title)
-        .frame(minWidth: 720, idealWidth: 860, maxWidth: .infinity, minHeight: 480, idealHeight: 640, maxHeight: .infinity)
+        .frame(minWidth: 720, idealWidth: 860, maxWidth: .infinity, minHeight: 560, idealHeight: 640, maxHeight: .infinity)
         .onAppear { installed = model.hooksInstalled }
     }
 
@@ -271,7 +271,8 @@ struct SettingsView: View {
                 Text("The project list and groups (name, color, pinning, group membership) are merged with your other Macs through iCloud Drive › ClaudeDeck › projects.json. Sessions, panes, selection and settings are not synced. Deletions don't propagate to other Macs.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Text("iCloud Drive is off on this Mac (~/Library/Mobile Documents/com~apple~CloudDocs is missing). Turn it on in System Settings › Apple Account › iCloud › iCloud Drive.")
+                // Not markdown: the two "~" in the path would strike the text through.
+                Text(String(localized: "iCloud Drive is off on this Mac (~/Library/Mobile Documents/com~apple~CloudDocs is missing). Turn it on in System Settings › Apple Account › iCloud › iCloud Drive."))
                     .font(.caption).foregroundStyle(.orange)
             }
             if model.deck.settings.iCloudSync {
