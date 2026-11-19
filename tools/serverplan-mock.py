@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A stand-in ServerPlan panel (agent API v1, and the v1.2 routes `claudedeck server` uses) for tools/demo.sh and manual testing.
+"""A stand-in ServerPlan panel (agent API v1, and the v1.2 / v1.3 routes `claudedeck server` uses) for tools/demo.sh and manual testing.
 
     tools/serverplan-mock.py --port 5099 --token spk_1_demo --root /tmp/ClaudeDeckDemo
 
@@ -8,6 +8,8 @@ Serves the fixtures in Tests/ClaudeDeckCoreTests/Fixtures/serverplan (made-up se
 carry the right "confirm", plays a deploy on POST …/deploy, streams events and logs over SSE, and
 gives terminal tickets whose WebSocket runs a local /bin/sh in a scratch folder (no SSH anywhere).
 `POST /_demo/fail` (no auth) emits a deploy.failed event, for the notification path.
+`--v13` makes /me a 1.3 panel (domain check / purchase); `--purchase enabled` lets the mock "buy"
+domains (nothing is registered anywhere; the default, like the panel's, refuses with 412).
 Python standard library only.
 """
 import argparse
@@ -614,6 +616,86 @@ def v12_delete(h, p, body):
     return False
 
 
+# --- Agent API v1.3: domain check and purchase (ServerPlan 1f919c9, agent_domain_buy.go) ---------
+# Never a registrar: names pick the answer. taken.com and *.taken are registered; premium.* is a
+# premium domain; pricey.* costs over the cap; costly.* is more than the balance for 2 years;
+# anything else is available at 9.98 USD (13.98 renewal). Purchases are refused (412
+# purchase_disabled) unless --purchase enabled.
+
+PRICE_CAP = 25.0
+BALANCE = 30.0
+purchased = {}        # domain -> purchase id
+DOMAIN_RE = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+")
+
+
+def domain_quote(name):
+    available = not (name == "taken.com" or name.endswith(".taken") or name in purchased)
+    premium = name.startswith("premium.")
+    price, renewal = (9.98, 13.98)
+    if premium:
+        price, renewal = (1450.0, 1450.0)
+    elif name.startswith("pricey."):
+        price, renewal = (40.0, 42.0)
+    elif name.startswith("costly."):
+        price, renewal = (18.0, 20.0)
+    return {"domain": name, "available": available, "premium": premium, "price": price, "renewal_price": renewal, "currency": "USD"}
+
+
+def domain_check(h, query):
+    name = (query.get("name") or [""])[0].strip().lower()
+    if not DOMAIN_RE.fullmatch(name):
+        return h.error(400, "bad_request", "gecersiz domain: %r" % name)
+    a = domain_quote(name)
+    reason = ""
+    if not a["available"]:
+        reason = "domain musait degil"
+    elif a["premium"]:
+        reason = "premium domain: agent satin alamaz"
+    elif a["price"] > PRICE_CAP:
+        reason = "fiyat %.2f, sinir %.2f" % (a["price"], PRICE_CAP)
+    elif args.purchase != "enabled":
+        reason = "agent domain satin alma panelde kapali"
+    h.send_json(200, dict(a, price_cap=PRICE_CAP, purchase_allowed=reason == "", reason=reason))
+
+
+def domain_purchase(h, body):
+    name = str(body.get("domain") or "").strip().lower()
+    if not DOMAIN_RE.fullmatch(name):
+        return h.error(400, "bad_request", "gecersiz domain: %r" % name)
+    years = body.get("years") or 1
+    if years not in (1, 2):
+        return h.error(400, "bad_request", "years 1 veya 2 olabilir")
+    ref = str(body.get("approval_ref") or "").strip()
+    if not ref:
+        return h.error(400, "bad_request", "approval_ref gerekli (sahibinin onay karari)")
+    if args.purchase != "enabled":
+        return h.error(412, "purchase_disabled", "Agent domain satin alma panelde kapali (Entegrasyonlar > Namecheap)")
+    if name in purchased:
+        return h.error(409, "conflict", "Bu domain daha once satin alindi")
+    a = domain_quote(name)
+    if not a["available"]:
+        return h.error(409, "conflict", "Domain musait degil")
+    if a["premium"]:
+        return h.error(403, "premium_domain", "Premium domain (%.2f USD): agent satin alamaz, sahibi elle almali" % a["price"])
+    if a["price"] > PRICE_CAP:
+        return h.error(403, "price_cap", "Fiyat %.2f USD/yil, sinir %.2f: sahibi siniri panelden artirmali" % (a["price"], PRICE_CAP))
+    total = a["price"] + a["renewal_price"] * (years - 1)
+    if BALANCE < total:
+        return h.error(402, "insufficient_balance", "Namecheap bakiyesi yetersiz: %.2f, gereken %.2f USD" % (BALANCE, total))
+    summary = "%s %d yil icin satin alinacak: ~%.2f USD (yenileme %.2f/yil), onay %s" % (name, years, total, a["renewal_price"], ref)
+    if body.get("confirm") != name:
+        return confirm_required(h, summary, name)
+    with state_lock:
+        purchased[name] = len(purchased) + 1
+        pid = purchased[name]
+    setup_dns = body.get("setup_dns", True)
+    ns = ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"] if setup_dns else []
+    zone = {"name": name, "status": "pending", "nameservers": ns} if setup_dns else None
+    emit("domain.purchased", {"domain": name, "charged_amount": total, "currency": "USD", "approval_ref": ref})
+    h.send_json(201, {"domain": name, "years": years, "charged_amount": total, "currency": "USD", "order_id": "MOCK-%d" % (9000 + pid),
+                      "purchase_id": pid, "nameservers": ns, "cloudflare_zone": zone, "whois_privacy": True})
+
+
 # --- HTTP ---------------------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
@@ -675,7 +757,13 @@ class Handler(BaseHTTPRequestHandler):
         p = path[len(BASE):]
         try:
             if p == "/me":
-                return self.send_json(200, fixture("v12-me.json" if args.v12 else "me.json"))
+                me = fixture("v12-me.json" if args.v12 or args.v13 else "me.json")
+                if args.v13:
+                    me.update(server_version="1.3.0", scopes=me["scopes"] + ["domains_buy"],
+                              features=me["features"] + ["env_delete", "domain_check", "domain_purchase"])
+                return self.send_json(200, me)
+            if p == "/domains/check":
+                return domain_check(self, query)
             if v12_get(self, p, query):
                 return
             if p == "/servers":
@@ -875,6 +963,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.error(428, "confirm_required", "Bu işlem onay gerektirir",
                                   summary="%s konteyneri %s." % (name, words[verb]), confirm=name)
             return self.send_json(200, {"ok": True})
+        if p == "/domains/purchase":
+            return domain_purchase(self, body)
         if v12_post(self, p, body):
             return
         self.error(404, "not_found", "Bulunamadı")
@@ -909,6 +999,9 @@ def main():
     parser.add_argument("--claude", default=None, help="what a 'claude' terminal runs (the demo stand-in)")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--v12", action="store_true", help="/me says 1.2.0 with the v1.1/v1.2 scopes (sql, sql_write, local...)")
+    parser.add_argument("--v13", action="store_true", help="/me says 1.3.0: the v1.2 scopes plus domains_buy, features domain_check/domain_purchase")
+    parser.add_argument("--purchase", choices=("disabled", "enabled"), default="disabled",
+                        help="agent domain purchases in the panel: disabled (412 purchase_disabled, the panel's default) or enabled (mock 201s)")
     args = parser.parse_args()
     if args.port == 5050:
         raise SystemExit("refusing :5050 (the real panel's port)")

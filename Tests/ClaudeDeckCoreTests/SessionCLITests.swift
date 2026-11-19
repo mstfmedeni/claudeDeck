@@ -609,6 +609,46 @@ import Testing
         #expect(outside.code == 4 && outside.err.contains("registered project dir"))
     }
 
+    @Test func domainCheckAndBuyArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        let check = try run(["server", "domain", "check", "shop-example.com"], answers: [("shop-example.com: available", "200 0")])
+        let checked = try #require(check.curlCalls.first)
+        #expect(check.code == 0 && checked.last == base + "domain-check" && checked.contains("-G") && checked.contains("domain=shop-example.com"))
+        #expect(try run(["server", "domain", "check"]).code == 2)
+
+        // buy: the approval goes along; the command waits for the owner and the registrar.
+        let bought = try run(["server", "domain", "buy", "shop-example.com", "--approval", "d_00000000aa", "--years", "2", "--no-dns"],
+                             answers: [("bought: shop-example.com for 2 years", "201 0")])
+        let call = try #require(bought.curlCalls.first)
+        #expect(bought.code == 0 && bought.out.contains("bought: shop-example.com") && call.last == base + "domain-buy")
+        #expect(call.contains("domain=shop-example.com") && call.contains("approval=d_00000000aa") && call.contains("years=2"))
+        #expect(call.contains("no_dns=1") && call.contains("330") && !call.contains("-G"))
+        let plain = try #require(try run(["server", "domain", "buy", "shop-example.com", "--approval", "d_00000000aa"],
+                                         answers: [("bought", "201 0")]).curlCalls.first)
+        #expect(plain.contains("years=1") && plain.contains("no_dns=0"))
+        let json = try run(["server", "domain", "buy", "shop-example.com", "--approval", "d_00000000aa", "--json"], answers: [(#"{"order_id":"7001"}"#, "201 0")])
+        #expect(json.out.contains("7001") && json.curlCalls.first?.contains("format=json") == true)
+
+        // Nothing goes out without an approval, or with a bad --years.
+        let none = try run(["server", "domain", "buy", "shop-example.com"])
+        #expect(none.code == 2 && none.curlCalls.isEmpty && none.err.contains("claudedeck decide"))
+        #expect(try run(["server", "domain", "buy", "shop-example.com", "--approval", "d_00000000aa", "--years", "3"]).curlCalls.isEmpty)
+        #expect(try run(["server", "domain", "buy", "--approval", "d_00000000aa"]).code == 2)
+
+        // The app's refusals: the exit code and the hint pass through.
+        for (body, status, code, hint) in [
+            (#"{"error":"bad_approval","message":"d_00000000aa doesn't mention shop-example.com; ask the owner first with claudedeck decide, then pass its id"}"#, "400 2", 2, "claudedeck decide"),
+            (#"{"error":"owner_refused","message":"the owner didn't approve the purchase in ClaudeDeck; nothing was bought"}"#, "403 4", 4, "nothing was bought"),
+            (#"{"error":"purchase_disabled","message":"kapali; agent purchases are turned off in ServerPlan › Entegrasyonlar › Namecheap"}"#, "412 4", 4, "Entegrasyonlar"),
+            (#"{"error":"conflict","message":"Domain musait degil; already bought, or not available: see claudedeck server domain check"}"#, "409 1", 1, "already bought"),
+            (#"{"error":"price_cap","message":"Fiyat 40.00; over the owner's yearly price cap"}"#, "403 4", 4, "price cap"),
+            (#"{"error":"insufficient_balance","message":"yetersiz; the Namecheap balance is too low; the owner tops it up"}"#, "402 4", 4, "balance is too low"),
+        ] {
+            let refused = try run(["server", "domain", "buy", "shop-example.com", "--approval", "d_00000000aa"], answers: [(body, status)])
+            #expect(refused.code == Int32(code) && refused.err.contains(hint), "\(status) \(refused.err)")
+        }
+    }
+
     @Test func envSetKeepsSecretsOffTheCommandLine() throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "cli-env-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

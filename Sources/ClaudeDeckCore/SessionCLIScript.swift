@@ -123,6 +123,10 @@ extension SessionCLI {
       claudedeck server dockerfile template PROJECT | dockerfile write PROJECT (--from-file FILE | -) [--port N]
       claudedeck server db create PROJECT
       claudedeck server domain list [--server S]
+      claudedeck server domain check DOMAIN      (available? the price, renewal, premium, whether an agent may buy it)
+      claudedeck server domain buy DOMAIN --approval DECISION_ID [--years 1|2] [--no-dns]
+          Spends money (the Namecheap balance). DECISION_ID: a claudedeck decide the owner answered
+          that names DOMAIN; then the owner confirms the price in ClaudeDeck.
       claudedeck server domain add PROJECT SUBDOMAIN BASE [--server S] [--port N] [--websocket] [--target T]
       claudedeck server domain add --static SERVER SUBDOMAIN BASE [--target /opt/static/DIR] [--no-clean-urls]
       claudedeck server static add SERVER BASE      (the root static site of BASE)
@@ -874,6 +878,7 @@ extension SessionCLI {
       wait=0; follow=0; force=0; websocket=0; stdin=0; file=""; static=0; clean=1
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
+      approval=""; years=""; no_dns=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
@@ -891,14 +896,15 @@ extension SessionCLI {
           --write) write=1 ;;
           --no-cache) no_cache=1 ;;
           --revoke) revoke=1 ;;
+          --no-dns) no_dns=1 ;;
           --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
           -) stdin=1 ;;
-          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database)
+          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years)
             [ $# -ge 2 ] || die "server $sub: $1 needs a value"
             case "$1" in
               --tail) tail=$2 ;; --server) server=$2 ;; --project) sproject=$2 ;; --name) sname=$2 ;;
               --port) port=$2 ;; --volume) volume=$2 ;; --dockerfile) dockerfile=$2 ;; --target) target=$2 ;;
-              --database) database=$2 ;;
+              --database) database=$2 ;; --approval) approval=$2 ;; --years) years=$2 ;;
             esac
             shift ;;
           -*) die "server $sub: unknown option $1" ;;
@@ -951,8 +957,11 @@ extension SessionCLI {
           *) die "server db: create PROJECT, clone-for-local PROJECT or clone-status JOB" ;; esac ;;
         domain) case "$p1" in list) args 1 "domain list" ;;
           add) if [ "$static" = 1 ]; then args 4 "domain add --static SERVER SUBDOMAIN BASE"; else args 4 "domain add PROJECT SUBDOMAIN BASE"; fi ;;
-          set|apply|nginx|purge) args 2 "domain $p1 DOMAIN" ;;
-          *) die "server domain: list, add, set, apply, nginx or purge" ;; esac ;;
+          set|apply|nginx|purge|check) args 2 "domain $p1 DOMAIN" ;;
+          buy) args 2 "domain buy DOMAIN --approval DECISION_ID"
+            [ -n "$approval" ] || die "server domain buy: --approval DECISION_ID (ask the owner first with claudedeck decide, then pass its id)"
+            case "$years" in ""|1|2) ;; *) die "server domain buy: --years is 1 or 2" ;; esac ;;
+          *) die "server domain: list, add, set, apply, nginx, purge, check or buy" ;; esac ;;
         static) [ "$p1" = add ] || die "server static: try server static add SERVER BASE"; args 3 "static add SERVER BASE" ;;
         sync) args 2 "sync DOMAIN FOLDER"
           [ -d "$p2" ] || die "server sync: not a folder: $p2"
@@ -1095,6 +1104,12 @@ extension SessionCLI {
           elif [ "$p1" = nginx ]; then max_time=150; srv domain-nginx --data-urlencode "domain=$p2"
           elif [ "$p1" = purge ]; then max_time=150; srv domain-purge --data-urlencode "domain=$p2"
           elif [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
+          elif [ "$p1" = check ]; then max_time=75; srv domain-check GET --data-urlencode "domain=$p2"
+          elif [ "$p1" = buy ]; then
+            # The owner has 2 minutes to answer, then the registrar up to 3 minutes.
+            max_time=330
+            srv domain-buy --data-urlencode "domain=$p2" --data-urlencode "approval=$approval" --data-urlencode "years=${years:-1}" \
+              --data-urlencode "no_dns=$no_dns"
           elif [ "$static" = 1 ]; then max_time=150
             srv domain-add --data-urlencode "static=1" --data-urlencode "server=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
               --data-urlencode "clean_urls=$clean" --data-urlencode "target=$target"

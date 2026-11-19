@@ -666,6 +666,8 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server pg user-add SERVER USERNAME PROJECT` · `pg grant SERVER USER DB [--revoke]` | `POST …/pg/users` `{"username","project_id"}` · `…/pg/users/:name/grant` `{"database","revoke"?}` | |
 | `server pg clone SERVER DB TARGET [--project P] [--wait]` | `POST …/pg/databases/:name/clone` `{"target_name","project_id"?}` | |
 | `server server-env get\|set SERVER …` | `GET`/`POST /servers/:id/env` `{"key","value"}` (admin token) | |
+| `server domain check DOMAIN` | `GET /domains/check?name=` (scope `read`) → `{"domain","available","premium","price","renewal_price","currency","price_cap","purchase_allowed","reason"}` | |
+| `server domain buy DOMAIN --approval DECISION_ID [--years 1\|2] [--no-dns]` | `POST /domains/purchase` `{"domain","years","approval_ref","setup_dns"}` (scope `domains_buy`, admin token) → 201 `{"domain","years","charged_amount","currency","order_id","purchase_id","nameservers","cloudflare_zone","whois_privacy"}` | **always** the owner's purchase dialog (confirm = the domain) |
 
 - SERVER, PROJECT, DOMAIN: an id or a name (FQDN for domains). `scan PATH` scans the registered dir
   the path is in and, for a project's own folder, prints that project.
@@ -729,6 +731,29 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 - **DATABASE_URL**: a server-level `DATABASE_URL` (admin user @ the `postgres` database) is
   rewritten per project from its `DB_*` values (when it has `DB_NAME`, `DB_USER` and `DB_HOST`) unless the project env or the local env (local
   runs) sets `DATABASE_URL` itself; local runs use the local DB values.
+- **Domains (v1.3)**: offered only when `/me` says 1.3 or later or lists `domain_check` /
+  `domain_purchase` (and the token has the scope: `read`, `domains_buy`); otherwise `501
+  not_available`, exit 4. `domain check` prints whether it's available, the first year's price
+  and the renewal with the currency, premium, the owner's price cap, and whether an agent may buy
+  it (and why not).
+- **`domain buy` spends real money** (the Namecheap balance), so:
+  - `--approval` must be the id (`d_…`) of a `claudedeck decide` decision the owner **answered**
+    (not pending, not cancelled) whose question or answer names the domain (any case). Otherwise
+    ClaudeDeck refuses before calling the panel: `400 bad_approval`, exit 2 ("ask the owner first
+    with claudedeck decide, then pass its id"). The id goes to the panel as `approval_ref`.
+  - The panel's 428 (domain, years, price, renewal, currency) is always the owner's purchase
+    dialog, whatever any setting says: it says plainly that it's a real purchase charged to the
+    Namecheap balance; Cancel is the default (Return and Escape), only "Buy" ("Satın Al") says
+    yes; no answer in 2 minutes is a no (`403 owner_refused`, exit 4; nothing is bought). Only
+    then is it sent again with `confirm` = the domain.
+  - The panel's refusals, with a hint: `400 no_approval_ref` (exit 2), `412 purchase_disabled`
+    (turned off in ServerPlan › Entegrasyonlar › Namecheap) / `412 not_configured` (exit 4),
+    `409 conflict` (already bought, or not available; exit 1), `403 premium_domain` / `price_cap`
+    (exit 4), `402 insufficient_balance` (exit 4), `502 registrar_error` (exit 1).
+  - 201 prints the domain, years, the amount charged and currency, the order id, the nameservers,
+    the Cloudflare zone and WHOIS privacy; `--json` passes the panel's object through. The command
+    waits up to 330 s (2 minutes for the owner, then up to 3 for the registrar). The purchase and
+    every refusal are in the Activity Log, and a bought domain is a Mac (and phone) notification.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
   Activity Log.
 
