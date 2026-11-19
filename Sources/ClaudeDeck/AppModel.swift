@@ -29,15 +29,18 @@ struct ProgramBadge: Equatable {
     var state: ProgramStatus.State
     var exitCode: Int32?
     var kind: ProgramStatusReport.Kind?
+    /// A service's listening ports.
+    var ports: [Int]?
 
     init(_ status: ProgramStatus) {
-        self.init(state: status.state, exitCode: status.exitCode, kind: status.kind)
+        self.init(state: status.state, exitCode: status.exitCode, kind: status.kind, ports: status.ports)
     }
 
-    init(state: ProgramStatus.State, exitCode: Int32? = nil, kind: ProgramStatusReport.Kind? = nil) {
+    init(state: ProgramStatus.State, exitCode: Int32? = nil, kind: ProgramStatusReport.Kind? = nil, ports: [Int]? = nil) {
         self.state = state
         self.exitCode = exitCode
         self.kind = kind
+        self.ports = ports
     }
 
     var isOutcome: Bool { state == .finished || state == .failed }
@@ -215,6 +218,7 @@ final class AppModel {
             self?.terminalExited(id)
         }
         terminals.onProgramStatus = { [weak self] id in self?.programStatusChanged(id) }
+        terminals.serviceOverride = { [weak self] id in self?.deck.session(id)?.serviceOverride }
         terminals.shellIntegrationFolder = store.url.deletingLastPathComponent().appending(path: "ShellIntegration")
         terminals.onUserInput = { [weak self] id, data in self?.userTyped(id, data) }
         terminals.fontSize = deck.settings.terminalFontSize
@@ -356,7 +360,9 @@ final class AppModel {
     func status(of id: UUID) -> SessionStatus {
         if deck.session(id)?.kind == .shell {
             guard terminals.isRunning(id) else { return SessionStatus(display: .notStarted, detail: nil, updatedAt: nil) }
-            if let program = terminals.programStatuses[id], deck.showsProgramStatus(id) {
+            if let raw = terminals.programStatuses[id], deck.showsProgramStatus(id) {
+                // A service marked by hand, or one marked "not a service" (TerminalService.swift).
+                let program = TerminalService.applying(override: deck.session(id)?.serviceOverride, to: raw)
                 return SessionStatus(display: .program(ProgramBadge(program)), detail: program.message ?? terminals.titles[id],
                                      updatedAt: program.since)
             }
@@ -572,8 +578,9 @@ final class AppModel {
     /// has a result (finished, failed), like a Claude session; update the badge and remotes.
     private func programStatusChanged(_ id: UUID) {
         defer { onCountsChanged?() }
+        // Working and serving are no news; a service that exits is (finished or failed).
         guard let session = deck.session(id), let program = terminals.programStatuses[id], deck.showsProgramStatus(id),
-              program.state != .working else { return }
+              program.state != .working, program.state != .service else { return }
         let key = "\(program.state.rawValue)|\(program.since.timeIntervalSince1970)"
         guard lastProgramNotified[id] != key else { return }
         lastProgramNotified[id] = key
@@ -589,6 +596,12 @@ final class AppModel {
     func setShowProgramStatus(_ on: Bool?, for id: UUID) {
         mutate { $0.updateSession(id) { $0.showProgramStatus = on } }
         applyProgramStatusSettings()
+    }
+
+    /// Marks a terminal as a service (dev server, watcher) or not; nil: decided by its ports.
+    func setServiceOverride(_ value: Bool?, for id: UUID) {
+        mutate { $0.updateSession(id) { $0.serviceOverride = value } }
+        onCountsChanged?()
     }
 
     /// Settings › Terminals: the default for terminals that haven't been set on their own.
@@ -1008,7 +1021,7 @@ extension DisplayState {
         case .working?: .running
         case .blocked?: .needsAnswer
         case .finished?, .failed?: .idle
-        case nil: nil
+        case .service?, nil: nil
         }
     }
 }

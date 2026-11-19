@@ -2,9 +2,10 @@ import SwiftUI
 
 /// A plain terminal's program status (Program Status on the Mac), with the Mac's labels and
 /// colors: Running green, Needs input red, Finished yellow, Failed (exit N) orange. Working,
-/// blocked and finished follow the colors picked for running, attention and "your turn".
+/// blocked and finished follow the colors picked for running, attention and "your turn". A
+/// service (dev server, watcher) is a calmer running green, "Server · :5050".
 enum ProgramStyle {
-    static let states: Set<String> = ["working", "blocked", "finished", "failed"]
+    static let states: Set<String> = ["working", "blocked", "finished", "failed", "service"]
 
     /// A state this build can show (a newer Mac's other states read as a plain terminal).
     static func knows(_ program: RemoteProgramStatus) -> Bool { states.contains(program.state) }
@@ -12,6 +13,9 @@ enum ProgramStyle {
     static func label(_ program: RemoteProgramStatus) -> String {
         switch program.state {
         case "working": String(localized: "Running")
+        case "service":
+            program.ports.flatMap { ports in ports.isEmpty ? nil : ports }
+                .map { ports in String(localized: "Server · \(portsLabel(ports))") } ?? String(localized: "Server")
         case "blocked":
             switch program.kind {
             case "permission": String(localized: "Needs permission")
@@ -28,7 +32,7 @@ enum ProgramStyle {
     /// The session state whose color it takes; nil for failed (orange of its own).
     static func colorState(_ program: RemoteProgramStatus) -> RemoteSession.State? {
         switch program.state {
-        case "working": .running
+        case "working", "service": .running
         case "blocked": .needsPermission
         case "finished": .idle
         case "failed": nil
@@ -37,7 +41,14 @@ enum ProgramStyle {
     }
 
     static func color(_ program: RemoteProgramStatus, custom: String) -> Color {
-        colorState(program).map { SessionStyle.color($0, custom: custom) } ?? .orange
+        let color = colorState(program).map { SessionStyle.color($0, custom: custom) } ?? .orange
+        return program.isService ? color.opacity(0.75) : color
+    }
+
+    /// ":5050", ":3000, :5173 +2" (as the Mac shows it).
+    static func portsLabel(_ ports: [Int]) -> String {
+        let shown = ports.prefix(2).map { ":\($0)" }.joined(separator: ", ")
+        return ports.count > 2 ? "\(shown) +\(ports.count - 2)" : shown
     }
 
     static func textColor(_ program: RemoteProgramStatus, custom: String) -> Color {

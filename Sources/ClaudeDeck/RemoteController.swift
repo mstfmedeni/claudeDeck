@@ -754,9 +754,15 @@ final class RemoteController {
             remote.queue = session.queue.isEmpty ? nil : session.queue
             remote.notesRevision = model.agentNotesRevision[session.id]
             if let program = status.display.program {
-                remote.program = RemoteProgramStatus(state: program.state.rawValue, exitCode: program.exitCode, kind: program.kind?.rawValue)
-                // Older remotes only show "Terminal": the detail says what it's doing.
-                remote.detail = ([StatusStyle.programLabel(program)] + [status.detail].compactMap { $0 })
+                // "service" is new: older remotes don't know it and show a plain terminal.
+                remote.program = RemoteProgramStatus(state: program.state.rawValue, exitCode: program.exitCode, kind: program.kind?.rawValue,
+                                                     ports: program.state == .service ? program.ports : nil)
+                // Older remotes only show "Terminal": the detail says what it's doing. Its first
+                // " · " part is the label (newer remotes drop it), so a service's ports go in parentheses.
+                let label = program.state == .service
+                    ? TerminalService.portsLabel(program.ports).map { String(localized: "Server (\($0))") } ?? String(localized: "Server")
+                    : StatusStyle.programLabel(program)
+                remote.detail = ([label] + [status.detail].compactMap { $0 })
                     .joined(separator: " · ").prefix(300).description
             }
             return remote
@@ -1682,7 +1688,7 @@ extension RemoteSession {
     var displayState: DisplayState {
         guard state == .shell, let program, let programState = ProgramStatus.State(rawValue: program.state) else { return state.display }
         return .program(ProgramBadge(state: programState, exitCode: program.exitCode,
-                                     kind: program.kind.flatMap(ProgramStatusReport.Kind.init(rawValue:))))
+                                     kind: program.kind.flatMap(ProgramStatusReport.Kind.init(rawValue:)), ports: program.ports))
     }
 }
 

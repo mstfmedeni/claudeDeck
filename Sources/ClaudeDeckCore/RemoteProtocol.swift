@@ -591,22 +591,27 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
 
 /// A plain terminal's program status on the wire (ProgramStatus.swift on the host).
 public struct RemoteProgramStatus: Codable, Sendable, Equatable {
-    /// "working", "blocked", "finished" or "failed". A string, so a newer host's states don't break
-    /// decoding; remotes ignore ones they don't know.
+    /// "working", "blocked", "finished", "failed" or "service" (a dev server or watcher: running,
+    /// not working; newer hosts). A string, so a newer host's states don't break decoding;
+    /// remotes ignore ones they don't know (a service then reads as a plain terminal).
     public var state: String
     /// The command's exit code, when known.
     public var exitCode: Int32?
     /// What a blocked program waits for: "permission", "question" or "auth".
     public var kind: String?
+    /// "service": the TCP ports it listens on (absent when marked a service by hand).
+    public var ports: [Int]?
 
-    public init(state: String, exitCode: Int32? = nil, kind: String? = nil) {
+    public init(state: String, exitCode: Int32? = nil, kind: String? = nil, ports: [Int]? = nil) {
         self.state = state
         self.exitCode = exitCode
         self.kind = kind
+        self.ports = ports
     }
 
     public var isBlocked: Bool { state == "blocked" }
     public var isWorking: Bool { state == "working" }
+    public var isService: Bool { state == "service" }
     /// Finished or failed: the result is ready.
     public var isOutcome: Bool { state == "finished" || state == "failed" }
 }

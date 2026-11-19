@@ -19903,6 +19903,56 @@
     },
     "Claude Code": {
       "shouldTranslate": false
+    },
+    "Server · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu · %@"
+          }
+        }
+      }
+    },
+    "Server (%@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu (%@)"
+          }
+        }
+      }
+    },
+    "Automatic (Listens on a Port)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otomatik (port dinliyorsa)"
+          }
+        }
+      }
+    },
+    "Mark as Server": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu olarak işaretle"
+          }
+        }
+      }
+    },
+    "Not a Server": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu değil"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
