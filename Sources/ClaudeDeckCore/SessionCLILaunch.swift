@@ -129,6 +129,8 @@ public struct CLIQueuedStart: Codable, Sendable, Equatable, Identifiable {
     /// Why it was cancelled or failed (`cancelled`, `setting_off`, `caller_gone`, …).
     public var reason: String?
     public var finishedAt: Date?
+    /// `new --account NAME|auto`; nil: the project's pin, else the account new sessions use.
+    public var account: String?
 
     public init(id: String, caller: UUID, callerName: String, projectID: UUID, name: String, prompt: String, worktree: String,
                 skill: String?, options: ClaudeLaunchOptions, queuedAt: Date = Date()) {

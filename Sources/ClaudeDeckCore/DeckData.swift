@@ -21,6 +21,9 @@ public struct Project: Codable, Identifiable, Sendable, Equatable {
     public var groupID: UUID?
     public var pinned: Bool
     public var collapsed: Bool
+    /// Settings › Accounts: every session in this project runs on this account (an id from
+    /// `DeckSettings.accounts`, or `default`) and is never moved to another one. nil: not pinned.
+    public var account: String?
 
     public init(id: UUID = UUID(), path: String, name: String? = nil, groupID: UUID? = nil, pinned: Bool = false, collapsed: Bool = false) {
         self.id = id
@@ -88,6 +91,12 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     /// Set while the session's process runs in the session helper (claudedeck-ptyd) instead of
     /// the app: on the next launch it is reattached if still alive, never resumed (PtydLaunchPlan).
     public var helperHost: PtydHost?
+    /// Claude sessions: the Claude account it runs on (ClaudeAccounts.swift): an id from
+    /// `DeckSettings.accounts`, or `default`. nil: not chosen yet (the default account; a fresh
+    /// start picks one when there are other accounts).
+    public var account: String?
+    /// Never moved to another account automatically (Settings › Accounts).
+    public var accountPinned: Bool = false
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -132,6 +141,8 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         launchOptions = try? c.decodeIfPresent(ClaudeLaunchOptions.self, forKey: .launchOptions)
         serverPlanTerminal = try? c.decodeIfPresent(ServerPlanTerminalTarget.self, forKey: .serverPlanTerminal)
         helperHost = try? c.decodeIfPresent(PtydHost.self, forKey: .helperHost)
+        account = try? c.decodeIfPresent(String.self, forKey: .account)
+        accountPinned = (try? c.decodeIfPresent(Bool.self, forKey: .accountPinned)) ?? false
     }
 }
 
@@ -252,6 +263,27 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// Turned off with "keep them until they end": the helper's launch agent is removed once its
     /// last session has ended.
     public var retireSessionHelper = false
+    /// Settings › Accounts: Claude accounts besides the default one (ClaudeAccounts.swift).
+    public var accounts: [ClaudeAccount] = []
+    /// Account ids (and `default`) in priority order; see `ClaudeAccounts.order`.
+    public var accountOrder: [String] = []
+    /// The account new sessions start on: `default`, `auto` (the first by priority with
+    /// headroom) or an account's id.
+    public var newSessionAccount: String = ClaudeAccounts.defaultID
+    /// A session that hits the usage limit: stays (off), the owner is told (notify) or it moves
+    /// to another account (auto). Off by default.
+    public var accountSwitchMode: AccountSwitchMode = .off
+    /// An account with a window at or above this percent counts as near its limit: new sessions
+    /// and switches avoid it. 0: never.
+    public var accountNearLimitPercent: Double = 95
+
+    /// `accounts` and `default` in priority order.
+    public var accountPriority: [String] { ClaudeAccounts.order(saved: accountOrder, accounts: accounts) }
+
+    public func account(_ id: String?) -> ClaudeAccount? {
+        guard let id else { return nil }
+        return accounts.first { $0.id == id }
+    }
 
     public init() {}
 
@@ -299,6 +331,11 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         serverPlanURL = (try? c.decodeIfPresent(String.self, forKey: .serverPlanURL)) ?? d.serverPlanURL
         keepSessionsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepSessionsRunning) ?? d.keepSessionsRunning
         retireSessionHelper = try c.decodeIfPresent(Bool.self, forKey: .retireSessionHelper) ?? d.retireSessionHelper
+        accounts = (try? c.decodeIfPresent([Lossy<ClaudeAccount>].self, forKey: .accounts))?.compactMap(\.value) ?? d.accounts
+        accountOrder = (try? c.decodeIfPresent([String].self, forKey: .accountOrder)) ?? d.accountOrder
+        newSessionAccount = (try? c.decodeIfPresent(String.self, forKey: .newSessionAccount)) ?? d.newSessionAccount
+        accountSwitchMode = (try? c.decodeIfPresent(AccountSwitchMode.self, forKey: .accountSwitchMode)) ?? d.accountSwitchMode
+        accountNearLimitPercent = (try? c.decodeIfPresent(Double.self, forKey: .accountNearLimitPercent)) ?? d.accountNearLimitPercent
     }
 }
 
