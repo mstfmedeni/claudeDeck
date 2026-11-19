@@ -465,7 +465,8 @@ private final class Box<T>: @unchecked Sendable {
         // One removed, one without an override (404: not "not available").
         let unset = await r.run("local-env-unset", method: "POST", form: ["project": "9", "keys": "DEBUG,NOPE"])
         #expect(unset.exit == .ok && unset.text.contains("removed: DEBUG") && unset.text.contains("no local override: NOPE"))
-        #expect(await r.run("local-env-unset", method: "POST", form: ["project": "9", "keys": "NOPE"]).exit == .unknown)
+        let none = await r.run("local-env-unset", method: "POST", form: ["project": "9", "keys": "NOPE"])
+        #expect(none.exit == .unknown && none.status == 404 && none.text.contains("NOPE") && String(decoding: none.json, as: UTF8.self).contains("no_local_override"))
     }
 
     @Test func localRunAndStatus() async throws {

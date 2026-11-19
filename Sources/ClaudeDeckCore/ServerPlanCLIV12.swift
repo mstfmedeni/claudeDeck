@@ -81,11 +81,12 @@ extension ServerPlanCLI.Runner {
                     missing.append(key)
                 }
             }
-            var lines: [String] = []
-            if !removed.isEmpty { lines.append("removed: " + removed.joined(separator: ", ")) }
+            guard !removed.isEmpty else {
+                return .error(404, "no_local_override", "no local override: " + missing.joined(separator: ", "), exit: .unknown)
+            }
+            var lines = ["removed: " + removed.joined(separator: ", ")]
             if !missing.isEmpty { lines.append("no local override: " + missing.joined(separator: ", ")) }
-            return ServerPlanCLI.Outcome(status: removed.isEmpty ? 404 : 200, json: ServerPlanCLI.data(["removed": removed, "missing": missing]),
-                           text: lines.joined(separator: "\n"), exit: removed.isEmpty ? .unknown : .ok)
+            return ServerPlanCLI.Outcome(json: ServerPlanCLI.data(["removed": removed, "missing": missing]), text: lines.joined(separator: "\n"))
 
         // MARK: Database copies
         case "db-clone-local":

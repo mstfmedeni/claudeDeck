@@ -335,7 +335,7 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server sql PROJECT QUERY\|- [--local] [--write]` | `POST /projects/:id/sql` `{"query","target":"deploy"\|"local","write"?}` (scope `sql`; `--write` also `sql_write`) | `--write`: the owner's dialog (confirm = the database name) |
 | `server local run PROJECT [--server S] [--port N] [--no-cache] [--wait]` | `POST /projects/:id/local-run` (scope `local`) | |
 | `server local status PROJECT [--wait]` · `logs PROJECT [--tail N]` · `stop PROJECT` | `GET …/local-status` · `GET …/local-logs?tail=N` · `POST …/local-stop` | |
-| `server local-env get\|set\|unset PROJECT …` | `GET`/`PUT /projects/:id/local-env` `{"vars"}` · `DELETE …/local-env/:key` (scope `local`) | |
+| `server local-env get\|set\|unset PROJECT …` | `GET`/`PUT /projects/:id/local-env` `{"vars"}` · `DELETE …/local-env/:key` (set, unset: scope `local`) | |
 | `server db clone-for-local PROJECT [--server S] [--database DB] [--target NAME] [--wait]` | `POST /servers/:id/pg/databases/:name/clone-for-local` `{"project_id","target_name"?}` (scope `databases`) | |
 | `server db clone-status JOB [--wait]` | `GET /pg/clone-jobs/:jobId` | |
 | `server git branches\|pull\|push PROJECT` · `git switch PROJECT BRANCH` | `GET …/branches` · `POST …/git-pull` · `…/git-push` · `…/switch-branch` `{"branch"}` (scope `projects_write`) | push, switch: the owner's dialog (confirm = the project) |
