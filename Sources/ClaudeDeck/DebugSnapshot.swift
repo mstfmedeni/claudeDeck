@@ -35,6 +35,14 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             if let project = UUID(uuidString: String(file.dropLast(6))) { model.newShell(in: project) }
         }
+        // `<decision-id>.decide`: answers that decision with the file's text, as a click in Your
+        // Decisions does.
+        for file in files where file.hasSuffix(".decide") {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let answer = contents(path)
+            try? FileManager.default.removeItem(atPath: path)
+            model.answerDecision(String(file.dropLast(7)), answer: answer, from: "mac")
+        }
         // `agent.add`: "name|webhook URL" adds an agent; `<session-uuid>.ask`: asks every agent
         // about that session (the file's text is the request).
         for file in files where file == "agent.add" {
@@ -229,6 +237,10 @@ enum DebugSnapshot {
                 model.showSimulators()
             } else if parts == ["dashboard"] {
                 model.showDashboard()
+            } else if parts == ["decisions"] {
+                model.showDecisions()
+            } else if parts.count == 2, parts[0] == "agenda", let project = model.deck.projects.first(where: { $0.name == parts[1] }) {
+                model.showAgenda(project.id)
             } else if parts.count == 3, parts[0] == "search" {
                 model.showHistorySearch()
                 HistorySearchController.shared.scope = parts[2] == "1" ? .all : .project

@@ -29,6 +29,7 @@ struct ClaudeDeckApp: App {
                 OpenSimulatorsButton(model: delegate.model) // Simulators tab, when turned on
                 Button("Dashboard") { delegate.model.showDashboard() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("Your Decisions") { delegate.model.showDecisions() }
             }
             CommandGroup(after: .newItem) {
                 Divider()
@@ -100,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
         DashboardRecorder.shared.start(model: model)
         ServerPlanController.shared.start(model: model) // no-op unless ServerPlan is set up
+        AgendaController.shared.start(model: model) // projects' docs/AGENDA.md boards
         // Demo mode polls only with tools/demo.sh's stand-in gh (fixture PRs and issues).
         if !AppModel.isDemo || ProcessInfo.processInfo.environment["CLAUDEDECK_GH_PATH"] != nil {
             GitHubMonitor.shared.start(model: model)

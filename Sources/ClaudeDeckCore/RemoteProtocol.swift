@@ -214,6 +214,10 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case serverPlanRepair(deploymentID: Int)
     /// Host → remote: the session the repair went to, or why it didn't start.
     case serverPlanRepairResult(deploymentID: Int, sessionID: UUID?, error: String?)
+    /// Remote → host: the owner's answer to a decision a session left (`decisions` in the
+    /// snapshot; hosts with `Feature.decisions`). The next snapshot shows it answered; a decision
+    /// answered elsewhere first keeps that answer.
+    case answerDecision(id: String, answer: String)
     /// Phone → host: send push notifications to this device (APNs.swift).
     case registerPush(token: Data, topic: String, environment: String, deviceName: String)
     case ping
@@ -334,6 +338,11 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// Booted and recently used simulators (hosts with `Feature.simulators`; only while the Mac's
     /// Simulators setting is on and a remote is connected).
     public var simulators: [RemoteSimulator]?
+    /// Decisions sessions left for the owner: every pending one and the recently answered ones
+    /// (hosts with `Feature.decisions`).
+    public var decisions: [OwnerDecision]?
+    /// The projects' `docs/AGENDA.md` boards (hosts with `Feature.agenda`; read-only).
+    public var agendas: [RemoteAgenda]?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -379,10 +388,14 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let dashboard = "dashboard"
         /// `simulators` in the snapshot (read-only).
         public static let simulators = "simulators"
+        /// `decisions` in the snapshot, `answerDecision`.
+        public static let decisions = "decisions"
+        /// `agendas` in the snapshot (read-only).
+        public static let agenda = "agenda"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
-                                              serverPlanRepair, dashboard, simulators]
+                                              serverPlanRepair, dashboard, simulators, decisions, agenda]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

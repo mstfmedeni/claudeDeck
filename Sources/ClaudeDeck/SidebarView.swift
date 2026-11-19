@@ -40,6 +40,11 @@ struct SidebarView: View {
             // Waiting tray above the footer, outside the list: it only shortens the list, never
             // pushes its rows around.
             VStack(spacing: 0) {
+                if model.decisions.pendingCount > 0 {
+                    PendingDecisionsTray()
+                        .sidebarStyle(scale: textScale, density: density)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if !model.pendingAgents.isEmpty {
                     PendingAgentsTray()
                         .sidebarStyle(scale: textScale, density: density)
@@ -55,6 +60,7 @@ struct SidebarView: View {
             }
             .animation(.snappy(duration: 0.3), value: waiting.isEmpty)
             .animation(.snappy(duration: 0.3), value: model.pendingAgents.isEmpty)
+            .animation(.snappy(duration: 0.3), value: model.decisions.pendingCount == 0)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeight = $0 }
         // The whole column (list, filter bar, tray) counts as "pointing at the sidebar".
@@ -781,6 +787,9 @@ struct ProjectMenu: View {
                 alert.informativeText = problem
                 alert.runAsSheet()
             }
+        }
+        if AgendaController.shared.board(project.id) != nil {
+            Button("Agenda Board") { model.showAgenda(project.id) }
         }
         Button("Reveal in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path) }
         Button("Copy Path") {

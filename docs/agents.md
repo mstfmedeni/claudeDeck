@@ -160,6 +160,9 @@ claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
+claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
+claudedeck decision get ID [--json]
+claudedeck decisions [--pending] [--json]
 claudedeck skill setup [--user|--project] [--force]
 ```
 
@@ -199,6 +202,8 @@ claudedeck skill setup [--user|--project] [--force]
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
+- **decide**, **decision get**, **decisions:** a decision for the owner that doesn't block; see
+  [Decisions](#decisions-for-the-owner) below.
 - **skill setup:** writes a Claude Code skill (`SKILL.md`) explaining the command to
   `~/.claude/skills/claudedeck/` (`--user`, the default; `$CLAUDE_CONFIG_DIR` if set) or the
   repository's `.claude/skills/claudedeck/` (`--project`). The last line holds a hash of what
@@ -213,16 +218,16 @@ claudedeck skill setup [--user|--project] [--force]
 | 2 | Bad arguments, or not inside a ClaudeDeck session |
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
-| 5 | Unknown id, project, server, container, deployment, skill or queue id |
+| 5 | Unknown id, project, server, container, deployment, skill, queue id or decision |
 | 124 | `wait` timed out; still running |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server |
-|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | |
 
 `start` (project add, new) and `server` also need their settings (below).
 
@@ -260,6 +265,9 @@ Off, they answer `404 not_found`.
 | GET | `/v1/cli/queue` · `/v1/cli/queue/{id}` | | start |
 | POST | `/v1/cli/queue/{id}/cancel` | | start |
 | GET/POST | `/v1/cli/server/{command}` | per command (below) | server |
+| POST | `/v1/cli/decisions` | `question, options, recommend, context, project` | decide |
+| GET | `/v1/cli/decisions` | `pending=1` | decide |
+| GET | `/v1/cli/decisions/{id}` | | decide |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -269,8 +277,73 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 `too_many_running`, `501 not_available`; for `new`, `preset`, `queue` and `wait --all|--any`
 also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
 `bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
-`not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`. The routes for agents above (`/v1/projects`,
+`not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
+`404 unknown_decision`, `429 too_many_pending`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
+
+### Decisions for the owner
+
+```sh
+claudedeck decide "Which database for the cache?" --options "Redis,SQLite,None" --recommend Redis \
+  --context "Redis adds a container; SQLite is enough below 1k rps."   # prints d_1a2b3c4d5e
+claudedeck decision get d_1a2b3c4d5e    # "pending", or "answered: SQLite" (then id, question, options…)
+claudedeck decisions --pending          # ID, STATUS, PROJECT, QUESTION, ANSWER; newest first
+```
+
+A session that needs the owner's call doesn't stop and wait: `decide` returns at once with the
+decision's id (`d_` and 10 hex digits) and the session keeps working on what doesn't depend on it.
+Only the command-line tool's setting is needed (no separate one); a terminal a session opened
+can't ask.
+
+- **Arguments:** `QUESTION` (at most 2 000 characters); `--options` separated by commas, or one
+  per line when the value has line breaks (at most 10, 200 characters each; blank and repeated ones
+  dropped; none: the owner answers in words); `--recommend` one of the options (any case) or its
+  number (`400 bad_recommend` otherwise); `--context` the facts the owner needs (at most 8 000
+  characters; `-` reads stdin); `--project` an id, name or path as for `new` (default: the
+  caller's project; unknown: exit 5).
+- **The owner** sees it in **Your Decisions** (Window menu, and a tray above the sidebar's waiting
+  tray with the count while any wait): question, project, the asking session, the context and the
+  options with the recommended one first and marked; one click on an option answers, or a few
+  words in the field. The phone shows the same list (remote feature `decisions`) and answers the
+  same way. A new decision is a notification on the Mac (unless notifications are off; clicking
+  opens the list) and a push to paired phones that aren't connected.
+- **The answer** goes to the asking Claude session as a message through its prompt queue: typed
+  at its next "your turn" (at once when it's idle), never into a permission prompt or a question,
+  and kept in the queue if the session isn't running until it is. It's one line:
+  `[ClaudeDeck decision d_…] The owner answered your question "…": ANSWER`. `decision get` shows
+  it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
+  `no_session` when the session is gone).
+  The first answer counts; one from the other device a moment later is ignored (Activity Log).
+- **JSON** (`--json`): `id, question, options, recommended, context, project_id, project,
+  session_id, session, created_at, status` (`pending`/`answered`)`, answer, answered_at,
+  answered_from` (`mac`/`phone`)`, delivery`; every key is always there.
+- **Limits:** 10 per 10 minutes per session (`429 too_many`), 50 waiting at once (`429
+  too_many_pending`); exit 4. Kept in Application Support/decisions.json: every pending one and
+  the newest 200 answered. Asking, answering and refusals are in the Activity Log.
+
+### Agenda board
+
+A project with `docs/AGENDA.md` gets a board: **Agenda Board** in the project's menu on the Mac
+(a tab), and **Agenda** on the phone (remote feature `agenda`, read-only). The file is read when
+its size or modification time changes (looked at every 2 s), so agents update the board by editing
+the file. Every markdown table whose header has an `id` and a `status` column is read (tables in
+code blocks aren't); the other columns are found by name, in any order and case, punctuation
+ignored: `track` (also lane, stream, area, epic, phase), `owner` (also agent, `owner (agent)`,
+assignee), `depends-on` (also depends, deps, dependencies, blocked by), `evidence` (also proof,
+links), and a title column (title, task, item, name, description, summary). Other columns are
+ignored; a short row leaves the rest empty; `\|` is a pipe inside a cell. Statuses: `todo` (to do,
+open, backlog…), `doing` (in progress, wip…), `review` (in review, qa…), `blocked` (on hold…),
+`done` (complete, closed, ✅…); anything else is under **Other** with its text. Dependencies are
+separated by commas, semicolons or spaces (`—`, `none`: none); a done one is struck through.
+At most 500 rows and 500 characters per cell; files over 1 MB aren't read.
+
+```markdown
+| id | track | owner | status | depends-on | evidence |
+|----|-------|-------|--------|------------|----------|
+| A1 | api   | backend | done   | —          | [PR #12](https://…) |
+| A2 | api   | backend | doing  | A1         |          |
+| B1 | ios   | ios     | review | A1, A2     | screenshots/b1.png |
+```
 
 ### Projects and Claude sessions
 
