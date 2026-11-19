@@ -118,6 +118,20 @@ extension AppModel {
         return choice == ClaudeAccounts.defaultID || deck.settings.account(choice) != nil ? choice : ClaudeAccounts.defaultID
     }
 
+    /// Where a new session nobody chose an account for starts right now: `accountForNewSession`,
+    /// or, when that one is at or near its limit, the first account with room (the same rule
+    /// `accountEnvironment` applies).
+    func effectiveNewSessionAccount() -> String {
+        let chosen = accountForNewSession()
+        let settings = deck.settings
+        let standing = accountStanding(chosen)
+        guard standing.isLimited() || standing.isNearLimit(threshold: settings.accountNearLimitPercent),
+              case .account(let other) = AccountPolicy.pickForSwitch(order: settings.accountPriority, standings: accountStandings,
+                                                                   excluding: [chosen], threshold: settings.accountNearLimitPercent)
+        else { return chosen }
+        return other
+    }
+
     // MARK: Starting on an account
 
     /// Called by `launch` for every Claude start: decides the account (a project's pin, the

@@ -6,7 +6,7 @@ import Foundation
 extension AppModel {
     func cliAccountInfos(caller: UUID) -> [SessionCLIAccountInfo] {
         let settings = deck.settings
-        let active = settings.newSessionAccount == ClaudeAccounts.autoID ? accountForNewSession() : accountForNewSession(settings.newSessionAccount)
+        let active = effectiveNewSessionAccount()
         let current = deck.session(caller).map(accountID(of:))
         return settings.accountPriority.enumerated().map { index, id in
             let standing = accountStanding(id)
