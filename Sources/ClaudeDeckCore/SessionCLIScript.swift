@@ -64,6 +64,26 @@ extension SessionCLI {
       claudedeck server static add SERVER BASE      (the root static site of BASE)
       claudedeck server sync DOMAIN FOLDER          (upload a static site's files)
       claudedeck server dns sync DOMAIN | zone add NAME | ns set DOMAIN
+      claudedeck server env rescan PROJECT [--dry-run]   (new keys from .env.example)
+      claudedeck server sql PROJECT QUERY|- [--local] [--write]   (--write: the owner confirms)
+      claudedeck server local run PROJECT [--server S] [--port N] [--no-cache] [--wait]
+      claudedeck server local status PROJECT [--wait] | local logs PROJECT [--tail N] | local stop PROJECT
+      claudedeck server local-env get PROJECT | local-env set PROJECT [--from-file FILE | -] [KEY=VALUE...]
+      claudedeck server local-env unset PROJECT KEY...
+      claudedeck server db clone-for-local PROJECT [--server S] [--database DB] [--target NAME] [--wait]
+      claudedeck server db clone-status JOB [--wait]
+      claudedeck server git branches|pull|push PROJECT | git switch PROJECT BRANCH   (push, switch: the owner confirms)
+      claudedeck server refresh PROJECT | build PROJECT [--no-cache]
+      claudedeck server pull-deploy PROJECT [--server S] [--force] [--wait]
+      claudedeck server diagnose PROJECT | diagnose fix PROJECT ACTION   (fix: the owner confirms)
+      claudedeck server deploy-cancel DEPLOYMENT   (the owner confirms)
+      claudedeck server domain set DOMAIN [--server S] [--port N] [--target T] [--project P]
+          [--[no-]websocket] [--[no-]clean-urls] [--[no-]ssl]   (replacing an A record: the owner confirms)
+      claudedeck server domain apply|nginx|purge DOMAIN
+      claudedeck server cloudflare purge|ssl|ssl-full BASE
+      claudedeck server pg databases|users SERVER | pg user-add SERVER USERNAME PROJECT
+      claudedeck server pg grant SERVER USER DB [--revoke] | pg clone SERVER DB TARGET [--project P] [--wait]
+      claudedeck server server-env get SERVER | server-env set SERVER [--from-file FILE | -] [KEY=VALUE...]
           SERVER, PROJECT: an id or a name. Not every panel has every command: see server features.
 
     ID: an id from `claudedeck list`, its first 8 characters, or "self".
@@ -397,31 +417,56 @@ extension SessionCLI {
       done
     }
 
+    # poll_wait COMMAND PARAM VALUE: long polls (25 s each) a local run or a clone job until it
+    # ends, printing what's new (0 done, 1 failed).
+    poll_wait() {
+      since=""
+      while :; do
+        max_time=45
+        srv "$1" GET --data-urlencode "$2=$3" --data-urlencode "wait=25" --data-urlencode "since=$since"
+        case "$http" in 2??) ;; *) finish ;; esac
+        [ -n "$body" ] && printf '%s\n' "$body"
+        [ -n "$next" ] && since=$next
+        [ "$code" = 124 ] && continue
+        exit "$code"
+      done
+    }
+
     cmd_server() {
       sub=${1:-}; [ $# -gt 0 ] && shift
       case "$sub" in
         ""|help) usage; exit 0 ;;
-        env) cmd_server_env "$@"; return ;;
+        env|local-env|server-env) cmd_server_vars "$sub" "$@"; return ;;
       esac
       p1=""; p2=""; p3=""; p4=""; n=0
       wait=0; follow=0; force=0; websocket=0; stdin=0; file=""; static=0; clean=1
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
+      local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
           --static) static=1 ;;
-          --no-clean-urls) clean=0 ;;
+          --no-clean-urls) clean=0; clean_set=0 ;;
+          --clean-urls) clean_set=1 ;;
           --wait) wait=1 ;;
           --follow|-f) follow=1 ;;
           --force) force=1 ;;
-          --websocket) websocket=1 ;;
+          --websocket) websocket=1; ws=1 ;;
+          --no-websocket) ws=0 ;;
+          --ssl) ssl=1 ;;
+          --no-ssl) ssl=0 ;;
+          --local) local_db=1 ;;
+          --write) write=1 ;;
+          --no-cache) no_cache=1 ;;
+          --revoke) revoke=1 ;;
           --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
           -) stdin=1 ;;
-          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target)
+          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database)
             [ $# -ge 2 ] || die "server $sub: $1 needs a value"
             case "$1" in
               --tail) tail=$2 ;; --server) server=$2 ;; --project) sproject=$2 ;; --name) sname=$2 ;;
               --port) port=$2 ;; --volume) volume=$2 ;; --dockerfile) dockerfile=$2 ;; --target) target=$2 ;;
+              --database) database=$2 ;;
             esac
             shift ;;
           -*) die "server $sub: unknown option $1" ;;
@@ -438,10 +483,24 @@ extension SessionCLI {
       args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
       case "$sub" in
         list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns|static|sync) ;;
+        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg) ;;
         *) die "server: unknown command $sub (claudedeck help)" ;;
       esac
       case "$sub" in
-        list|projects|dirs|features|cloudflare|deployments) args 0 "no arguments" ;;
+        list|projects|dirs|features|deployments) args 0 "no arguments" ;;
+        cloudflare) case "$p1" in "") ;; purge|ssl|ssl-full) args 2 "cloudflare $p1 BASE" ;;
+          *) die "server cloudflare: purge, ssl or ssl-full BASE" ;; esac ;;
+        sql) if [ "$stdin" = 1 ]; then args 1 "sql PROJECT - (the query on stdin)"; else args 2 "sql PROJECT QUERY"; fi ;;
+        local) case "$p1" in run|status|logs|stop) args 2 "local $p1 PROJECT" ;;
+          *) die "server local: run, status, logs or stop PROJECT" ;; esac ;;
+        git) case "$p1" in branches|pull|push) args 2 "git $p1 PROJECT" ;; switch) args 3 "git switch PROJECT BRANCH" ;;
+          *) die "server git: branches, pull or push PROJECT, or switch PROJECT BRANCH" ;; esac ;;
+        refresh|build|pull-deploy) args 1 "which project?" ;;
+        diagnose) if [ "$p1" = fix ]; then args 3 "diagnose fix PROJECT ACTION"; else args 1 "diagnose PROJECT"; fi ;;
+        deploy-cancel) args 1 "which deployment?"; case "$p1" in *[!0-9]*) die "server deploy-cancel: a deployment id" ;; esac ;;
+        pg) case "$p1" in databases|users) args 2 "pg $p1 SERVER" ;; user-add) args 4 "pg user-add SERVER USERNAME PROJECT" ;;
+          grant) args 4 "pg grant SERVER USER DB" ;; clone) args 4 "pg clone SERVER DB TARGET" ;;
+          *) die "server pg: databases, users, user-add, grant or clone" ;; esac ;;
         health|containers|ports) args 1 "which server?" ;;
         logs) args 2 "logs SERVER CONTAINER" ;;
         deploy) args 1 "which project?" ;;
@@ -455,10 +514,13 @@ extension SessionCLI {
             [ -n "$file" ] || [ "$stdin" = 1 ] || die "server dockerfile write: --from-file FILE or - (stdin)"
             [ -z "$file" ] || [ -r "$file" ] || die "server dockerfile write: can't read $file" ;;
           *) die "server dockerfile: template or write PROJECT" ;; esac ;;
-        db) [ "$p1" = create ] || die "server db: try server db create PROJECT"; args 2 "db create PROJECT" ;;
+        db) case "$p1" in create) args 2 "db create PROJECT" ;; clone-for-local) args 2 "db clone-for-local PROJECT" ;;
+          clone-status) args 2 "db clone-status JOB" ;;
+          *) die "server db: create PROJECT, clone-for-local PROJECT or clone-status JOB" ;; esac ;;
         domain) case "$p1" in list) args 1 "domain list" ;;
           add) if [ "$static" = 1 ]; then args 4 "domain add --static SERVER SUBDOMAIN BASE"; else args 4 "domain add PROJECT SUBDOMAIN BASE"; fi ;;
-          *) die "server domain: list, or add PROJECT SUBDOMAIN BASE" ;; esac ;;
+          set|apply|nginx|purge) args 2 "domain $p1 DOMAIN" ;;
+          *) die "server domain: list, add, set, apply, nginx or purge" ;; esac ;;
         static) [ "$p1" = add ] || die "server static: try server static add SERVER BASE"; args 3 "static add SERVER BASE" ;;
         sync) args 2 "sync DOMAIN FOLDER"
           [ -d "$p2" ] || die "server sync: not a folder: $p2"
@@ -470,7 +532,14 @@ extension SessionCLI {
       esac
       need_session
       case "$sub" in
-        list|projects|dirs|features|cloudflare) srv "$sub" GET ;;
+        cloudflare)
+          case "$p1" in
+            "") srv cloudflare GET ;;
+            purge) srv zone-purge --data-urlencode "base=$p2" ;;
+            ssl) srv ssl GET --data-urlencode "base=$p2" ;;
+            ssl-full) srv ssl-full --data-urlencode "base=$p2" ;;
+          esac ;;
+        list|projects|dirs|features) srv "$sub" GET ;;
         deployments) srv deployments GET --data-urlencode "project=$sproject" ;;
         health|containers) srv "$sub" GET --data-urlencode "server=$p1" ;;
         ports) srv ports GET --data-urlencode "server=$p1" ;;
@@ -516,9 +585,84 @@ extension SessionCLI {
             if [ -n "$file" ]; then content=$(cat "$file"); else content=$(cat); fi
             srv dockerfile-write --data-urlencode "project=$p2" --data-urlencode "content=$content" --data-urlencode "port=$port"
           fi ;;
-        db) srv db-create --data-urlencode "project=$p2" ;;
+        db)
+          case "$p1" in
+            create) srv db-create --data-urlencode "project=$p2" ;;
+            clone-for-local)
+              srv db-clone-local --data-urlencode "project=$p2" --data-urlencode "server=$server" \
+                --data-urlencode "database=$database" --data-urlencode "target=$target"
+              case "$http" in 2??) ;; *) finish ;; esac
+              if [ "$wait" = 1 ] && [ -n "$next" ]; then printf '%s\n' "$body"; poll_wait clone-status id "$next"; fi ;;
+            clone-status)
+              [ "$wait" = 1 ] && poll_wait clone-status id "$p2"
+              srv clone-status GET --data-urlencode "id=$p2" ;;
+          esac ;;
+        sql)
+          if [ "$stdin" = 1 ]; then query=$(cat); else query=$p2; fi
+          # A write waits for the owner (2 minutes), then runs up to a minute.
+          if [ "$write" = 1 ]; then max_time=220; else max_time=75; fi
+          srv sql --data-urlencode "project=$p1" --data-urlencode "query=$query" --data-urlencode "local=$local_db" \
+            --data-urlencode "write=$write" ;;
+        local)
+          case "$p1" in
+            run)
+              max_time=150
+              srv local-run --data-urlencode "project=$p2" --data-urlencode "server=$server" --data-urlencode "port=$port" \
+                --data-urlencode "no_cache=$no_cache"
+              case "$http" in 2??) ;; *) finish ;; esac
+              if [ "$wait" = 1 ]; then printf '%s\n' "$body"; poll_wait local-status project "$p2"; fi ;;
+            status)
+              [ "$wait" = 1 ] && poll_wait local-status project "$p2"
+              srv local-status GET --data-urlencode "project=$p2" ;;
+            logs) srv local-logs GET --data-urlencode "project=$p2" --data-urlencode "tail=$tail" ;;
+            stop) max_time=75; srv local-stop --data-urlencode "project=$p2" ;;
+          esac ;;
+        git)
+          case "$p1" in
+            branches) max_time=75; srv branches GET --data-urlencode "project=$p2" ;;
+            pull) max_time=150; srv git-pull --data-urlencode "project=$p2" ;;
+            push) max_time=280; srv git-push --data-urlencode "project=$p2" ;;
+            switch) max_time=280; srv switch-branch --data-urlencode "project=$p2" --data-urlencode "branch=$p3" ;;
+          esac ;;
+        refresh) max_time=75; srv refresh --data-urlencode "project=$p1" ;;
+        build) max_time=1230; srv build --data-urlencode "project=$p1" --data-urlencode "no_cache=$no_cache" ;;
+        pull-deploy)
+          was_json=$json; json=0
+          max_time=75
+          srv pull-deploy --data-urlencode "project=$p1" --data-urlencode "server=$server" --data-urlencode "force=$force"
+          json=$was_json
+          case "$http" in 2??) ;; *) finish ;; esac
+          if [ "$wait" = 1 ]; then printf '%s\n' "$body"; deploy_wait "$body"; fi
+          if [ "$json" = 1 ]; then body="{\"deployment_id\":$body}"; fi
+          ;;
+        diagnose)
+          if [ "$p1" = fix ]; then max_time=280; srv diagnose-fix --data-urlencode "project=$p2" --data-urlencode "action=$p3"
+          else max_time=150; srv diagnose GET --data-urlencode "project=$p1"
+          fi ;;
+        deploy-cancel) max_time=150; srv deploy-cancel --data-urlencode "id=$p1" ;;
+        pg)
+          case "$p1" in
+            databases) max_time=75; srv pg-databases GET --data-urlencode "server=$p2" ;;
+            users) max_time=75; srv pg-users GET --data-urlencode "server=$p2" ;;
+            user-add) max_time=75; srv pg-user-add --data-urlencode "server=$p2" --data-urlencode "username=$p3" --data-urlencode "project=$p4" ;;
+            grant) max_time=75; srv pg-grant --data-urlencode "server=$p2" --data-urlencode "username=$p3" --data-urlencode "database=$p4" \
+                --data-urlencode "revoke=$revoke" ;;
+            clone)
+              max_time=75
+              srv pg-clone --data-urlencode "server=$p2" --data-urlencode "database=$p3" --data-urlencode "target=$p4" \
+                --data-urlencode "project=$sproject"
+              case "$http" in 2??) ;; *) finish ;; esac
+              if [ "$wait" = 1 ] && [ -n "$next" ]; then printf '%s\n' "$body"; poll_wait clone-status id "$next"; fi ;;
+          esac ;;
         domain)
-          if [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
+          if [ "$p1" = set ]; then max_time=220
+            srv domain-set --data-urlencode "domain=$p2" --data-urlencode "server=$server" --data-urlencode "port=$port" \
+              --data-urlencode "target=$target" --data-urlencode "project=$sproject" --data-urlencode "websocket=$ws" \
+              --data-urlencode "clean_urls=$clean_set" --data-urlencode "ssl=$ssl"
+          elif [ "$p1" = apply ]; then max_time=150; srv domain-apply --data-urlencode "domain=$p2"
+          elif [ "$p1" = nginx ]; then max_time=150; srv domain-nginx --data-urlencode "domain=$p2"
+          elif [ "$p1" = purge ]; then max_time=150; srv domain-purge --data-urlencode "domain=$p2"
+          elif [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
           elif [ "$static" = 1 ]; then max_time=150
             srv domain-add --data-urlencode "static=1" --data-urlencode "server=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
               --data-urlencode "clean_urls=$clean" --data-urlencode "target=$target"
@@ -535,47 +679,72 @@ extension SessionCLI {
       finish
     }
 
-    # env set reads values from stdin (-) or a file so secrets stay out of the shell history;
-    # values are never printed.
-    cmd_server_env() {
+    # env / local-env / server-env: set reads values from stdin (-) or a file so secrets stay out
+    # of the shell history; values are never printed. local-env: overrides only local runs see.
+    cmd_server_vars() {
+      kind=$1; shift
       action=${1:-}; [ $# -gt 0 ] && shift
-      case "$action" in get|set) ;; *) die "server env: get or set" ;; esac
-      project=""; vars=""; secrets=""; file=""; stdin=0
+      case "$kind:$action" in
+        env:get|env:set|env:rescan|local-env:get|local-env:set|local-env:unset|server-env:get|server-env:set) ;;
+        env:*) die "server env: get, set or rescan" ;;
+        local-env:*) die "server local-env: get, set or unset" ;;
+        *) die "server server-env: get or set" ;;
+      esac
+      project=""; vars=""; keys=""; secrets=""; file=""; stdin=0; dry_run=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
-          --from-file) [ $# -ge 2 ] || die "env set: --from-file needs a file"; file=$2; shift ;;
+          --dry-run) [ "$action" = rescan ] || die "$kind $action: unknown option $1"; dry_run=1 ;;
+          --from-file) [ $# -ge 2 ] || die "$kind set: --from-file needs a file"; file=$2; shift ;;
           --from-file=*) file=${1#*=} ;;
-          --secret) [ $# -ge 2 ] || die "env set: --secret needs a key"; secrets="$secrets${secrets:+,}$2"; shift ;;
-          --secret=*) secrets="$secrets${secrets:+,}${1#*=}" ;;
+          --secret) [ "$kind" = env ] || die "$kind: --secret is for env set"; [ $# -ge 2 ] || die "env set: --secret needs a key"
+            secrets="$secrets${secrets:+,}$2"; shift ;;
+          --secret=*) [ "$kind" = env ] || die "$kind: --secret is for env set"; secrets="$secrets${secrets:+,}${1#*=}" ;;
           -) stdin=1 ;;
-          -*) die "env: unknown option $1" ;;
+          -*) die "$kind: unknown option $1" ;;
           *)
             if [ -z "$project" ]; then project=$1
+            elif [ "$action" = unset ]; then keys="$keys${keys:+,}$1"
             else
               case "$1" in *=*) vars="$vars$1
-    " ;; *) die "env set: KEY=VALUE, not $1" ;; esac
+    " ;; *) die "$kind set: KEY=VALUE, not $1" ;; esac
             fi
             ;;
         esac
         shift
       done
-      [ -n "$project" ] || die "env $action: which project?"
-      if [ "$action" = get ]; then
-        need_session
-        srv env-get GET --data-urlencode "project=$project"
-        finish
+      if [ "$kind" = server-env ]; then
+        [ -n "$project" ] || die "server-env $action: which server?"
+        ref="server=$project"
+      else
+        [ -n "$project" ] || die "$kind $action: which project?"
+        ref="project=$project"
       fi
+      case "$kind:$action" in
+        *:get)
+          need_session
+          case "$kind" in env) srv env-get GET --data-urlencode "$ref" ;; *) srv "$kind-get" GET --data-urlencode "$ref" ;; esac
+          finish ;;
+        env:rescan)
+          need_session
+          srv env-rescan --data-urlencode "$ref" --data-urlencode "dry_run=$dry_run"
+          finish ;;
+        local-env:unset)
+          [ -n "$keys" ] || die "local-env unset PROJECT KEY..."
+          need_session
+          srv local-env-unset --data-urlencode "$ref" --data-urlencode "keys=$keys"
+          finish ;;
+      esac
       if [ -n "$file" ]; then
-        [ -r "$file" ] || die "env set: can't read $file"
+        [ -r "$file" ] || die "$kind set: can't read $file"
         vars="$vars$(cat "$file")
     "
       fi
       if [ "$stdin" = 1 ]; then vars="$vars$(cat)
     "; fi
-      [ -n "$vars" ] || die "env set: KEY=VALUE arguments, --from-file FILE, or - for stdin"
+      [ -n "$vars" ] || die "$kind set: KEY=VALUE arguments, --from-file FILE, or - for stdin"
       need_session
-      srv env-set --data-urlencode "project=$project" --data-urlencode "vars=$vars" --data-urlencode "secret=$secrets"
+      srv "$kind-set" --data-urlencode "$ref" --data-urlencode "vars=$vars" --data-urlencode "secret=$secrets"
       finish
     }
 
@@ -751,7 +920,32 @@ extension SessionCLI {
     claudedeck server static add SERVER example.com            # root static site, SSL, clean URLs
     claudedeck server domain add --static SERVER docs example.com [--target /opt/static/DIR] [--no-clean-urls]
     claudedeck server sync DOMAIN FOLDER           # upload FOLDER (inside a registered dir) to the site
+    claudedeck server env rescan PROJECT [--dry-run]   # import keys new in .env.example
     ```
+
+    ServerPlan v1.2 (same gating; new token scopes `sql`, `sql_write`, `local`):
+
+    ```sh
+    claudedeck server sql PROJECT "select * from users limit 5" [--local]   # read-only, a table
+    claudedeck server sql PROJECT "update …" --write   # the user must approve (database name)
+    claudedeck server db clone-for-local PROJECT [--target NAME] --wait   # dev copy; only the LOCAL env's DB_NAME changes
+    claudedeck server local-env set PROJECT --from-file .env.local      # overrides only local runs see
+    claudedeck server local run PROJECT [--port N] [--no-cache] --wait  # Docker on the panel's machine; prints the URL
+    claudedeck server local logs PROJECT [--tail N] | local status PROJECT | local stop PROJECT
+    claudedeck server git branches|pull PROJECT | refresh PROJECT | build PROJECT [--no-cache]
+    claudedeck server git push PROJECT | git switch PROJECT BRANCH        # the user must approve
+    claudedeck server pull-deploy PROJECT [--wait]   # git pull, then deploy (prints the deployment id)
+    claudedeck server diagnose PROJECT               # checks; diagnose fix PROJECT ACTION (user approves)
+    claudedeck server deploy-cancel DEPLOYMENT       # the user must approve
+    claudedeck server domain set DOMAIN --port N | domain apply|nginx|purge DOMAIN
+    claudedeck server cloudflare purge|ssl|ssl-full example.com
+    claudedeck server pg databases|users SERVER | pg user-add SERVER USER PROJECT | pg grant SERVER USER DB [--revoke]
+    claudedeck server pg clone SERVER DB TARGET [--project P]   # with --project: P's DEPLOY DB_NAME switches to TARGET
+    claudedeck server server-env get|set SERVER …    # admin tokens only
+    ```
+
+    - Try a change locally first: `db clone-for-local`, `local run --wait`, `sql --local`, then deploy.
+    - `sql` runs one statement. Never `--write` on the deploy database unless the user asked for it.
 
     - The port is the container's internal port (Traefik routes the domain to it). Only
       PostgreSQL databases; domains can't be bought here.

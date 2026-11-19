@@ -331,6 +331,25 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server static add SERVER BASE` | `POST /domains/quick-static` (scope `domains`) | none (autonomous) |
 | `server domain add --static SERVER SUB BASE [--target T] [--no-clean-urls]` | `POST /domains` (`type: static`) | none (autonomous) |
 | `server sync DOMAIN FOLDER` | `POST /domains/:id/sync` (scope `deploy`) | none (autonomous) |
+| `server env rescan PROJECT [--dry-run]` | `POST /projects/:id/env/rescan` `{"dry_run"}` (scope `projects_write`) | |
+| `server sql PROJECT QUERY\|- [--local] [--write]` | `POST /projects/:id/sql` `{"query","target":"deploy"\|"local","write"?}` (scope `sql`; `--write` also `sql_write`) | `--write`: the owner's dialog (confirm = the database name) |
+| `server local run PROJECT [--server S] [--port N] [--no-cache] [--wait]` | `POST /projects/:id/local-run` (scope `local`) | |
+| `server local status PROJECT [--wait]` · `logs PROJECT [--tail N]` · `stop PROJECT` | `GET …/local-status` · `GET …/local-logs?tail=N` · `POST …/local-stop` | |
+| `server local-env get\|set\|unset PROJECT …` | `GET`/`PUT /projects/:id/local-env` `{"vars"}` · `DELETE …/local-env/:key` (scope `local`) | |
+| `server db clone-for-local PROJECT [--server S] [--database DB] [--target NAME] [--wait]` | `POST /servers/:id/pg/databases/:name/clone-for-local` `{"project_id","target_name"?}` (scope `databases`) | |
+| `server db clone-status JOB [--wait]` | `GET /pg/clone-jobs/:jobId` | |
+| `server git branches\|pull\|push PROJECT` · `git switch PROJECT BRANCH` | `GET …/branches` · `POST …/git-pull` · `…/git-push` · `…/switch-branch` `{"branch"}` (scope `projects_write`) | push, switch: the owner's dialog (confirm = the project) |
+| `server refresh PROJECT` · `build PROJECT [--no-cache]` | `POST …/refresh` (`projects_write`) · `POST …/build` `{"no_cache"}` (`deploy`) | |
+| `server pull-deploy PROJECT [--server S] [--force] [--wait]` | `POST …/pull-deploy` `{"server_id","force_rebuild"?}` (scope `deploy`) | none (no confirmation on the panel) |
+| `server diagnose PROJECT` · `diagnose fix PROJECT ACTION` | `POST …/diagnose` · `POST …/diagnose/fix` `{"action"}` (admin token) | fix: the owner's dialog |
+| `server deploy-cancel DEPLOYMENT` | `POST /deployments/:id/cancel` (scope `deploy`) | the owner's dialog (confirm = the project) |
+| `server domain set DOMAIN [--server S] [--port N] [--target T] [--project P] [--[no-]websocket] [--[no-]clean-urls] [--[no-]ssl]` | `PUT /domains/:id` (the current row with the changes; scope `domains`) | the owner's dialog (replacing an A record) |
+| `server domain apply\|nginx\|purge DOMAIN` | `POST /domains/:id/apply` · `…/deploy-nginx` (`domains`) · `…/purge-cache` (`dns`) | |
+| `server cloudflare purge\|ssl\|ssl-full BASE` | `POST /cloudflare/purge-zone` · `GET /cloudflare/ssl?domain=` · `POST /cloudflare/ssl-full` `{"base_domain"}` (`dns`) | |
+| `server pg databases\|users SERVER` | `GET /servers/:id/pg/databases` · `…/pg/users` (scope `databases`) | |
+| `server pg user-add SERVER USERNAME PROJECT` · `pg grant SERVER USER DB [--revoke]` | `POST …/pg/users` `{"username","project_id"}` · `…/pg/users/:name/grant` `{"database","revoke"?}` | |
+| `server pg clone SERVER DB TARGET [--project P] [--wait]` | `POST …/pg/databases/:name/clone` `{"target_name","project_id"?}` | |
+| `server server-env get\|set SERVER …` | `GET`/`POST /servers/:id/env` `{"key","value"}` (admin token) | |
 
 - SERVER, PROJECT, DOMAIN: an id or a name (FQDN for domains). `scan PATH` scans the registered dir
   the path is in and, for a project's own folder, prints that project.
@@ -351,8 +370,37 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   the panel uploads it to the site's target and prints where; a folder outside the registered
   project dirs is `403 not_in_project_dir`, exit 4. A site that already exists, or a bad value
   ("gecersiz …"), is the panel's 400, exit 1.
-- `env set` takes `KEY=VALUE` lines from `--from-file FILE` or stdin (`-`) so secrets stay out of the
-  shell history; `--secret KEY` marks secrets. Values are never printed, only the keys.
+- **v1.2 commands** (`sql`, `local`, `local-env`, `db clone-for-local` / `clone-status`, `git`,
+  `refresh`, `build`, `pull-deploy`, `diagnose`, `deploy-cancel`, `domain set|apply|nginx|purge`,
+  `cloudflare purge|ssl|ssl-full`, `pg`, `server-env`) and `env rescan`: gated like the v1.1 ones
+  (the token's scope, the panel's version, and a 404 from a panel without the route). New scopes:
+  `sql` (read-only SQL), `sql_write` (writing SQL), `local` (local runs and local-only env).
+  A 404 that is a real answer stays exit 5: `local logs` (not running locally), `local-env unset`
+  (no override for that key), `db clone-status` (unknown job), `deploy-cancel` (unknown deployment).
+- **Owner's dialog** for every v1.2 428: `sql --write` (the panel names the database), `git push`,
+  `git switch`, `diagnose fix`, `deploy-cancel` (the project's display name), `domain set` when it
+  would replace an A record (the FQDN). Only `deploy` is confirmed automatically.
+- **SQL**: one statement; reads run in a read-only transaction on the panel and print a table
+  (`--json`: `{database, columns, rows, row_count, truncated}`, at most 1000 rows), writes print
+  psql's output. `--local` uses the local env's `DB_NAME` (a copy from `db clone-for-local`).
+  `-` reads the query from stdin.
+- **Local runs** run the project in Docker on the panel's machine, with the deploy env plus the
+  local-only overrides (`local-env`); the default server (for the database) is the project's.
+  `local run --wait` / `local status --wait` poll until the run is `running` (exit 0) or `failed` /
+  `stopped` / not running (exit 1). An already running project is `409 conflict`, exit 1.
+- **Database copies**: `db clone-for-local` copies the project's database (its `DB_NAME`, or
+  `--database`) on its server (or `--server`) to `TARGET` (default `<db>_dev`) and points only the
+  local env's `DB_NAME` at it; the deploy env is unchanged. `pg clone … --project P` is the
+  panel's own clone: it **switches P's deploy env `DB_NAME`** to the copy (its next deploy uses
+  it), and the command says so. Both print the job; `--wait` polls `/pg/clone-jobs/:id`.
+- `pull-deploy` prints the deployment id like `deploy` (`--wait` follows it); its server is
+  `--server` or the project's. `pg user-add` writes `DB_USER` / `DB_PASSWORD` to the project's
+  env; the password is never returned. `domain set` sends the domain's current values with the
+  changes (the panel replaces every field).
+- `env set`, `local-env set` and `server-env set` take `KEY=VALUE` lines from `--from-file FILE`
+  or stdin (`-`) so secrets stay out of the shell history; `--secret KEY` marks secrets (`env set`
+  only; `local-env` and `server-env` treat keys with PASSWORD, SECRET, KEY, TOKEN, PRIVATE or
+  CREDENTIAL as secret). Values are never printed, only the keys.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
   Activity Log.
 

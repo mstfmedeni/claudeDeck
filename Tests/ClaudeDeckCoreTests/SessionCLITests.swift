@@ -599,4 +599,70 @@ import Testing
         #expect(try run(["server", "env", "set", "web", "NOTANASSIGNMENT"]).code == 2)
         #expect(try run(["server", "env", "get", "web"], answers: [("KEY", "200 0")]).curlCalls.first?.contains("-G") == true)
     }
+
+    @Test func v12ServerArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        // env rescan, sql
+        let rescan = try #require(try run(["server", "env", "rescan", "web", "--dry-run"], answers: [("would add: A", "200 0")]).curlCalls.first)
+        #expect(rescan.last == base + "env-rescan" && rescan.contains("project=web") && rescan.contains("dry_run=1"))
+        #expect(try run(["server", "env", "get", "web", "--dry-run"]).code == 2)
+        let sql = try #require(try run(["server", "sql", "web", "select 1", "--local"], answers: [("?column?", "200 0")]).curlCalls.first)
+        #expect(sql.last == base + "sql" && sql.contains("query=select 1") && sql.contains("local=1") && sql.contains("write=0"))
+        let write = try #require(try run(["server", "sql", "web", "update t set a = 1", "--write"], answers: [("UPDATE 1", "200 0")]).curlCalls.first)
+        #expect(write.contains("write=1") && write.contains("220")) // waits for the owner
+        #expect(try run(["server", "sql", "web"]).code == 2)
+
+        // local run --wait: started, then status polls until running.
+        let local = try run(["server", "local", "run", "web", "--port", "8081", "--no-cache", "--wait"],
+                            answers: [("local run started: http://localhost:8081", "200 0"), ("local: building", "200 124 building"),
+                                      ("local: running http://localhost:8081", "200 0 running")])
+        #expect(local.code == 0 && local.out.contains("local run started") && local.out.contains("local: running"))
+        #expect(local.curlCalls.count == 3 && local.curlCalls[0].last == base + "local-run" && local.curlCalls[0].contains("no_cache=1"))
+        #expect(local.curlCalls[1].last == base + "local-status" && local.curlCalls[1].contains("wait=25"))
+        #expect(local.curlCalls[2].contains("since=building"))
+        let failed = try run(["server", "local", "status", "web", "--wait"], answers: [("local: failed\nerror: build", "200 1 failed")])
+        #expect(failed.code == 1 && failed.out.contains("error: build"))
+        #expect(try run(["server", "local", "logs", "web", "--tail", "20"], answers: [("x", "200 0")]).curlCalls.first?.contains("tail=20") == true)
+        #expect(try run(["server", "local", "restart", "web"]).code == 2)
+
+        // local-env: values from a file or stdin; unset by keys.
+        let unset = try #require(try run(["server", "local-env", "unset", "web", "DB_NAME", "DEBUG"], answers: [("removed", "200 0")]).curlCalls.first)
+        #expect(unset.last == base + "local-env-unset" && unset.contains("keys=DB_NAME,DEBUG"))
+        let lset = try #require(try run(["server", "local-env", "set", "web", "DEBUG=1"], answers: [("written", "200 0")]).curlCalls.first)
+        #expect(lset.last == base + "local-env-set" && lset.contains { $0.hasPrefix("vars=DEBUG=1") })
+        #expect(try run(["server", "local-env", "set", "web", "--secret", "X"]).code == 2)
+        #expect(try run(["server", "local-env", "rescan", "web"]).code == 2)
+        let senv = try #require(try run(["server", "server-env", "set", "prod", "REGION=eu"], answers: [("written", "200 0")]).curlCalls.first)
+        #expect(senv.last == base + "server-env-set" && senv.contains("server=prod"))
+
+        // clone-for-local --wait: the job id comes back in the next header.
+        let clone = try run(["server", "db", "clone-for-local", "web", "--target", "web_dev", "--wait"],
+                            answers: [("clone job ab12: web → web_dev", "202 0 ab12"), ("[10%] prepare", "200 124 1"), ("clone ab12: success", "200 0 3")])
+        #expect(clone.code == 0 && clone.curlCalls.count == 3 && clone.curlCalls[0].contains("target=web_dev"))
+        #expect(clone.curlCalls[1].last == base + "clone-status" && clone.curlCalls[1].contains("id=ab12") && clone.curlCalls[2].contains("since=1"))
+        let pg = try #require(try run(["server", "pg", "clone", "prod", "web", "web_copy", "--project", "web"], answers: [("job", "202 0 j1")]).curlCalls.first)
+        #expect(pg.last == base + "pg-clone" && pg.contains("database=web") && pg.contains("target=web_copy") && pg.contains("project=web"))
+        #expect(try run(["server", "pg", "grant", "prod", "bob"]).code == 2)
+        #expect(try run(["server", "pg", "user-add", "prod", "bob", "web"], answers: [("ok", "200 0")]).curlCalls.first?.contains("username=bob") == true)
+
+        // git, diagnose, cancel, pull-deploy
+        let push = try #require(try run(["server", "git", "push", "web"], answers: [("pushed", "200 0")]).curlCalls.first)
+        #expect(push.last == base + "git-push")
+        let switched = try #require(try run(["server", "git", "switch", "web", "develop"], answers: [("ok", "200 0")]).curlCalls.first)
+        #expect(switched.last == base + "switch-branch" && switched.contains("branch=develop"))
+        #expect(try run(["server", "git", "switch", "web"]).code == 2)
+        #expect(try run(["server", "diagnose", "fix", "web", "fix_network"], answers: [("ok", "200 0")]).curlCalls.first?.last == base + "diagnose-fix")
+        #expect(try run(["server", "diagnose", "web"], answers: [("ok", "200 0")]).curlCalls.first?.contains("-G") == true)
+        #expect(try run(["server", "deploy-cancel", "abc"]).code == 2)
+        let pull = try run(["server", "pull-deploy", "web", "--wait"], answers: [("302", "200 0"), ("deploy #302: success", "200 0 5:success")])
+        #expect(pull.code == 0 && pull.curlCalls.count == 2 && pull.curlCalls[1].contains("id=302"))
+
+        // domain set: tri-state flags; cloudflare subcommands
+        let dset = try #require(try run(["server", "domain", "set", "api.example.com", "--port", "8081", "--no-websocket"], answers: [("ok", "200 0")]).curlCalls.first)
+        #expect(dset.last == base + "domain-set" && dset.contains("port=8081") && dset.contains("websocket=0") && dset.contains("ssl="))
+        #expect(try run(["server", "cloudflare", "purge", "example.com"], answers: [("ok", "200 0")]).curlCalls.first?.last == base + "zone-purge")
+        #expect(try run(["server", "cloudflare", "ssl", "example.com"], answers: [("ok", "200 0")]).curlCalls.first?.contains("-G") == true)
+        #expect(try run(["server", "cloudflare", "frob", "example.com"]).code == 2)
+        #expect(try run(["server", "cloudflare"], answers: [("ok", "200 0")]).curlCalls.first?.last == base + "cloudflare")
+    }
 }

@@ -400,4 +400,227 @@ private final class Box<T>: @unchecked Sendable {
         #expect(ServerPlanCLI.outcome(for: ServerPlanError.notFound).exit == .unknown)
         #expect(ServerPlanCLI.envAssignments("A=1\nB=\"two words\"\n bad line\n1X=no").count == 2)
     }
+
+    // MARK: v1.2
+
+    private static let projects = #"[{"id":9,"display_name":"new-api","default_server_id":2}]"#
+
+    private func body(_ request: URLRequest?) -> [String: Any] {
+        (request?.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+    }
+
+    @Test func sqlReadsAndOwnerGatedWrites() async throws {
+        let read = #"{"database":"new_api","columns":["id","email"],"rows":[["1","a@x"],["2",null]],"row_count":2,"truncated":false}"#
+        let replies: [String: [(Int, String)]] = [
+            "GET /projects": [(200, Self.projects)],
+            "POST /projects/9/sql": [(200, read)],
+        ]
+        let transport = RouteTransport(replies)
+        let asked = Box<[String]>([])
+        let r = try runner(transport, me: fixture("v12-me.json"), asked: asked)
+        let rows = await r.run("sql", method: "POST", form: ["project": "new-api", "query": "select id, email from users", "local": "1"])
+        #expect(rows.exit == .ok && rows.text.contains("a@x") && rows.text.contains("NULL") && rows.text.contains("(2 rows (new_api))"))
+        let sent = body(transport.requests.last)
+        #expect(sent["query"] as? String == "select id, email from users" && sent["target"] as? String == "local" && sent["write"] == nil)
+        #expect(asked.value.isEmpty && transport.requests.last?.timeoutInterval == 60)
+
+        // A write: 428 → the owner's dialog with the database name; refused: never confirmed.
+        let gate = (428, #"{"error":"confirm_required","summary":"new_api veritabaninda yazan SQL: update t","confirm":"new_api"}"#)
+        let refusedT = RouteTransport(["GET /projects": [(200, Self.projects)], "POST /projects/9/sql": [gate]])
+        let refused = await (try runner(refusedT, me: fixture("v12-me.json"), approve: false, asked: asked)).run(
+            "sql", method: "POST", form: ["project": "9", "query": "update t set a = 1", "write": "1"])
+        #expect(refused.exit == .refused && asked.value == ["sql new_api"])
+        #expect(refusedT.posts.count == 1 && refusedT.posts[0]["write"] as? Bool == true && refusedT.posts[0]["confirm"] == nil)
+        let approvedT = RouteTransport(["GET /projects": [(200, Self.projects)],
+                                        "POST /projects/9/sql": [gate, (200, #"{"database":"new_api","write":true,"output":"UPDATE 3\n"}"#)]])
+        let done = await (try runner(approvedT, me: fixture("v12-me.json"), approve: true)).run(
+            "sql", method: "POST", form: ["project": "9", "query": "update t set a = 1", "write": "1"])
+        #expect(done.exit == .ok && done.text == "UPDATE 3" && approvedT.posts.last?["confirm"] as? String == "new_api")
+        #expect(approvedT.requests.last?.timeoutInterval == 90)
+        // No query: never sent. A token without the sql scope: not offered.
+        #expect(await r.run("sql", method: "POST", form: ["project": "9", "query": " "]).exit == .usage)
+        let noScope = try runner(RouteTransport([:]), me: fixture("v11-me.json"))
+        #expect(await noScope.run("sql", method: "POST", form: ["project": "9", "query": "select 1"]).text.contains("doesn't offer this yet"))
+        #expect(ServerPlanCLI.commands["sql"]?.gate == .owner)
+    }
+
+    @Test func envRescanAndLocalEnv() async throws {
+        let transport = RouteTransport([
+            "GET /projects": [(200, Self.projects)],
+            "POST /projects/9/env/rescan": [(200, #"{"dry_run":true,"added":[{"key":"NEW_FLAG","is_secret":false,"value":"leak"},{"key":"STRIPE_SECRET","is_secret":true}]}"#)],
+            "GET /projects/9/local-env": [(200, #"[{"key":"DB_NAME","value":"new_api_dev","is_secret":false},{"key":"API_KEY","value":"leaked-if-shown","is_secret":true}]"#)],
+            "PUT /projects/9/local-env": [(200, #"{"written":["DEBUG"]}"#)],
+            "DELETE /projects/9/local-env/DEBUG": [(200, #"{"deleted":"DEBUG"}"#)],
+        ])
+        let r = try runner(transport, me: fixture("v12-me.json"))
+        let rescan = await r.run("env-rescan", method: "POST", form: ["project": "new-api", "dry_run": "1"])
+        #expect(rescan.exit == .ok && rescan.text == "would add: NEW_FLAG, STRIPE_SECRET (secret)")
+        #expect(transport.posts.last?["dry_run"] as? Bool == true && !String(decoding: rescan.json, as: UTF8.self).contains("leak"))
+
+        let env = await r.run("local-env-get", method: "GET", form: ["project": "9"])
+        #expect(env.text.contains("new_api_dev") && !env.text.contains("leaked") && !String(decoding: env.json, as: UTF8.self).contains("leaked"))
+        let set = await r.run("local-env-set", method: "POST", form: ["project": "9", "vars": "DEBUG=1\n"])
+        #expect(set.exit == .ok && (transport.posts.last?["vars"] as? [String: String]) == ["DEBUG": "1"])
+        #expect(transport.requests.last?.httpMethod == "PUT")
+        // One removed, one without an override (404: not "not available").
+        let unset = await r.run("local-env-unset", method: "POST", form: ["project": "9", "keys": "DEBUG,NOPE"])
+        #expect(unset.exit == .ok && unset.text.contains("removed: DEBUG") && unset.text.contains("no local override: NOPE"))
+        #expect(await r.run("local-env-unset", method: "POST", form: ["project": "9", "keys": "NOPE"]).exit == .unknown)
+    }
+
+    @Test func localRunAndStatus() async throws {
+        let transport = RouteTransport([
+            "GET /projects": [(200, Self.projects)],
+            "POST /projects/9/local-run": [(200, #"{"success":true,"port":18009,"local_url":"http://localhost:18009","container_name":"local-new-api","db_host":"10.0.0.5"}"#),
+                                           (409, #"{"error":"conflict","message":"Bu proje zaten lokalde calisiyor"}"#)],
+            "GET /projects/9/local-status": [(200, #"{"running":true,"status":"building","port":18009}"#),
+                                             (200, #"{"running":true,"status":"running","port":18009,"local_url":"http://localhost:18009"}"#)],
+            "GET /projects/9/local-logs": [(200, "line 1\nline 2\n")],
+        ])
+        let r = try runner(transport, me: fixture("v12-me.json"))
+        let started = await r.run("local-run", method: "POST", form: ["project": "new-api", "port": "18009", "no_cache": "1", "server": "2"])
+        #expect(started.exit == .ok && started.text.contains("http://localhost:18009"))
+        let sent = transport.posts.last ?? [:]
+        #expect(sent["port"] as? Int == 18009 && sent["no_cache"] as? Bool == true && sent["server_id"] as? Int == 2)
+        let again = await r.run("local-run", method: "POST", form: ["project": "9"])
+        #expect(again.status == 409 && again.text.contains("zaten lokalde"))
+        // --wait: polls past "building"; answers once it's running.
+        let status = await r.run("local-status", method: "GET", form: ["project": "9", "wait": "25"])
+        #expect(status.exit == .ok && status.next == "running" && status.text.contains("local: running http://localhost:18009"))
+        // Not running (never started, or stopped): --wait ends with exit 1.
+        let quiet = RouteTransport(["GET /projects": [(200, Self.projects)],
+                                    "GET /projects/9/local-status": [(200, #"{"running":false}"#)]])
+        let stopped = await (try runner(quiet, me: fixture("v12-me.json"))).run("local-status", method: "GET", form: ["project": "9", "wait": "1"])
+        #expect(stopped.exit == .failed && stopped.next == "not_running")
+        let logs = await r.run("local-logs", method: "GET", form: ["project": "9", "tail": "50"])
+        #expect(logs.text == "line 1\nline 2" && transport.requests.last?.value(forHTTPHeaderField: "Accept") == "text/plain")
+        #expect(transport.requests.last?.url?.query == "tail=50")
+        // Not running locally: 404 stays "unknown", not "not available".
+        let none = await (try runner(RouteTransport(["GET /projects": [(200, Self.projects)]]), me: fixture("v12-me.json")))
+            .run("local-logs", method: "GET", form: ["project": "9"])
+        #expect(none.exit == .unknown)
+    }
+
+    @Test func cloneForLocalAndJobs() async throws {
+        let transport = RouteTransport([
+            "GET /projects": [(200, Self.projects)],
+            "GET /projects/9/settings": [(200, fixture("v11-settings.json"))],
+            "GET /projects/9/env": [(200, fixture("v11-env.json"))],
+            "POST /servers/2/pg/databases/new_api/clone-for-local": [(202, #"{"job_id":"ab12","source":"new_api","target":"new_api_dev","local_env":{"DB_NAME":"new_api_dev"}}"#)],
+            "GET /pg/clone-jobs/ab12": [(200, #"{"id":"ab12","status":"running","events":[{"step":"prepare","message":"creating","progress":10}]}"#),
+                                       (200, #"{"id":"ab12","status":"success","events":[{"step":"prepare","message":"creating","progress":10},{"step":"done","message":"done","progress":100}]}"#)],
+            "POST /servers/1/pg/databases/shop/clone": [(202, #"{"job_id":"cd34","source":"shop","target":"shop_copy"}"#)],
+        ])
+        let log = Box<[String]>([])
+        let r = try runner(transport, me: fixture("v12-me.json"), log: log)
+        // Server and source database from the project (settings, DB_NAME).
+        let clone = await r.run("db-clone-local", method: "POST", form: ["project": "new-api"])
+        #expect(clone.exit == .ok && clone.next == "ab12" && clone.text.contains("new_api → new_api_dev") && clone.text.contains("deploy env is unchanged"))
+        #expect(transport.posts.last?["project_id"] as? Int == 9 && transport.posts.last?["target_name"] == nil)
+        let first = await r.run("clone-status", method: "GET", form: ["id": "ab12", "wait": "25", "since": "0"])
+        #expect(first.exit == .timeout && first.text == "[10%] creating" && first.next == "1")
+        let done = await r.run("clone-status", method: "GET", form: ["id": "ab12", "wait": "25", "since": "1"])
+        #expect(done.exit == .ok && done.text == "[100%] done\nclone ab12: success")
+        #expect(await r.run("clone-status", method: "GET", form: ["id": "../x"]).exit == .usage)
+        // The panel's clone with a project switches the deploy DB_NAME: said so.
+        let pg = await r.run("pg-clone", method: "POST", form: ["server": "1", "database": "shop", "target": "shop_copy", "project": "new-api"])
+        #expect(pg.exit == .ok && pg.next == "cd34" && pg.text.contains("warning: new-api's deploy env DB_NAME now points at shop_copy"))
+        #expect(transport.posts.last?["project_id"] as? Int == 9 && transport.posts.last?["target_name"] as? String == "shop_copy")
+        #expect(log.value.contains { $0.contains("switches the deploy DB_NAME") })
+        #expect(await r.run("pg-clone", method: "POST", form: ["server": "1", "database": "shop; drop", "target": "x"]).exit == .usage)
+    }
+
+    @Test func projectGatesAndWrappers() async throws {
+        let gate = (428, #"{"error":"confirm_required","summary":"new-api: git commit + push","confirm":"new-api"}"#)
+        let replies: [String: [(Int, String)]] = [
+            "GET /projects": [(200, Self.projects)],
+            "GET /projects/9/settings": [(200, fixture("v11-settings.json"))],
+            "GET /projects/9/branches": [(200, #"{"branches":["main","develop"],"current_branch":"main"}"#)],
+            "POST /projects/9/git-push": [gate],
+            "POST /projects/9/switch-branch": [gate],
+            "POST /projects/9/diagnose/fix": [gate],
+            "POST /deployments/301/cancel": [(428, #"{"error":"confirm_required","summary":"new-api deploy #301 iptal edilecek","confirm":"new-api"}"#)],
+            "POST /projects/9/pull-deploy": [(200, #"{"success":true,"deployment_id":302}"#)],
+            "POST /projects/9/diagnose": [(200, #"{"project":"new-api","server":"hetzner-1","container_name":"new-api","checks":[{"label":"Network","status":"error","message":"not on traefik-net","fix_available":true,"fix_action":"fix_network"}]}"#)],
+            "POST /projects/9/build": [(200, #"{"success":true,"output":"Step 1\nStep 2","image":"new-api:latest"}"#)],
+        ]
+        let transport = RouteTransport(replies)
+        let asked = Box<[String]>([])
+        let r = try runner(transport, me: fixture("v12-me.json"), approve: false, asked: asked)
+        let branches = await r.run("branches", method: "GET", form: ["project": "9"])
+        #expect(branches.text == "* main\n  develop")
+        #expect(await r.run("git-push", method: "POST", form: ["project": "new-api"]).exit == .refused)
+        #expect(await r.run("switch-branch", method: "POST", form: ["project": "9", "branch": "develop"]).exit == .refused)
+        #expect(await r.run("diagnose-fix", method: "POST", form: ["project": "9", "action": "fix_network"]).exit == .refused)
+        #expect(await r.run("deploy-cancel", method: "POST", form: ["id": "301"]).exit == .refused)
+        #expect(asked.value == ["git-push new-api", "switch-branch new-api", "diagnose-fix new-api", "deploy-cancel new-api"])
+        #expect(transport.posts.allSatisfy { $0["confirm"] == nil })
+        #expect(await r.run("diagnose-fix", method: "POST", form: ["project": "9", "action": "rm -rf"]).exit == .usage)
+        #expect(await r.run("switch-branch", method: "POST", form: ["project": "9", "branch": "--force"]).exit == .usage)
+
+        // pull-deploy: the project's server, prints the deployment id (for --wait).
+        let pull = await r.run("pull-deploy", method: "POST", form: ["project": "9", "force": "1"])
+        #expect(pull.exit == .ok && pull.text == "302" && transport.posts.last?["server_id"] as? Int == 2 && transport.posts.last?["force_rebuild"] as? Bool == true)
+        let diagnose = await r.run("diagnose", method: "GET", form: ["project": "9"])
+        #expect(diagnose.text.contains("new-api on hetzner-1") && diagnose.text.contains("fix_network"))
+        let build = await r.run("build", method: "POST", form: ["project": "9", "no_cache": "1"])
+        #expect(build.text == "Step 1\nStep 2\nimage: new-api:latest" && transport.requests.last?.timeoutInterval == 1200)
+        #expect(ServerPlanCLI.commands.values.filter { $0.gate == .auto }.map(\.name) == ["deploy"])
+
+        // Approved: sent again with the panel's confirmation.
+        let approved = RouteTransport(replies.merging(["POST /projects/9/git-push": [gate, (200, #"{"success":true,"log":"To origin"}"#)]]) { $1 })
+        let pushed = await (try runner(approved, me: fixture("v12-me.json"), approve: true)).run("git-push", method: "POST", form: ["project": "9"])
+        #expect(pushed.exit == .ok && pushed.text == "To origin" && approved.posts.last?["confirm"] as? String == "new-api")
+    }
+
+    @Test func domainsCloudflareAndPostgres() async throws {
+        let domains = #"[{"id":5,"fqdn":"api.example.com","subdomain":"api","base_domain":"example.com","type":"go_app","target":"new-api","port":6079,"server_id":2,"project_name":"new-api","ssl_enabled":true,"clean_urls":false,"websocket_enabled":true}]"#
+        let transport = RouteTransport([
+            "GET /domains": [(200, domains)],
+            "GET /servers": [(200, fixture("servers.json"))],
+            "GET /projects": [(200, Self.projects)],
+            "PUT /domains/5": [(428, #"{"error":"confirm_required","summary":"api.example.com DNS kaydi degisecek","confirm":"api.example.com"}"#),
+                               (200, #"{"id":5}"#)],
+            "POST /domains/5/purge-cache": [(200, #"{"success":true,"message":"Cache temizlendi: api.example.com"}"#)],
+            "POST /cloudflare/ssl-full": [(200, #"{"success":true,"message":"SSL modu 'Full'"}"#)],
+            "GET /cloudflare/ssl": [(200, #"{"domain":"example.com","ssl_mode":"flexible","is_full":false}"#)],
+            "GET /servers/1/pg/users": [(200, #"[{"name":"appuser","is_superuser":true,"databases":["a","b"]}]"#)],
+            "POST /servers/1/pg/users": [(200, #"{"success":true,"username":"bob","password":"leaked-if-shown"}"#)],
+            "POST /servers/1/pg/users/bob/grant": [(200, #"{"success":true,"message":"Erisim yetkisi verildi"}"#)],
+            "GET /servers/1/env": [(200, #"[{"key":"REGION","value":"eu"},{"key":"SENTRY_TOKEN","value":null}]"#)],
+            "POST /servers/1/env": [(201, #"{"success":true}"#)],
+        ])
+        let asked = Box<[String]>([])
+        let r = try runner(transport, me: fixture("v12-me.json"), approve: true, asked: asked)
+        // domain set: the current row, the change, everything else as it is.
+        let set = await r.run("domain-set", method: "POST", form: ["domain": "api.example.com", "server": "prod-eu-1", "clean_urls": "1"])
+        #expect(set.exit == .ok && asked.value == ["domain-set api.example.com"])
+        let put = try #require(transport.posts.last)
+        #expect(put["server_id"] as? Int == 1 && put["port"] as? Int == 6079 && put["websocket_enabled"] as? Bool == true)
+        #expect(put["clean_urls"] as? Bool == true && put["target"] as? String == "new-api" && put["confirm"] as? String == "api.example.com")
+        #expect(await r.run("domain-set", method: "POST", form: ["domain": "5"]).exit == .usage)
+
+        #expect(await r.run("domain-purge", method: "POST", form: ["domain": "5"]).text == "Cache temizlendi: api.example.com")
+        let ssl = await r.run("ssl", method: "GET", form: ["base": "Example.com"])
+        #expect(ssl.text.contains("ssl_mode: flexible") && transport.requests.last?.url?.query == "domain=example.com")
+        #expect(await r.run("ssl-full", method: "POST", form: ["base": "example.com"]).exit == .ok && transport.posts.last?["base_domain"] as? String == "example.com")
+        #expect(await r.run("zone-purge", method: "POST", form: ["base": "nodot"]).exit == .usage)
+
+        #expect(await r.run("pg-users", method: "GET", form: ["server": "1"]).text.contains("a,b"))
+        let user = await r.run("pg-user-add", method: "POST", form: ["server": "1", "username": "bob", "project": "new-api"])
+        #expect(user.exit == .ok && !String(decoding: user.json, as: UTF8.self).contains("leaked") && !user.text.contains("leaked"))
+        #expect(transport.posts.last?["project_id"] as? Int == 9 && transport.posts.last?["username"] as? String == "bob")
+        let grant = await r.run("pg-grant", method: "POST", form: ["server": "1", "username": "bob", "database": "shop", "revoke": "0"])
+        #expect(grant.text == "Erisim yetkisi verildi" && transport.posts.last?["revoke"] == nil)
+
+        let senv = await r.run("server-env-get", method: "GET", form: ["server": "1"])
+        #expect(senv.text.contains("SENTRY_TOKEN") && senv.text.contains("(secret)"))
+        let written = await r.run("server-env-set", method: "POST", form: ["server": "1", "vars": "REGION=eu-2\nDSN=x\n"])
+        #expect(written.text == "written: DSN, REGION" && transport.posts.suffix(2).map { $0["key"] as? String } == ["DSN", "REGION"])
+
+        // An older (v1.1) panel: a read-only v1.2 wrapper's 404 is "not available".
+        let older = try runner(RouteTransport(["GET /projects": [(200, Self.projects)]]), me: fixture("v11-me.json"))
+        #expect(await older.run("branches", method: "GET", form: ["project": "9"]).text.contains("doesn't offer this yet"))
+        #expect(await older.run("pg-databases", method: "GET", form: ["server": "1"]).text.contains("doesn't offer this yet"))
+    }
 }

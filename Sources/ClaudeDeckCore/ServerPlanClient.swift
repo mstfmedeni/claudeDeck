@@ -169,12 +169,12 @@ public struct ServerPlanClient: Sendable {
 
     /// A request with the bearer token.
     public func request(_ path: String, method: String = "GET", query: [URLQueryItem] = [], json: [String: Any]? = nil,
-                        accept: String = "application/json") throws -> URLRequest {
+                        accept: String = "application/json", timeout: TimeInterval = 20) throws -> URLRequest {
         var request = URLRequest(url: try url(path, query: query))
         request.httpMethod = method
         request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
         request.setValue(accept, forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeout
         if let json {
             request.httpBody = try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

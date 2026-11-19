@@ -21,7 +21,7 @@ public enum ServerPlanCLI {
     public struct Command: Sendable, Equatable {
         public var name: String
         public var method: String
-        /// Part of the v1.1 agent API: an older panel answers "not available".
+        /// Part of the v1.1 agent API or later (v1.2 too): an older panel answers "not available".
         public var v11: Bool
         /// A v1.1 token scope; a panel whose `/me` lacks it doesn't offer the command (yet).
         public var scope: String?
@@ -69,6 +69,42 @@ public enum ServerPlanCLI {
             // Static sites: autonomous (no gate). A panel without them answers 404: "not available".
             Command("static-add", "POST", v11: true, scope: "domains"),
             Command("sync", "POST", v11: true, scope: "deploy"),
+            Command("env-rescan", "POST", v11: true, scope: "projects_write"),
+            // v1.2 (ServerPlanCLIV12.swift). `method` is how the script calls the app, not the panel's verb.
+            Command("sql", "POST", v11: true, scope: "sql", gate: .owner),
+            Command("local-run", "POST", v11: true, scope: "local"),
+            Command("local-status", "GET", v11: true),
+            Command("local-logs", "GET", v11: true, scope: "local"),
+            Command("local-stop", "POST", v11: true, scope: "local"),
+            Command("local-env-get", "GET", v11: true),
+            Command("local-env-set", "POST", v11: true, scope: "local"),
+            Command("local-env-unset", "POST", v11: true, scope: "local"),
+            Command("db-clone-local", "POST", v11: true, scope: "databases"),
+            Command("clone-status", "GET", v11: true, scope: "databases"),
+            Command("branches", "GET", v11: true),
+            Command("refresh", "POST", v11: true, scope: "projects_write"),
+            Command("git-pull", "POST", v11: true, scope: "projects_write"),
+            Command("git-push", "POST", v11: true, scope: "projects_write", gate: .owner),
+            Command("switch-branch", "POST", v11: true, scope: "projects_write", gate: .owner),
+            Command("build", "POST", v11: true, scope: "deploy"),
+            Command("pull-deploy", "POST", v11: true, scope: "deploy"),
+            Command("diagnose", "GET", v11: true),
+            Command("diagnose-fix", "POST", v11: true, scope: "projects_write", gate: .owner),
+            Command("deploy-cancel", "POST", v11: true, scope: "deploy", gate: .owner),
+            Command("domain-set", "POST", v11: true, scope: "domains", gate: .owner),
+            Command("domain-apply", "POST", v11: true, scope: "domains"),
+            Command("domain-nginx", "POST", v11: true, scope: "domains"),
+            Command("domain-purge", "POST", v11: true, scope: "dns"),
+            Command("zone-purge", "POST", v11: true, scope: "dns"),
+            Command("ssl", "GET", v11: true),
+            Command("ssl-full", "POST", v11: true, scope: "dns"),
+            Command("pg-databases", "GET", v11: true, scope: "databases"),
+            Command("pg-users", "GET", v11: true, scope: "databases"),
+            Command("pg-user-add", "POST", v11: true, scope: "databases"),
+            Command("pg-grant", "POST", v11: true, scope: "databases"),
+            Command("pg-clone", "POST", v11: true, scope: "databases"),
+            Command("server-env-get", "GET", v11: true),
+            Command("server-env-set", "POST", v11: true, scope: "projects_write"),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
@@ -85,6 +121,17 @@ public enum ServerPlanCLI {
     }
 
     static let notAvailable = "not available: ServerPlan doesn't offer this yet"
+
+    /// Commands whose 404 can only mean an older panel without the route: what they name was
+    /// resolved (or isn't looked up) first. Not `local-logs` (not running locally), `local-env-unset`
+    /// (no override), `clone-status` (unknown job) or `deploy-cancel` (unknown deployment).
+    static let missingWhen404: Set<String> = [
+        "ports", "dirs", "domain-list", "cloudflare", "static-add", "sync",
+        "env-rescan", "sql", "local-run", "local-status", "local-stop", "local-env-get", "local-env-set", "db-clone-local",
+        "branches", "refresh", "git-pull", "git-push", "switch-branch", "build", "pull-deploy", "diagnose", "diagnose-fix",
+        "domain-set", "domain-apply", "domain-nginx", "domain-purge", "zone-purge", "ssl", "ssl-full",
+        "pg-databases", "pg-users", "pg-user-add", "pg-clone", "server-env-get", "server-env-set",
+    ]
 
     /// What the app sends back for one command.
     public struct Outcome: Sendable {
@@ -166,7 +213,7 @@ public enum ServerPlanCLI {
                 return try await perform(command, form: form)
             } catch let refusal as Refusal {
                 return refusal.outcome
-            } catch ServerPlanError.notFound where command.v11 && ["ports", "dirs", "domain-list", "cloudflare", "static-add", "sync"].contains(command.name) {
+            } catch ServerPlanError.notFound where command.v11 && ServerPlanCLI.missingWhen404.contains(command.name) {
                 return .error(501, "not_available", ServerPlanCLI.notAvailable, exit: .refused)
             } catch {
                 return ServerPlanCLI.outcome(for: error)
@@ -391,21 +438,23 @@ public enum ServerPlanCLI {
                 let data = try await gated(command, "POST", "/domains/\(domain.id)/namecheap/nameservers", target: domain.base)
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
             default:
-                return .error(404, "unknown_command", exit: .usage)
+                return try await performV12(command, form: form)
             }
         }
 
         // MARK: Requests
 
-        func raw(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil) async throws -> Data {
-            try await client.raw(method, path, query: query, json: json)
+        func raw(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil,
+                 accept: String = "application/json", timeout: TimeInterval = 20) async throws -> Data {
+            try await client.raw(method, path, query: query, json: json, accept: accept, timeout: timeout)
         }
 
         /// A request that may answer 428: sent again with the panel's `confirm` once the gate
         /// allows it (deploys automatically; the rest only with the owner's yes).
-        func gated(_ command: Command, _ method: String, _ path: String, body: [String: Any] = [:], target: String) async throws -> Data {
+        func gated(_ command: Command, _ method: String, _ path: String, body: [String: Any] = [:], target: String,
+                   timeout: TimeInterval = 20) async throws -> Data {
             do {
-                return try await raw(method, path, json: body)
+                return try await raw(method, path, json: body, timeout: timeout)
             } catch ServerPlanError.confirmRequired(let summary, let expected) {
                 let confirm = expected ?? target
                 switch command.gate {
@@ -422,7 +471,7 @@ public enum ServerPlanCLI {
                 }
                 var confirmed = body
                 confirmed["confirm"] = confirm
-                return try await raw(method, path, json: confirmed)
+                return try await raw(method, path, json: confirmed, timeout: timeout)
             }
         }
 
@@ -717,8 +766,10 @@ public enum ServerPlanCLI {
 
 extension ServerPlanClient {
     /// Any method and path under the agent API, the body as it came (tolerant of shape changes).
-    public func raw(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil) async throws -> Data {
-        try await send(try request(path, method: method, query: query, json: json)).0
+    /// `timeout`: longer for what the panel does over SSH or docker (SQL, builds, git).
+    public func raw(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil,
+                    accept: String = "application/json", timeout: TimeInterval = 20) async throws -> Data {
+        try await send(try request(path, method: method, query: query, json: json, accept: accept, timeout: timeout)).0
     }
 }
 

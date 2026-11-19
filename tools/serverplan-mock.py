@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A stand-in ServerPlan panel (agent API v1) for tools/demo.sh and manual testing.
+"""A stand-in ServerPlan panel (agent API v1, and the v1.2 routes `claudedeck server` uses) for tools/demo.sh and manual testing.
 
     tools/serverplan-mock.py --port 5099 --token spk_1_demo --root /tmp/ClaudeDeckDemo
 
@@ -197,6 +197,391 @@ def terminal_session(sock, server_name, command):
             pass
 
 
+# --- Agent API v1.2 (and env rescan) -----------------------------------------------------------
+# Stand-ins for `claudedeck server sql | local | local-env | db clone-for-local | git | build |
+# pull-deploy | diagnose | deploy-cancel | domain set/apply/nginx/purge | cloudflare purge/ssl |
+# pg | server-env | env rescan`. Served always; `/me` offers them with --v12.
+
+local_runs = {}       # project id -> {"status", "port", "started_at", "error"}
+local_env = {}        # project id -> {key: value}
+clone_jobs = {}       # job id -> {"server_id", "source", "target", "started"}
+server_env = {1: [("APP_REGION", "eu-central"), ("SENTRY_TOKEN", "x")], 2: [("APP_REGION", "eu-west")]}
+pg_users = {1: [{"name": "appuser", "is_superuser": True, "databases": []}]}
+
+MOCK_DOMAINS = [
+    {"id": 5, "fqdn": "api.example.com", "subdomain": "api", "base_domain": "example.com", "type": "go_app", "target": "payments-api",
+     "port": 8080, "server_id": 1, "project_name": "payments-api", "ssl_enabled": True, "clean_urls": False, "websocket_enabled": False},
+    {"id": 6, "fqdn": "docs.example.com", "subdomain": "docs", "base_domain": "example.com", "type": "static",
+     "target": "/opt/static/docs-example-com", "port": 0, "server_id": 2, "project_name": "", "ssl_enabled": True, "clean_urls": True,
+     "websocket_enabled": False},
+]
+SECRET_WORDS = ("PASSWORD", "SECRET", "KEY", "TOKEN", "PRIVATE", "CREDENTIAL")
+
+
+def is_secret_name(key):
+    return any(w in key.upper() for w in SECRET_WORDS)
+
+
+def project_by_id(pid):
+    return next((pr for pr in fixture("projects.json") if pr["id"] == pid), None)
+
+
+def db_name(pid, local=False):
+    if local and "DB_NAME" in local_env.get(pid, {}):
+        return local_env[pid]["DB_NAME"]
+    project = project_by_id(pid)
+    return project["display_name"].replace("-", "_") if project else None
+
+
+def single_statement(query):
+    q = query.strip().rstrip(";").strip()
+    if not q:
+        return None, "sorgu bos"
+    if ";" in q:
+        return None, "tek seferde sadece bir SQL ifadesi calistirilabilir"
+    if "\\" in q:
+        return None, "psql meta komutlari (\\) kullanilamaz"
+    return q, None
+
+
+def finish_local_run(pid):
+    time.sleep(3)
+    with state_lock:
+        run = local_runs.get(pid)
+        if run and run["status"] == "building":
+            run["status"] = "running"
+
+
+def clone_job_view(job_id):
+    job = clone_jobs[job_id]
+    elapsed = time.time() - job["started"]
+    steps = [("prepare", "Hedef veritabani olusturuluyor", 10), ("dump", "pg_dump | psql", 60), ("done", "Klonlama tamamlandi", 100)]
+    events = [{"job_id": job_id, "step": s, "status": "success" if p == 100 else "running", "message": m, "progress": p}
+              for i, (s, m, p) in enumerate(steps) if elapsed >= i * 1.5]
+    status = "success" if elapsed >= 3 else "running"
+    return {"id": job_id, "server_id": job["server_id"], "source": job["source"], "target": job["target"], "status": status, "events": events}
+
+
+def send_text(h, text):
+    body = text.encode()
+    h.send_response(200)
+    h.send_header("Content-Type", "text/plain; charset=utf-8")
+    h.send_header("Content-Length", str(len(body)))
+    h.end_headers()
+    h.wfile.write(body)
+
+
+def v12_get(h, p, query):
+    """GET routes; True when handled."""
+    if p == "/domains":
+        sid = (query.get("server_id") or [""])[0]
+        h.send_json(200, [d for d in MOCK_DOMAINS if not sid or str(d["server_id"]) == sid])
+        return True
+    m = re.fullmatch(r"/projects/(\d+)/(settings|env|branches|local-status|local-logs|local-env)", p)
+    if m:
+        pid, what = int(m.group(1)), m.group(2)
+        project = project_by_id(pid)
+        if not project:
+            h.error(404, "not_found", "Proje bulunamadi")
+            return True
+        branch = project.get("branch") or "main"
+        if what == "settings":
+            h.send_json(200, {"default_server_id": project["default_server_id"], "default_port": 8080, "volume_path": "",
+                              "dockerfile_path": "Dockerfile", "env_vars": []})
+        elif what == "env":
+            h.send_json(200, [{"id": 1, "key": "DB_NAME", "value": db_name(pid), "is_secret": False, "source": "auto-db"},
+                              {"id": 2, "key": "DB_PASSWORD", "value": None, "is_secret": True, "source": "auto-db"}])
+        elif what == "branches":
+            h.send_json(200, {"branches": [branch, "develop"], "current_branch": branch})
+        elif what == "local-status":
+            with state_lock:
+                run = dict(local_runs.get(pid) or {})
+            if not run:
+                h.send_json(200, {"running": False})
+            else:
+                h.send_json(200, dict(run, running=run["status"] in ("running", "building"), container_name="local-" + project["display_name"],
+                                      db_host="10.0.0.5", db_source="server", local_url="http://localhost:%d" % run["port"]))
+        elif what == "local-logs":
+            with state_lock:
+                run = local_runs.get(pid)
+            if not run or run["status"] == "stopped":
+                h.error(404, "not_found", "Proje lokalde calismiyor")
+                return True
+            tail = int((query.get("tail") or ["200"])[0])
+            lines = ["%s local-%s | listening on :%d" % (now(), project["display_name"], run["port"])] + \
+                    ["%s local-%s | GET /health 200" % (now(), project["display_name"])] * 5
+            send_text(h, "\n".join(lines[-tail:]))
+        else:
+            with state_lock:
+                env = dict(local_env.get(pid, {}))
+            h.send_json(200, [{"key": k, "value": None if is_secret_name(k) else v, "is_secret": is_secret_name(k), "updated_at": now()}
+                              for k, v in sorted(env.items())])
+        return True
+    m = re.fullmatch(r"/pg/clone-jobs/([A-Za-z0-9]+)", p)
+    if m:
+        with state_lock:
+            view = clone_job_view(m.group(1)) if m.group(1) in clone_jobs else None
+        if view is None:
+            h.error(404, "not_found", "Klonlama isi bulunamadi")
+        else:
+            h.send_json(200, view)
+        return True
+    if p == "/cloudflare/ssl":
+        domain = (query.get("domain") or [""])[0]
+        if not domain:
+            h.error(400, "bad_request", "domain parametresi gerekli")
+        else:
+            h.send_json(200, {"domain": domain, "ssl_mode": "full", "is_full": True})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/(pg/databases|pg/users|env)", p)
+    if m:
+        sid, what = int(m.group(1)), m.group(2)
+        if what == "pg/databases":
+            h.send_json(200, [{"name": pr["display_name"].replace("-", "_"), "owner": "appuser", "size": "%d MB" % (8 * pr["id"])}
+                              for pr in fixture("projects.json") if pr["default_server_id"] == sid])
+        elif what == "pg/users":
+            h.send_json(200, pg_users.get(sid, []))
+        else:
+            h.send_json(200, [{"id": i + 1, "key": k, "value": None if is_secret_name(k) else v}
+                              for i, (k, v) in enumerate(server_env.get(sid, []))])
+        return True
+    return False
+
+
+def confirm_required(h, summary, want):
+    h.error(428, "confirm_required", "Onay gerekli: confirm alanina hedefin tam adini yazin", summary=summary, confirm=want)
+    return True
+
+
+def v12_project_post(h, pid, what, body):
+    project = project_by_id(pid)
+    if not project:
+        h.error(404, "not_found", "Proje bulunamadi")
+        return True
+    name = project["display_name"]
+    if what == "env/rescan":
+        h.send_json(200, {"dry_run": bool(body.get("dry_run")), "added": [{"key": "FEATURE_FLAGS", "is_secret": False},
+                                                                           {"key": "STRIPE_SECRET", "is_secret": True}]})
+    elif what == "sql":
+        stmt, err = single_statement(body.get("query") or "")
+        if err:
+            h.error(400, "bad_request", err)
+            return True
+        db = db_name(pid, body.get("target") == "local")
+        if body.get("write"):
+            if body.get("confirm") != db:
+                return confirm_required(h, "%s veritabaninda yazan SQL: %s" % (db, stmt[:200]), db)
+            h.send_json(200, {"database": db, "write": True, "output": "UPDATE 3\n"})
+        elif not stmt.lower().startswith(("select", "with", "show", "explain")):
+            h.error(400, "sql_error", "ERROR:  cannot execute %s in a read-only transaction" % stmt.split()[0].upper())
+        else:
+            h.send_json(200, {"database": db, "columns": ["id", "email", "created_at"],
+                              "rows": [["1", "ada@example.com", "2026-11-01"], ["2", "linus@example.com", "2026-11-02"]],
+                              "row_count": 2, "truncated": False})
+    elif what == "local-run":
+        with state_lock:
+            run = local_runs.get(pid)
+            busy = run is not None and run["status"] in ("running", "building")
+            port = int(body.get("port") or 18000 + pid)
+            if not busy:
+                local_runs[pid] = {"status": "building", "port": port, "started_at": now(), "error": ""}
+        if busy:
+            h.error(409, "conflict", "Bu proje zaten lokalde calisiyor")
+            return True
+        threading.Thread(target=finish_local_run, args=(pid,), daemon=True).start()
+        h.send_json(200, {"success": True, "message": "Local run baslatildi", "container_name": "local-" + name, "port": port,
+                          "db_host": "10.0.0.5", "db_source": "server", "local_url": "http://localhost:%d" % port,
+                          "status_url": "%s/projects/%d/local-status" % (BASE, pid)})
+    elif what == "local-stop":
+        with state_lock:
+            if pid in local_runs:
+                local_runs[pid]["status"] = "stopped"
+        h.send_json(200, {"success": True, "message": "Container durduruldu"})
+    elif what == "refresh":
+        h.send_json(200, dict(project, git_branch=project.get("branch") or "main"))
+    elif what == "git-pull":
+        h.send_json(200, {"success": True, "log": "Already up to date."})
+    elif what in ("git-push", "switch-branch", "diagnose/fix"):
+        if what == "switch-branch" and not body.get("branch"):
+            h.error(400, "bad_request", "Branch name required")
+            return True
+        summaries = {"git-push": "git commit + push (uzak repoya gonderilir)", "switch-branch": "projenin branch'i degisecek",
+                     "diagnose/fix": "otomatik duzeltme sunucuda degisiklik yapar"}
+        if body.get("confirm") != name:
+            return confirm_required(h, "%s: %s" % (name, summaries[what]), name)
+        if what == "git-push":
+            h.send_json(200, {"success": True, "log": "[main 1a2b3c4] auto commit\nTo origin: main -> main"})
+        elif what == "switch-branch":
+            h.send_json(200, {"success": True, "message": "Branch switched to " + body["branch"], "project": project})
+        else:
+            h.send_json(200, {"success": True, "message": "Duzeltildi: %s" % body.get("action")})
+    elif what == "build":
+        h.send_json(200, {"success": True, "output": "Step 1/7 : FROM golang:1.23\nStep 7/7 : CMD [\"/app\"]\nSuccessfully built 4f2c",
+                          "binary": "", "image": "%s:latest" % name})
+    elif what == "pull-deploy":
+        servers = {s["id"]: s["name"] for s in fixture("servers.json")}
+        if body.get("server_id") not in servers:
+            h.error(404, "not_found", "Server not found")
+            return True
+        with state_lock:
+            dep_id = max(deployments) + 1
+            deployments[dep_id] = {"id": dep_id, "project_id": pid, "project_name": name, "server_id": body["server_id"],
+                                   "server_name": servers[body["server_id"]], "status": "pending", "step": "git_pull", "error": None,
+                                   "branch": project.get("branch"), "commit": None, "started_at": now(), "finished_at": None}
+            deploy_lines[dep_id] = []
+            deploy_done[dep_id] = False
+        threading.Thread(target=play_deploy, args=(dep_id, name, servers[body["server_id"]]), daemon=True).start()
+        h.send_json(200, {"success": True, "deployment_id": dep_id, "message": "Pull & Deploy started"})
+    else:  # diagnose
+        h.send_json(200, {"success": True, "project": name, "container_name": name.lower(), "server": "prod-eu-1", "checks": [
+            {"name": "container", "label": "Container", "status": "ok", "message": "running", "fix_available": False},
+            {"name": "network", "label": "Traefik network", "status": "error", "message": "not on traefik-net", "fix_available": True,
+             "fix_action": "fix_network", "fix_detail": "Container aga eklenecek"},
+        ]})
+    return True
+
+
+def v12_post(h, p, body):
+    """POST routes; True when handled."""
+    m = re.fullmatch(r"/projects/(\d+)/(env/rescan|sql|local-run|local-stop|refresh|git-pull|git-push|switch-branch|build|pull-deploy"
+                     r"|diagnose|diagnose/fix)", p)
+    if m:
+        return v12_project_post(h, int(m.group(1)), m.group(2), body)
+    m = re.fullmatch(r"/deployments/(\d+)/cancel", p)
+    if m:
+        with state_lock:
+            d = deployments.get(int(m.group(1)))
+        if not d:
+            h.error(404, "not_found", "Deploy bulunamadi")
+            return True
+        if body.get("confirm") != d["project_name"]:
+            return confirm_required(h, "%s deploy #%d iptal edilecek" % (d["project_name"], d["id"]), d["project_name"])
+        if d["status"] in ("success", "failed"):
+            h.error(400, "bad_request", "Deploy zaten tamamlanmis")
+            return True
+        with state_lock:
+            d.update(status="failed", finished_at=now())
+            deploy_done[d["id"]] = True
+        h.send_json(200, {"success": True, "message": "Deploy iptal edildi"})
+        return True
+    m = re.fullmatch(r"/domains/(\d+)/(apply|deploy-nginx|purge-cache)", p)
+    if m:
+        domain = next((d for d in MOCK_DOMAINS if d["id"] == int(m.group(1))), None)
+        if not domain:
+            h.error(404, "not_found", "Domain bulunamadi")
+        elif m.group(2) == "deploy-nginx" and domain["type"] != "static":
+            h.error(400, "bad_request", "Domain is not a static site")
+        elif m.group(2) == "apply":
+            h.send_json(200, {"success": True})
+        elif m.group(2) == "deploy-nginx":
+            h.send_json(200, {"success": True, "message": "Nginx container deployed: static-" + domain["fqdn"].replace(".", "-")})
+        else:
+            h.send_json(200, {"success": True, "message": "Cache temizlendi: " + domain["fqdn"]})
+        return True
+    if p in ("/cloudflare/purge-zone", "/cloudflare/ssl-full"):
+        base = body.get("base_domain")
+        if not base:
+            h.error(400, "bad_request", "base_domain gerekli")
+        elif p.endswith("zone"):
+            h.send_json(200, {"success": True, "message": "Tum cache temizlendi: %s" % base})
+        else:
+            h.send_json(200, {"success": True, "message": "SSL modu 'Full' olarak ayarlandi: %s" % base})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/env", p)
+    if m:
+        sid = int(m.group(1))
+        if not body.get("key") or "value" not in body:
+            h.error(400, "bad_request", "Key ve value gerekli")
+            return True
+        with state_lock:
+            env = [(k, v) for k, v in server_env.get(sid, []) if k != body["key"]]
+            server_env[sid] = env + [(body["key"], body["value"])]
+        h.send_json(201, {"success": True, "id": len(server_env[sid])})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/pg/users", p)
+    if m:
+        sid = int(m.group(1))
+        if not body.get("project_id"):
+            h.error(400, "bad_request", "project_id gerekli: sifre projenin env'ine yazilir, agent'a donmez")
+        elif not body.get("username"):
+            h.error(400, "bad_request", "Kullanici adi gerekli")
+        else:
+            with state_lock:
+                pg_users.setdefault(sid, []).append({"name": body["username"], "is_superuser": False, "databases": []})
+            h.send_json(200, {"success": True, "message": "Kullanici olusturuldu", "username": body["username"]})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/pg/users/([A-Za-z0-9_]+)/grant", p)
+    if m:
+        if not body.get("database"):
+            h.error(400, "bad_request", "Veritabani adi gerekli")
+        else:
+            h.send_json(200, {"success": True, "message": "Erisim yetkisi kaldirildi" if body.get("revoke") else "Erisim yetkisi verildi"})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/pg/databases/([A-Za-z0-9_]+)/(clone|clone-for-local)", p)
+    if m:
+        sid, source, kind = int(m.group(1)), m.group(2), m.group(3)
+        if kind == "clone-for-local" and not body.get("project_id"):
+            h.error(400, "bad_request", "project_id gerekli")
+            return True
+        target = body.get("target_name") or (source + "_dev" if kind == "clone-for-local" else "")
+        if not target:
+            h.error(400, "bad_request", "Yeni veritabani adi gerekli")
+            return True
+        job_id = secrets.token_hex(8)
+        with state_lock:
+            clone_jobs[job_id] = {"server_id": sid, "source": source, "target": target, "started": time.time()}
+            if kind == "clone-for-local":
+                local_env.setdefault(int(body["project_id"]), {})["DB_NAME"] = target
+        res = {"success": True, "job_id": job_id, "source": source, "target": target, "message": "Klonlama baslatildi"}
+        if kind == "clone-for-local":
+            res["local_env"] = {"DB_NAME": target}
+        h.send_json(202, res)
+        return True
+    return False
+
+
+def v12_put(h, p, body):
+    m = re.fullmatch(r"/projects/(\d+)/local-env", p)
+    if m:
+        vars_ = body.get("vars") or {}
+        if not vars_:
+            h.error(400, "bad_request", 'vars gerekli: {"vars":{"KEY":"value"}}')
+            return True
+        with state_lock:
+            local_env.setdefault(int(m.group(1)), {}).update(vars_)
+        h.send_json(200, {"written": sorted(vars_)})
+        return True
+    m = re.fullmatch(r"/domains/(\d+)", p)
+    if m:
+        domain = next((d for d in MOCK_DOMAINS if d["id"] == int(m.group(1))), None)
+        if not domain:
+            h.error(404, "not_found", "Domain bulunamadi")
+            return True
+        fqdn = domain["fqdn"]
+        # Another server means another A record: the DNS-overwrite confirmation.
+        if body.get("server_id") != domain["server_id"] and body.get("confirm") != fqdn:
+            return confirm_required(h, "%s DNS kaydi degisecek: 203.0.113.10 → 203.0.113.20" % fqdn, fqdn)
+        with state_lock:
+            domain.update({k: v for k, v in body.items() if k != "confirm"})
+        h.send_json(200, domain)
+        return True
+    return False
+
+
+def v12_delete(h, p):
+    m = re.fullmatch(r"/projects/(\d+)/local-env/([^/]+)", p)
+    if m:
+        pid, key = int(m.group(1)), unquote(m.group(2))
+        with state_lock:
+            found = local_env.get(pid, {}).pop(key, None) is not None
+        if not found:
+            h.error(404, "not_found", "Bu anahtar icin lokal override yok")
+        else:
+            h.send_json(200, {"deleted": key})
+        return True
+    return False
+
+
 # --- HTTP ---------------------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
@@ -258,7 +643,9 @@ class Handler(BaseHTTPRequestHandler):
         p = path[len(BASE):]
         try:
             if p == "/me":
-                return self.send_json(200, fixture("me.json"))
+                return self.send_json(200, fixture("v12-me.json" if args.v12 else "me.json"))
+            if v12_get(self, p, query):
+                return
             if p == "/servers":
                 return self.send_json(200, fixture("servers.json"))
             m = re.fullmatch(r"/servers/(\d+)/health", p)
@@ -456,7 +843,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self.error(428, "confirm_required", "Bu işlem onay gerektirir",
                                   summary="%s konteyneri %s." % (name, words[verb]), confirm=name)
             return self.send_json(200, {"ok": True})
+        if v12_post(self, p, body):
+            return
         self.error(404, "not_found", "Bulunamadı")
+
+    # PUT, DELETE (v1.2)
+    def agent_path(self):
+        url = urlparse(self.path)
+        if not url.path.startswith(BASE):
+            self.error(404, "not_found", "Bulunamadı")
+            return None
+        if not self.authed():
+            return None
+        return url.path[len(BASE):]
+
+    def do_PUT(self):
+        p = self.agent_path()
+        if p is not None and not v12_put(self, p, self.body()):
+            self.error(404, "not_found", "Bulunamadı")
+
+    def do_DELETE(self):
+        p = self.agent_path()
+        if p is not None and not v12_delete(self, p):
+            self.error(404, "not_found", "Bulunamadı")
 
 
 def main():
@@ -467,6 +876,7 @@ def main():
     parser.add_argument("--root", default="/tmp/ClaudeDeckDemo")
     parser.add_argument("--claude", default=None, help="what a 'claude' terminal runs (the demo stand-in)")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--v12", action="store_true", help="/me says 1.2.0 with the v1.1/v1.2 scopes (sql, sql_write, local...)")
     args = parser.parse_args()
     if args.port == 5050:
         raise SystemExit("refusing :5050 (the real panel's port)")
