@@ -102,6 +102,12 @@ extension AppModel {
             return cliDecisions(form: form, json: json)
         case .decision(let id):
             return cliDecision(id, json: json)
+        case .accounts:
+            return cliAccounts(caller, json: json)
+        case .currentAccount:
+            return cliCurrentAccount(caller, json: json)
+        case .switchAccount:
+            return await cliSwitchAccount(caller, form: form, json: json)
         }
     }
 
@@ -131,21 +137,32 @@ extension AppModel {
             return SessionCLIInfo(id: session.id, name: session.name, kind: session.kind == .shell ? "terminal" : "claude",
                                   state: cliState(session), detail: status.detail, projectId: session.projectID,
                                   project: deck.project(session.projectID)?.name ?? "", pane: panes.firstIndex(of: session.id).map { $0 + 1 },
-                                  isSelf: session.id == caller, openedBySelf: session.openedBy == caller, openedBy: session.openedBy)
+                                  isSelf: session.id == caller, openedBySelf: session.openedBy == caller, openedBy: session.openedBy,
+                                  account: session.kind == .claude ? accountID(of: session) : nil,
+                                  limitResetsAt: usageLimitHits[session.id] == nil ? nil : usageLimitReset(for: session.id))
         }
         return SessionCLI.answer(200, infos, text: SessionCLI.listText(infos), exit: .ok, json: json)
     }
 
     /// A Claude session's state name; a terminal's: `running`, `idle` (at its prompt), `failed`,
     /// `blocked` (its program waits for the user; Program Status) or `stopped`.
+    /// A Claude session at its usage limit: `switching_account` while it moves (or is about to)
+    /// to another account, `limit_reached` while it waits for the reset.
     func cliState(_ session: DeckSession) -> String {
-        guard session.kind == .shell else { return Self.stateName(status(of: session.id).display) }
+        guard session.kind == .shell else {
+            if terminals.isRunning(session.id) || switchingAccounts.contains(session.id) {
+                if accountSwitchPending(session.id) { return "switching_account" }
+                if usageLimitHits[session.id] != nil { return "limit_reached" }
+            }
+            return Self.stateName(status(of: session.id).display)
+        }
         switch cliProgress(session.id) {
         case .running: return "running"
         case .finished: return "idle"
         case .failed: return "failed"
         case .blocked(let state): return state
         case .stopped: return "stopped"
+        case .limited: return "limit_reached"
         }
     }
 
@@ -284,6 +301,9 @@ extension AppModel {
     func cliProgress(_ id: UUID) -> SessionCLI.Progress {
         guard let session = deck.session(id) else { return .stopped }
         guard session.kind == .shell else {
+            // The usage limit: moving to another account counts as running; waiting for the reset doesn't.
+            if accountSwitchPending(id) { return .running }
+            if usageLimitHits[id] != nil, terminals.isRunning(id) { return .limited(usageLimitReset(for: id)) }
             return SessionCLI.claudeProgress(state: Self.stateName(status(of: id).display), updatedAt: hookStatuses[id]?.updatedAt, sentAt: cli.sentAt[id])
         }
         if let file = cli.exitFiles[id], let text = try? String(contentsOf: file, encoding: .utf8),

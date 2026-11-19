@@ -129,7 +129,7 @@ final class AppModel {
     @ObservationIgnored let terminals = TerminalRegistry()
     /// The session helper (Settings › Sessions › "Keep sessions running when ClaudeDeck quits").
     let ptyd = PtydController()
-    @ObservationIgnored private let store: DeckDataStore
+    @ObservationIgnored let store: DeckDataStore
     @ObservationIgnored private let statusDir = ProcessInfo.processInfo.environment["CLAUDEDECK_STATE_DIR"]
         .map { URL(fileURLWithPath: $0) } ?? StatusDirectory.defaultURL()
     /// Demo mode (tools/demo.sh): fixture data only — never touches ~/.claude/settings.json or iCloud.
@@ -185,6 +185,20 @@ final class AppModel {
     @ObservationIgnored var continuedLimitResets: [UUID: Date] = [:]
     @ObservationIgnored var usageLimitTask: Task<Void, Never>?
     // MARK: Usage meter — end
+    // MARK: Accounts (AppModel+Accounts) — begin
+    /// Usage of each account besides the default one (`usage`), by account id.
+    var accountUsage: [String: UsageMonitor] = [:]
+    /// Accounts a session hit the usage limit on: until when (ClaudeDeck's own knowledge).
+    var accountLimitedUntil: [String: Date] = [:]
+    /// Sessions being moved to another account right now.
+    var switchingAccounts: Set<UUID> = []
+    /// Who is logged in on each account (from its `.claude.json`), refreshed with the usage.
+    var accountLogins: [String: String] = [:]
+    /// The limit hit each session was last offered a switch for (notify mode: one offer per hit).
+    @ObservationIgnored var accountSwitchOffered: [UUID: Date] = [:]
+    /// A notification's "Switch account" action, posted by AttentionCenter.
+    @ObservationIgnored var onAccountNotice: ((AccountNotice) -> Void)?
+    // MARK: Accounts — end
 
     init(store: DeckDataStore = .default()) {
         self.store = store
@@ -233,6 +247,7 @@ final class AppModel {
         loadAgentNotes()
         loadDecisions()
         usage.start()
+        syncAccountMonitors() // nothing without other accounts
         trackMenuBarCounts()
         menuBarCountsObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.publishMenuBarCounts() }
@@ -625,8 +640,10 @@ final class AppModel {
             // A terminal `claudedeck open` started elsewhere keeps its folder.
             let folder = session.workingDirectory.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             cli.restarted(id)
+            // A terminal given an account (the login terminal Settings › Accounts opens) runs `claude` on it.
+            let accountEnv = ClaudeAccounts.environment(for: deck.settings.account(session.account))
             terminals.startShell(id: id, cwd: folder ?? project.path, programStatus: deck.showsProgramStatus(id),
-                                 environment: cliEnv, helper: helper, helperMeta: ["cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
+                                 environment: cliEnv.merging(accountEnv) { $1 }, helper: helper, helperMeta: ["cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
             if let command = session.startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty {
                 // Typed like the user would once the shell had a moment to load its rc files
                 // (the pty buffers it meanwhile), so it lands in history and Ctrl+C keeps the shell.
@@ -665,8 +682,10 @@ final class AppModel {
         // `claudedeck new` options (mode, allowed tools, model, effort); `--allowedTools` is
         // variadic too, and `--name` ends it.
         let options = cliLaunchArguments(for: session)
+        // The Claude account (AppModel+Accounts): nothing for the default one.
+        let accountEnv = accountEnvironment(forLaunch: id, fresh: sid == nil && !continueLatest, cwd: worktreeDir ?? project.path)
         terminals.start(id: id, cwd: worktreeDir ?? project.path, claudePath: claudePath, args: pencil + options + args,
-                        environment: ask.merging(cliEnv) { $1 }, helper: helper,
+                        environment: ask.merging(cliEnv) { $1 }.merging(accountEnv) { $1 }, helper: helper,
                         helperMeta: ["askToken": ask["CLAUDEDECK_ASK_TOKEN"] ?? "", "pencil": pencil.isEmpty ? "0" : "1",
                                      "cliToken": cliEnv[SessionCLI.Env.token] ?? ""])
         deck.updateSession(id) { $0.isOpen = true }
@@ -726,7 +745,7 @@ final class AppModel {
     }
 
     /// Types the "continue" message (Settings › Sessions) into a running Claude session.
-    func sendContinueMessage(_ id: UUID) async {
+    func sendContinueMessage(_ id: UUID, message given: String? = nil) async {
         guard terminals.isRunning(id) else { return }
         // Wait for this process's SessionStart: typed earlier, the text can land before the input exists.
         let launched = launchedAt[id] ?? .distantPast
@@ -737,7 +756,7 @@ final class AppModel {
         }
         guard terminals.isRunning(id) else { return }
         let custom = deck.settings.continueMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        let message = custom.isEmpty ? String(localized: "Continue where you left off.") : custom
+        let message = given ?? (custom.isEmpty ? String(localized: "Continue where you left off.") : custom)
         let sentAt = Date()
         terminals.type(message + "\r", into: id)
         // With many sessions resuming at once, Claude can take a long while connecting MCP servers;
@@ -853,17 +872,18 @@ final class AppModel {
 
     @discardableResult
     func newSession(in projectID: UUID, resumeID: String? = nil, title: String? = nil,
-                    startedBy: UUID? = nil, launchOptions: ClaudeLaunchOptions? = nil) -> UUID? {
+                    startedBy: UUID? = nil, launchOptions: ClaudeLaunchOptions? = nil, account: String? = nil) -> UUID? {
         var name: String?
         if let title, let project = deck.project(projectID) {
             name = "\(project.name) · \(title.prefix(30))"
         }
         guard let session = deck.addSession(to: projectID, claudeSessionID: resumeID, name: name) else { return nil }
         // `claudedeck new`: known before the first start, which passes the options to `claude`.
-        if startedBy != nil || launchOptions != nil {
+        if startedBy != nil || launchOptions != nil || account != nil {
             deck.updateSession(session.id) {
                 $0.startedBy = startedBy
                 $0.launchOptions = launchOptions
+                $0.account = account
             }
         }
         launch(session.id, resume: resumeID != nil, resumeID: resumeID)

@@ -29,6 +29,9 @@ enum ShellEnvironment {
     static func isInheritedMarker(_ key: String) -> Bool {
         key == "CLAUDECODE" || key.hasPrefix("CLAUDE_CODE_") || key.hasPrefix("CLAUDEDECK_")
             || key == "CLAUDE_PROJECT_DIR" || key == "CLAUDE_ENV_FILE" || key.hasPrefix("CLAUDE_PLUGIN_")
+            // Names the Keychain item Claude Code reads the login from: inherited, every account
+            // (CLAUDE_CONFIG_DIR, ClaudeAccounts.swift) would use that one login.
+            || key == "CLAUDE_SECURESTORAGE_CONFIG_DIR"
     }
 
     /// Backslash-escapes a path the way Terminal.app does for dropped files.

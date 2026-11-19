@@ -19,6 +19,15 @@ final class UsageMonitor {
     @ObservationIgnored private var failures = 0
     @ObservationIgnored private var lastFetch: Date = .distantPast
     @ObservationIgnored private var inFlight: Task<Void, Never>?
+    /// The account's `CLAUDE_CONFIG_DIR` (nil: the default setup) and its place among the
+    /// accounts (the demo's fixtures differ per account).
+    @ObservationIgnored let configDir: String?
+    @ObservationIgnored let demoIndex: Int
+
+    init(configDir: String? = nil, demoIndex: Int = 0) {
+        self.configDir = configDir
+        self.demoIndex = demoIndex
+    }
 
     func start() {
         guard pollTask == nil else { return }
@@ -50,10 +59,11 @@ final class UsageMonitor {
     private func fetch() async {
         lastFetch = Date()
         if AppModel.isDemo {
-            state = .ok(Self.demoUsage())
+            state = .ok(Self.demoUsage(index: demoIndex))
             return
         }
-        let result = await Task.detached(priority: .utility) { await Self.load() }.value
+        let configDir = configDir
+        let result = await Task.detached(priority: .utility) { await Self.load(configDir: configDir) }.value
         switch result {
         case .usage(let usage):
             failures = 0
@@ -75,8 +85,8 @@ final class UsageMonitor {
     }
 
     /// Off the main actor: read the token, call the endpoint. The token stays in this function.
-    nonisolated private static func load() async -> LoadResult {
-        guard let token = readAccessToken() else { return .unavailable }
+    nonisolated private static func load(configDir: String?) async -> LoadResult {
+        guard let token = readAccessToken(configDir: configDir) else { return .unavailable }
         var request = URLRequest(url: ClaudeUsageAPI.url, timeoutInterval: 10)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(ClaudeUsageAPI.betaHeader, forHTTPHeaderField: "anthropic-beta")
@@ -97,19 +107,22 @@ final class UsageMonitor {
         }
     }
 
-    /// Claude Code keeps its credentials in the login Keychain ("Claude Code-credentials") on macOS,
-    /// elsewhere in `~/.claude/.credentials.json`. Read through `security`, the same tool Claude Code uses.
-    nonisolated private static func readAccessToken() -> String? {
+    /// Claude Code keeps its credentials in the login Keychain ("Claude Code-credentials"; for
+    /// another config folder "Claude Code-credentials-<hash>", see ClaudeAccounts.keychainService)
+    /// on macOS, elsewhere in `<config folder>/.credentials.json`. Read through `security`, the
+    /// same tool Claude Code uses.
+    nonisolated private static func readAccessToken(configDir: String?) -> String? {
         let user = ProcessInfo.processInfo.environment["USER"] ?? NSUserName()
+        let service = ClaudeAccounts.keychainService(configDir: configDir)
         for account in [nil, user] {
-            var args = ["find-generic-password", "-s", ClaudeUsageAPI.keychainService]
+            var args = ["find-generic-password", "-s", service]
             if let account { args += ["-a", account] }
             args.append("-w")
             if let blob = runSecurity(args), let token = ClaudeUsageAPI.accessToken(fromCredentials: blob) {
                 return token
             }
         }
-        let file = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".claude/.credentials.json")
+        let file = ClaudeAccounts.credentialsFile(configDir: configDir, home: FileManager.default.homeDirectoryForCurrentUser.path)
         guard let blob = try? Data(contentsOf: file) else { return nil }
         return ClaudeUsageAPI.accessToken(fromCredentials: blob)
     }
@@ -141,13 +154,15 @@ final class UsageMonitor {
     private final class DataBox: @unchecked Sendable { var data: Data? }
 
     /// Fixture for tools/demo.sh (no Keychain, no network): 62 % at launch, climbing about
-    /// 24 % an hour (the dashboard's burn-down has a slope to project).
+    /// 24 % an hour (the dashboard's burn-down has a slope to project). Other accounts start at
+    /// 97 % (near the limit), 18 %, 40 %, … in the order they were added.
     private static let demoLaunch = Date()
-    private static func demoUsage() -> ClaudeUsage {
+    private static func demoUsage(index: Int) -> ClaudeUsage {
         let now = Date()
         let minutes = now.timeIntervalSince(demoLaunch) / 60
+        let start: Double = index == 0 ? 62 : [97, 18, 40][(index - 1) % 3]
         return ClaudeUsage(
-            fiveHour: UsageWindow(usedPercent: min(99, 62 + minutes * 0.4), resetsAt: demoLaunch.addingTimeInterval(130 * 60)),
+            fiveHour: UsageWindow(usedPercent: min(99, start + minutes * 0.4), resetsAt: demoLaunch.addingTimeInterval(130 * 60)),
             sevenDay: UsageWindow(usedPercent: 18 + minutes * 0.002, resetsAt: demoLaunch.addingTimeInterval(4 * 86400 + 6 * 3600)),
             fetchedAt: now
         )

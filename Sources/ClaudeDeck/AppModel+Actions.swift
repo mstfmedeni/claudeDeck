@@ -115,16 +115,17 @@ extension AppModel {
     /// in one project don't edit the same files.
     @discardableResult
     func newWorktreeSession(in projectID: UUID, worktreeName: String, startedBy: UUID? = nil,
-                            launchOptions: ClaudeLaunchOptions? = nil) -> UUID? {
+                            launchOptions: ClaudeLaunchOptions? = nil, account: String? = nil) -> UUID? {
         guard DeckData.isValidWorktreeName(worktreeName) else { return nil }
         var created: DeckSession?
         mutate { deck in
             created = deck.addWorktreeSession(to: projectID, worktreeName: worktreeName)
             // `claudedeck new`: known before the first start, which passes the options to `claude`.
-            if let id = created?.id, startedBy != nil || launchOptions != nil {
+            if let id = created?.id, startedBy != nil || launchOptions != nil || account != nil {
                 deck.updateSession(id) {
                     $0.startedBy = startedBy
                     $0.launchOptions = launchOptions
+                    $0.account = account
                 }
             }
         }

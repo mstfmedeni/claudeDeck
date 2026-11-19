@@ -141,7 +141,7 @@ extension AppModel {
     /// (up to 3 s), anything else — or a timeout — gets SIGTERM (SIGKILL after 5 s, see
     /// `TerminalRegistry.reap`). Returns once the old process is gone, so its late hook events
     /// can't be mistaken for the new process's.
-    private func stopForRestart(_ id: UUID, graceful: Bool) async {
+    func stopForRestart(_ id: UUID, graceful: Bool) async {
         if graceful {
             // Ctrl+C first clears a draft in the prompt; otherwise "/exit" would be appended to it
             // and sent to Claude as a message.

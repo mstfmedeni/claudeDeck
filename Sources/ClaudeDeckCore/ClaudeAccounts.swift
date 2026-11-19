@@ -367,3 +367,102 @@ public enum AccountSwitchMessage {
     public static let afterLimit = "[ClaudeDeck] Account switched after a usage limit. Continue exactly where you left off: re-read docs/AGENDA.md (and HANDOFF.md if present), then resume the current task."
     public static let manual = "[ClaudeDeck] Account switched. Continue exactly where you left off: re-read docs/AGENDA.md (and HANDOFF.md if present), then resume the current task."
 }
+
+// MARK: - claudedeck account
+
+/// `GET /v1/cli/accounts` (one entry) and `GET /v1/cli/accounts/current`.
+public struct SessionCLIAccountInfo: Encodable, Sendable, Equatable {
+    /// `default` or the account's id: what `--account` and `account switch --to` take.
+    public var name: String
+    public var label: String
+    /// 1 = tried first.
+    public var priority: Int
+    /// New sessions start on it (`new` without `--account`).
+    public var active: Bool
+    /// The calling session runs on it.
+    public var current: Bool
+    public var loggedIn: Bool
+    /// Percent used, nil when unknown.
+    public var fiveHour: Double?
+    public var weekly: Double?
+    public var limited: Bool
+    public var nearLimit: Bool
+    /// When it is usable again, while limited.
+    public var resetAt: Date?
+    /// Claude sessions running on it.
+    public var sessions: Int
+
+    public init(name: String, label: String, priority: Int, active: Bool, current: Bool, loggedIn: Bool, fiveHour: Double?,
+                weekly: Double?, limited: Bool, nearLimit: Bool, resetAt: Date?, sessions: Int) {
+        self.name = name
+        self.label = label
+        self.priority = priority
+        self.active = active
+        self.current = current
+        self.loggedIn = loggedIn
+        self.fiveHour = fiveHour
+        self.weekly = weekly
+        self.limited = limited
+        self.nearLimit = nearLimit
+        self.resetAt = resetAt
+        self.sessions = sessions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, label, priority, active, current, loggedIn, fiveHour, weekly, limited, nearLimit, resetAt, sessions
+    }
+
+    /// Every key is always there (null when unknown).
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(label, forKey: .label)
+        try c.encode(priority, forKey: .priority)
+        try c.encode(active, forKey: .active)
+        try c.encode(current, forKey: .current)
+        try c.encode(loggedIn, forKey: .loggedIn)
+        try c.encode(fiveHour.map { $0.rounded() }, forKey: .fiveHour)
+        try c.encode(weekly.map { $0.rounded() }, forKey: .weekly)
+        try c.encode(limited, forKey: .limited)
+        try c.encode(nearLimit, forKey: .nearLimit)
+        try c.encode(resetAt, forKey: .resetAt)
+        try c.encode(sessions, forKey: .sessions)
+    }
+
+    /// `ok`, `near`, `limited` or `logged_out`.
+    public var stateName: String {
+        !loggedIn ? "logged_out" : limited ? "limited" : nearLimit ? "near" : "ok"
+    }
+}
+
+/// `POST /v1/cli/accounts/switch`.
+public struct SessionCLIAccountSwitch: Encodable, Sendable, Equatable {
+    public var from: String
+    public var to: String
+    /// The session ends and resumes on `to` a moment after this answer.
+    public var scheduled: Bool
+    public init(from: String, to: String, scheduled: Bool = true) {
+        self.from = from
+        self.to = to
+        self.scheduled = scheduled
+    }
+}
+
+extension ClaudeAccounts {
+    public static func listText(_ accounts: [SessionCLIAccountInfo], now: Date = Date()) -> String {
+        let header = ["PRIO", "NAME", "5H", "WEEK", "STATE", "RESET", "SESSIONS", ""]
+        func percent(_ value: Double?) -> String { value.map { "\(Int($0.rounded()))%" } ?? "-" }
+        let rows = accounts.map { info in
+            [String(info.priority), info.name, percent(info.fiveHour), percent(info.weekly), info.stateName,
+             info.resetAt.map { UsageFormat.countdown(to: $0, now: now) } ?? "-", String(info.sessions),
+             [info.active ? "active" : nil, info.current ? "current" : nil].compactMap { $0 }.joined(separator: ",")]
+        }
+        let all = [header] + rows
+        let widths = (0..<(header.count - 1)).map { column in all.map { $0[column].count }.max() ?? 0 }
+        return all.map { row in
+            row.enumerated().map { index, cell in
+                index < widths.count ? cell.padding(toLength: widths[index], withPad: " ", startingAt: 0) : cell
+            }.joined(separator: "  ").trimmingCharacters(in: .whitespaces)
+        }.joined(separator: "\n")
+    }
+}

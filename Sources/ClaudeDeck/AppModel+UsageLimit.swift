@@ -28,6 +28,7 @@ extension AppModel {
             usageLimitHits[id] = UsageLimitHit(at: at, resetsAt: reset)
             limitLog.info("Session \(id, privacy: .public) hit the usage limit")
             scheduleUsageLimitChecks()
+            accountLimitHit(id, resetsAt: reset) // other accounts (AppModel+Accounts)
         case .cleared(let at):
             if let hit = usageLimitHits[id], at > hit.at { usageLimitHits[id] = nil }
         }
@@ -36,7 +37,13 @@ extension AppModel {
     /// When the session's limit resets: the message's time, else the usage API's exhausted window.
     func usageLimitReset(for id: UUID) -> Date? {
         guard let hit = usageLimitHits[id] else { return nil }
-        return hit.resetsAt ?? usage.state.usage?.exhaustedUntil
+        return hit.resetsAt ?? limitMonitor(for: id)?.state.usage?.exhaustedUntil
+    }
+
+    /// The usage of the account the session runs on.
+    private func limitMonitor(for id: UUID) -> UsageMonitor? {
+        guard let session = deck.session(id) else { return usage }
+        return usageMonitor(forAccount: accountID(of: session)) ?? usage
     }
 
     private func scheduleUsageLimitChecks() {
@@ -52,20 +59,24 @@ extension AppModel {
     }
 
     private func continueSessionsPastTheirLimit() async {
+        // Another account with room again: sessions move there first (only with that setting).
+        await retryAccountSwitches()
         guard deck.settings.continueAfterUsageLimit else { return }
         let now = Date()
         let due = usageLimitHits.keys.filter { id in
-            guard let reset = usageLimitReset(for: id) else { return false }
+            guard !switchingAccounts.contains(id), let reset = usageLimitReset(for: id) else { return false }
             return now >= reset.addingTimeInterval(Self.usageLimitGrace)
         }
         guard !due.isEmpty else { return }
         // Make sure the plan really is usable again; otherwise wait for the API's reset time.
-        await usage.refresh()
-        if let until = usage.state.usage?.exhaustedUntil, until > Date() {
-            for id in due { usageLimitHits[id]?.resetsAt = until }
-            return
-        }
+        // (Each session's own account: with several accounts they reset at different times.)
+        let monitors = Dictionary(due.compactMap { id in limitMonitor(for: id).map { (ObjectIdentifier($0), $0) } }) { a, _ in a }
+        for monitor in monitors.values { await monitor.refresh() }
         for id in due {
+            if let until = limitMonitor(for: id)?.state.usage?.exhaustedUntil, until > Date() {
+                usageLimitHits[id]?.resetsAt = until
+                continue
+            }
             guard let hit = usageLimitHits[id], let reset = usageLimitReset(for: id) else { continue }
             guard terminals.isRunning(id) else { usageLimitHits[id] = nil; continue }
             // Still sitting at the prompt (the user hasn't carried on or been asked something).

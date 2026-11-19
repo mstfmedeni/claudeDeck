@@ -492,6 +492,7 @@ extension SessionCLI {
         case .all:
             guard !entries.isEmpty, !entries.contains(where: \.running) else { return (false, .timeout, nil) }
             if entries.contains(where: { $0.exit == .blocked }) { return (true, .blocked, nil) }
+            if entries.contains(where: { $0.exit == .limited }) { return (true, .limited, nil) }
             if entries.contains(where: { $0.exit != .ok }) { return (true, .failed, nil) }
             return (true, .ok, nil)
         }
@@ -515,6 +516,7 @@ extension SessionCLI {
         switch exit {
         case .ok: "finished"
         case .blocked: "blocked"
+        case .limited: "limited"
         case .timeout: "timeout"
         default: "failed"
         }

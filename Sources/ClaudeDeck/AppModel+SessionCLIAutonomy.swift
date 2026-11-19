@@ -100,9 +100,15 @@ extension AppModel {
         var skill = (form["skill"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if skill.hasPrefix("/") { skill.removeFirst() }
         if !skill.isEmpty, let refusal = cliSkillRefusal(skill, project: project) { return refusal.response }
-        let request = CLIQueuedStart(id: SessionCLI.newQueueID(), caller: caller, callerName: callerName, projectID: projectID,
+        let account: String?
+        switch cliAccountChoice(form) {
+        case .failure(let refusal): return refusal.response
+        case .success(let choice): account = choice
+        }
+        var request = CLIQueuedStart(id: SessionCLI.newQueueID(), caller: caller, callerName: callerName, projectID: projectID,
                                      name: (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines), prompt: prompt,
                                      worktree: worktree, skill: skill.isEmpty ? nil : skill, options: given)
+        request.account = account
         let running = cliRunningStarted
         if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, book: &cli) {
             guard form["queue"] == "1", refusal.status == 429 else {
@@ -134,13 +140,19 @@ extension AppModel {
         // The owner's selection stays where it was, as with `claudedeck open`.
         let focused = selectedSessionID
         let launchOptions = options.isEmpty ? nil : options
+        // `--account auto`: the first account with room right now (a queued start decides when it starts);
+        // not given: the project's pin or the account new sessions use, decided by `launch`.
+        let account = request.account.map { $0 == ClaudeAccounts.autoID ? accountForNewSession(ClaudeAccounts.autoID) : $0 }
+            .flatMap { hasOtherAccounts || $0 != ClaudeAccounts.defaultID ? $0 : nil }
         let started: UUID?
         if worktree.isEmpty {
             let firstLine = request.prompt.split(separator: "\n").first.map(String.init)
             let title = given.isEmpty ? firstLine ?? request.skill.map { "/\($0)" } : given
-            started = newSession(in: project.id, title: title.flatMap { $0.isEmpty ? nil : $0 }, startedBy: caller, launchOptions: launchOptions)
+            started = newSession(in: project.id, title: title.flatMap { $0.isEmpty ? nil : $0 }, startedBy: caller, launchOptions: launchOptions,
+                                 account: account)
         } else {
-            started = newWorktreeSession(in: project.id, worktreeName: worktree, startedBy: caller, launchOptions: launchOptions)
+            started = newWorktreeSession(in: project.id, worktreeName: worktree, startedBy: caller, launchOptions: launchOptions,
+                                         account: account)
         }
         selectedSessionID = focused
         guard let id = started else { return .failure(.init(SessionCLI.failure(409, "not_started", exit: .failed))) }

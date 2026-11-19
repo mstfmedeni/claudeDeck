@@ -9,6 +9,8 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let approveAction = "approve"
     nonisolated static let denyAction = "deny"
     nonisolated static let agentCategory = "agentRegistration"
+    nonisolated static let accountCategory = "accountSwitch"
+    nonisolated static let switchAccountAction = "switchAccount"
     private let model: AppModel
     private var center: UNUserNotificationCenter? {
         // UNUserNotificationCenter crashes outside an app bundle (e.g. `swift run`).
@@ -37,6 +39,11 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                 ],
                 intentIdentifiers: []
             ),
+            UNNotificationCategory(
+                identifier: Self.accountCategory,
+                actions: [UNNotificationAction(identifier: Self.switchAccountAction, title: String(localized: "Switch Account"), options: [])],
+                intentIdentifiers: []
+            ),
         ])
         center?.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
         model.onAttention = { [weak self] event in self?.handle(event) }
@@ -47,6 +54,7 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         model.onCountsChanged = { [weak self] in self?.updateBadge() }
         model.onAgentRegistered = { [weak self] record in self?.agentRegistered(record) }
         model.onSessionNotice = { [weak self] id, text in self?.sessionNotice(id, text) }
+        model.onAccountNotice = { [weak self] notice in self?.accountNotice(notice) }
         let previousDecisions = model.onDecisionsChanged
         model.onDecisionsChanged = { [weak self] added in
             previousDecisions?(added)
@@ -70,6 +78,29 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["sessionID": sessionID.uuidString]
         content.threadIdentifier = sessionID.uuidString
         center.add(UNNotificationRequest(identifier: "cli-\(UUID().uuidString)", content: content, trigger: nil))
+    }
+
+    /// A session moved to another account, or could (with a "Switch Account" action), or every
+    /// account is at its limit (AppModel+Accounts).
+    private func accountNotice(_ notice: AccountNotice) {
+        if model.deck.settings.bounceDock, notice.switchTo != nil, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        guard model.deck.settings.notifications, let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        content.sound = notice.switchTo == nil ? nil : .default
+        var info: [String: Any] = [:]
+        if let id = notice.sessionID {
+            info["sessionID"] = id.uuidString
+            content.threadIdentifier = id.uuidString
+        }
+        if let target = notice.switchTo {
+            info["switchAccount"] = target
+            content.categoryIdentifier = Self.accountCategory
+        }
+        content.userInfo = info
+        let key = notice.sessionID?.uuidString ?? UUID().uuidString
+        center.add(UNNotificationRequest(identifier: "account-\(key)", content: content, trigger: nil))
     }
 
     /// `claudedeck decide`: a decision waits for the owner (clicking opens Your Decisions).
@@ -214,6 +245,12 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         let raw = userInfo["sessionID"] as? String
         guard let raw, let id = UUID(uuidString: raw) else { return }
         let action = response.actionIdentifier
+        if let target = userInfo["switchAccount"] as? String, action == Self.switchAccountAction {
+            await MainActor.run {
+                Task { await self.model.switchAccount(id, to: target, reason: .manual) }
+            }
+            return
+        }
         let rawStamp = userInfo["stamp"] as? Double
         let stamp = rawStamp.map { Date(timeIntervalSince1970: $0) }
         let remote = userInfo["remote"] as? Bool ?? false

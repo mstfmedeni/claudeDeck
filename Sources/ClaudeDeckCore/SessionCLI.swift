@@ -30,6 +30,10 @@ public enum SessionCLI {
         case refused = 4
         /// No such session or terminal.
         case unknown = 5
+        /// For `wait`: the Claude session stopped on its plan's usage limit and waits for the
+        /// reset (no other account to move to, or moving is off). One that moves to another
+        /// account keeps running: `wait` keeps waiting for it.
+        case limited = 6
         /// For `wait`: still running when the timeout passed (like timeout(1)).
         case timeout = 124
     }
@@ -72,6 +76,8 @@ public enum SessionCLI {
         case server
         /// A question for the owner that doesn't block (`claudedeck decide`), and reading the answers.
         case decide
+        /// Moving itself to another Claude account (`claudedeck account switch`).
+        case account
     }
 
     /// Claude sessions and the user's own terminals.
@@ -114,6 +120,12 @@ public enum SessionCLI {
         case decisions
         /// `GET /v1/cli/decisions/{id}`.
         case decision(String)
+        /// `GET /v1/cli/accounts`: the Claude accounts and their usage.
+        case accounts
+        /// `GET /v1/cli/accounts/current`: the caller's account.
+        case currentAccount
+        /// `POST /v1/cli/accounts/switch`: the caller moves itself to another account.
+        case switchAccount
 
         public var scope: Scope {
             switch self {
@@ -129,6 +141,8 @@ public enum SessionCLI {
             case .server: .server
             case .waitMany: .wait
             case .decide, .decisions, .decision: .decide
+            case .accounts, .currentAccount: .list
+            case .switchAccount: .account
             }
         }
     }
@@ -167,6 +181,9 @@ public enum SessionCLI {
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
         case 1 where rest[0] == "decisions": return method == "POST" ? .route(.decide) : expect("GET", .decisions)
         case 2 where rest[0] == "decisions": return expect("GET", .decision(AgentHTTP.percentDecode(rest[1])))
+        case 1 where rest[0] == "accounts": return expect("GET", .accounts)
+        case 2 where rest[0] == "accounts" && rest[1] == "current": return expect("GET", .currentAccount)
+        case 2 where rest[0] == "accounts" && rest[1] == "switch": return expect("POST", .switchAccount)
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {
@@ -249,6 +266,8 @@ public enum SessionCLI {
         case blocked(String)
         /// Not running (never started, or ended without a code to go by).
         case stopped
+        /// A Claude session stopped on its plan's usage limit, waiting for the reset (when known).
+        case limited(Date?)
 
         public var exit: Exit {
             switch self {
@@ -256,6 +275,7 @@ public enum SessionCLI {
             case .finished, .stopped: .ok
             case .failed: .failed
             case .blocked: .blocked
+            case .limited: .limited
             }
         }
 
@@ -266,6 +286,7 @@ public enum SessionCLI {
             case .failed: "failed"
             case .blocked: "blocked"
             case .stopped: "stopped"
+            case .limited: "limited"
             }
         }
 
@@ -339,7 +360,7 @@ public enum SessionCLI {
             switch fallback {
             // Still starting, or a code of its own (the command `open` ran): that's newer.
             case .running, .finished(.some), .failed: return fallback
-            case .stopped: return fallback
+            case .stopped, .limited: return fallback
             case .blocked, .finished(nil):
                 if program == .failed { return .failed(exitCode ?? 1) }
                 return .finished(exitCode ?? 0)
@@ -368,6 +389,7 @@ public enum SessionCLI {
             + (state == "needsPermission" ? "needs permission" : state == blockedState ? "needs input" : "asking a question")
             + (detail.map { " — \($0)" } ?? "")
         case .stopped: "stopped: not running"
+        case .limited(let reset): "limited: usage limit reached" + (reset.map { ", resets \(ISO8601DateFormatter().string(from: $0))" } ?? "")
         }
     }
 
@@ -457,9 +479,13 @@ public struct SessionCLIInfo: Encodable, Sendable, Equatable {
     /// The caller opened it (`claudedeck open`).
     public var openedBySelf: Bool
     public var openedBy: UUID?
+    /// Claude sessions: the account it runs on (`default` or an account's name); nil for terminals.
+    public var account: String?
+    /// When its usage limit resets, while it waits for that (state `limit_reached`).
+    public var limitResetsAt: Date?
 
     public init(id: UUID, name: String, kind: String, state: String, detail: String?, projectId: UUID, project: String,
-                pane: Int?, isSelf: Bool, openedBySelf: Bool, openedBy: UUID?) {
+                pane: Int?, isSelf: Bool, openedBySelf: Bool, openedBy: UUID?, account: String? = nil, limitResetsAt: Date? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -471,10 +497,12 @@ public struct SessionCLIInfo: Encodable, Sendable, Equatable {
         self.isSelf = isSelf
         self.openedBySelf = openedBySelf
         self.openedBy = openedBy
+        self.account = account
+        self.limitResetsAt = limitResetsAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, state, detail, projectId, project, pane, isSelf = "self", openedBySelf = "mine", openedBy
+        case id, name, kind, state, detail, projectId, project, pane, isSelf = "self", openedBySelf = "mine", openedBy, account, limitResetsAt
     }
 
     /// Every key is always there (null when unknown).
@@ -491,6 +519,8 @@ public struct SessionCLIInfo: Encodable, Sendable, Equatable {
         try c.encode(isSelf, forKey: .isSelf)
         try c.encode(openedBySelf, forKey: .openedBySelf)
         try c.encode(openedBy, forKey: .openedBy)
+        try c.encode(account, forKey: .account)
+        try c.encode(limitResetsAt, forKey: .limitResetsAt)
     }
 }
 
@@ -614,14 +644,17 @@ public struct SessionCLIWaited: Encodable, Sendable, Equatable {
     public var exitCode: Int32?
     public var state: String
     public var detail: String?
+    /// `limited`: when the usage limit resets (nil: unknown, or not limited).
+    public var resetsAt: Date?
     public init(_ progress: SessionCLI.Progress, state: String, detail: String?) {
         result = progress.result
         exitCode = progress.exitCode
         self.state = state
         self.detail = detail
+        if case .limited(let reset) = progress { resetsAt = reset }
     }
 
-    private enum CodingKeys: String, CodingKey { case result, exitCode, state, detail }
+    private enum CodingKeys: String, CodingKey { case result, exitCode, state, detail, resetsAt }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -629,6 +662,7 @@ public struct SessionCLIWaited: Encodable, Sendable, Equatable {
         try c.encode(exitCode, forKey: .exitCode)
         try c.encode(state, forKey: .state)
         try c.encode(detail, forKey: .detail)
+        if resetsAt != nil { try c.encode(resetsAt, forKey: .resetsAt) }
     }
 }
 
