@@ -546,6 +546,44 @@ import Testing
         #expect(missing.code == 4 && missing.err.contains("doesn't offer this yet"))
     }
 
+    @Test func staticSiteArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        let quick = try run(["server", "static", "add", "prod", "example.com"], answers: [("added", "201 0")])
+        let call = try #require(quick.curlCalls.first)
+        #expect(quick.code == 0 && call.last == base + "static-add" && call.contains("server=prod") && call.contains("base=example.com"))
+        #expect(try run(["server", "static", "add", "prod"]).code == 2)
+        #expect(try run(["server", "static", "list", "prod", "example.com"]).curlCalls.isEmpty)
+
+        let site = try run(["server", "domain", "add", "--static", "prod", "docs", "example.com", "--no-clean-urls", "--target", "/opt/static/x"],
+                           answers: [("added", "201 0")])
+        let added = try #require(site.curlCalls.first)
+        #expect(added.last == base + "domain-add" && added.contains("static=1") && added.contains("server=prod"))
+        #expect(added.contains("subdomain=docs") && added.contains("clean_urls=0") && added.contains("target=/opt/static/x"))
+        let plain = try #require(try run(["server", "domain", "add", "--static", "prod", "docs", "example.com"], answers: [("added", "201 0")]).curlCalls.first)
+        #expect(plain.contains("clean_urls=1") && plain.contains("target="))
+        #expect(try run(["server", "domain", "add", "--static", "prod", "example.com"]).code == 2)
+
+        // sync: the folder goes out absolute, with symlinks resolved.
+        let dir = FileManager.default.temporaryDirectory.appending(path: "cli-sync-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appending(path: "site/dist"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createSymbolicLink(at: dir.appending(path: "link"), withDestinationURL: dir.appending(path: "site"))
+        // realpath(3), not resolvingSymlinksInPath (that one drops /private on macOS).
+        let real = try #require(realpath(dir.appending(path: "site/dist").path, nil).map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        })
+        let synced = try run(["server", "sync", "docs.example.com", "link/dist"], answers: [("Files synced to /opt/static/docs-example-com", "200 0")], cwd: dir)
+        let sent = try #require(synced.curlCalls.first)
+        #expect(synced.code == 0 && synced.out.contains("Files synced") && sent.last == base + "sync")
+        #expect(sent.contains("domain=docs.example.com") && sent.contains("path=\(real)"))
+        let missing = try run(["server", "sync", "docs.example.com", dir.appending(path: "nope").path])
+        #expect(missing.code == 2 && missing.curlCalls.isEmpty)
+        #expect(try run(["server", "sync", "docs.example.com"]).code == 2)
+        let outside = try run(["server", "sync", "5", dir.path], answers: [(#"{"error":"not_in_project_dir","message":"inside a registered project dir"}"#, "403 4")])
+        #expect(outside.code == 4 && outside.err.contains("registered project dir"))
+    }
+
     @Test func envSetKeepsSecretsOffTheCommandLine() throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "cli-env-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

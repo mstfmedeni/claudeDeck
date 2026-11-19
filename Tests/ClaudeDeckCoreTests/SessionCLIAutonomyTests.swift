@@ -260,7 +260,8 @@ private final class Box<T>: @unchecked Sendable {
     @Test func olderPanelsDontOfferV11() async throws {
         let transport = RouteTransport([:])
         let r = try runner(transport) // v1 /me: no projects_write, databases, domains, dns
-        for name in ["scan", "db-create", "domain-add", "zone-add"] {
+        // sync: the v1 token has `deploy`, but the panel says it's version 1.
+        for name in ["scan", "db-create", "domain-add", "zone-add", "static-add", "sync"] {
             let outcome = await r.run(name, method: "POST", form: ["project": "1", "dir": "11", "name": "example.com"])
             #expect(outcome.exit == .refused && outcome.text.contains("ServerPlan doesn't offer this yet"))
         }
@@ -323,6 +324,63 @@ private final class Box<T>: @unchecked Sendable {
         let added = try #require(transport.posts.last)
         #expect(added["server_id"] as? Int == 2 && added["port"] as? Int == 6079 && added["project_name"] as? String == "new-api")
         #expect(added["type"] as? String == "go_app" && added["confirm"] == nil)
+    }
+
+    @Test func staticSites() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "static-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appending(path: "dist"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let dist = dir.appending(path: "dist").path
+        let transport = RouteTransport([
+            "GET /domains": [(200, fixture("v11-domains.json"))],
+            "POST /domains/quick-static": [(201, #"{"id":7,"fqdn":"example.com","target":"/opt/static/example-com"}"#),
+                                           (400, #"{"error":"bad_request","message":"gecersiz: example.com icin statik site zaten var"}"#)],
+            "POST /domains": [(201, #"{"id":8}"#)],
+            "POST /domains/5/sync": [(200, #"{"success":true,"message":"Files synced to /opt/static/api-example-com"}"#),
+                                     (403, #"{"error":"forbidden","message":"local_path kayitli bir proje dizininde degil"}"#)],
+        ])
+        let log = Box<[String]>([]), asked = Box<[String]>([])
+        let r = try runner(transport, me: fixture("v11-me.json"), asked: asked, log: log)
+
+        // static add: the root site, autonomous.
+        let added = await r.run("static-add", method: "POST", form: ["server": "2", "base": "Example.com"])
+        #expect(added.exit == .ok)
+        let quick = try #require(transport.posts.last)
+        #expect(quick.count == 2 && quick["server_id"] as? Int == 2 && quick["base_domain"] as? String == "example.com")
+        let again = await r.run("static-add", method: "POST", form: ["server": "2", "base": "example.com"])
+        #expect(again.status == 400 && again.exit == .failed && again.text.contains("gecersiz"))
+        #expect(await r.run("static-add", method: "POST", form: ["server": "2", "base": "nodot"]).exit == .usage)
+
+        // domain add --static: no project or port; clean URLs and the target by default.
+        let site = await r.run("domain-add", method: "POST", form: ["static": "1", "server": "2", "subdomain": "docs", "base": "example.com"])
+        #expect(site.exit == .ok)
+        let body = try #require(transport.posts.last)
+        #expect(body["type"] as? String == "static" && body["server_id"] as? Int == 2 && body["subdomain"] as? String == "docs")
+        #expect(body["target"] as? String == "/opt/static/docs-example-com" && body["clean_urls"] as? Bool == true)
+        #expect(body["ssl_enabled"] as? Bool == true && body["port"] == nil && body["project_name"] == nil && body["confirm"] == nil)
+        _ = await r.run("domain-add", method: "POST", form: ["static": "1", "server": "2", "subdomain": "docs", "base": "example.com",
+                                                            "target": "/opt/static/x", "clean_urls": "0"])
+        #expect(transport.posts.last?["target"] as? String == "/opt/static/x" && transport.posts.last?["clean_urls"] as? Bool == false)
+        #expect(ServerPlanCLI.staticTarget(subdomain: "", base: "my.example.com") == "/opt/static/my-example-com")
+
+        // sync: by FQDN; the panel's message is the answer.
+        let synced = await r.run("sync", method: "POST", form: ["domain": "api.example.com", "path": dist])
+        #expect(synced.exit == .ok && synced.text == "Files synced to /opt/static/api-example-com")
+        #expect(transport.posts.last?["local_path"] as? String == dist)
+        let outside = await r.run("sync", method: "POST", form: ["domain": "5", "path": dist])
+        #expect(outside.status == 403 && outside.exit == .refused && outside.text.contains("not_in_project_dir"))
+        // Not a folder, or not absolute: never sent.
+        let before = transport.requests.count
+        #expect(await r.run("sync", method: "POST", form: ["domain": "5", "path": dir.appending(path: "missing").path]).exit == .usage)
+        #expect(await r.run("sync", method: "POST", form: ["domain": "5", "path": "dist"]).exit == .usage)
+        #expect(transport.requests.count == before)
+        #expect(asked.value.isEmpty) // never the owner's dialog
+        #expect(log.value.contains { $0.hasPrefix("sync api.example.com") })
+
+        // A v1.1 panel that doesn't have them yet: 404 is "not available".
+        let older = try runner(RouteTransport(["GET /domains": [(200, fixture("v11-domains.json"))]]), me: fixture("v11-me.json"))
+        #expect(await older.run("static-add", method: "POST", form: ["server": "2", "base": "example.com"]).text.contains("doesn't offer this yet"))
+        #expect(await older.run("sync", method: "POST", form: ["domain": "5", "path": dist]).text.contains("doesn't offer this yet"))
     }
 
     @Test func deployStatusAndErrors() async throws {

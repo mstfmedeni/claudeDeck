@@ -66,15 +66,19 @@ public enum ServerPlanCLI {
             Command("cloudflare", "GET", v11: true),
             Command("zone-add", "POST", v11: true, scope: "dns"),
             Command("ns-set", "POST", v11: true, scope: "dns", gate: .owner),
+            // Static sites: autonomous (no gate). A panel without them answers 404: "not available".
+            Command("static-add", "POST", v11: true, scope: "domains"),
+            Command("sync", "POST", v11: true, scope: "deploy"),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
 
     /// Whether the panel behind `me` offers a v1.1 command (its scope is granted; v1 ones always).
-    /// A read-only one needs a panel that says it's 1.1 or later (an unknown version is tried).
+    /// It also needs a panel that says it's 1.1 or later (an unknown version is tried): `deploy`
+    /// is a v1 scope, so a scope alone doesn't tell.
     public static func offers(_ command: Command, me: ServerPlanMe?) -> Bool {
         guard command.v11, let me else { return true }
-        if let scope = command.scope { return me.scopes.contains(scope) }
+        if let scope = command.scope, !me.scopes.contains(scope) { return false }
         guard let version = me.serverVersion, let major = Int(version.split(separator: ".").first ?? "") else { return true }
         let minor = version.split(separator: ".").dropFirst().first.flatMap { Int($0) } ?? 0
         return major > 1 || major == 1 && minor >= 1
@@ -162,7 +166,7 @@ public enum ServerPlanCLI {
                 return try await perform(command, form: form)
             } catch let refusal as Refusal {
                 return refusal.outcome
-            } catch ServerPlanError.notFound where command.v11 && ["ports", "dirs", "domain-list", "cloudflare"].contains(command.name) {
+            } catch ServerPlanError.notFound where command.v11 && ["ports", "dirs", "domain-list", "cloudflare", "static-add", "sync"].contains(command.name) {
                 return .error(501, "not_available", ServerPlanCLI.notAvailable, exit: .refused)
             } catch {
                 return ServerPlanCLI.outcome(for: error)
@@ -312,6 +316,45 @@ public enum ServerPlanCLI {
                 let data = try await raw("GET", "/domains", query: query)
                 return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("SERVER", "server_id"), ("PORT", "port"), ("PROJECT", "project_name"),
                                                                               ("FQDN", "fqdn|domain|name")]))
+            case "domain-add" where form["static"] == "1":
+                // A static site: no project, no port, no owner's dialog (nothing is replaced).
+                let server = try await serverID(form["server"])
+                let sub = (form["subdomain"] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+                let base = try ServerPlanCLI.baseDomain(form["base"])
+                let given = (form["target"] ?? "").trimmingCharacters(in: .whitespaces)
+                let target = given.isEmpty ? ServerPlanCLI.staticTarget(subdomain: sub, base: base) : given
+                let body: [String: Any] = ["type": "static", "server_id": server, "subdomain": sub, "base_domain": base, "target": target,
+                                           "ssl_enabled": true, "clean_urls": form["clean_urls"] != "0"]
+                let fqdn = sub.isEmpty ? base : "\(sub).\(base)"
+                let data = try await raw("POST", "/domains", json: body)
+                log("domain add --static \(fqdn) → \(target)")
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("added: \(fqdn) (\(target))"))
+            case "static-add":
+                let server = try await serverID(form["server"])
+                let base = try ServerPlanCLI.baseDomain(form["base"])
+                let data = try await raw("POST", "/domains/quick-static", json: ["server_id": server, "base_domain": base])
+                log("static add \(base)")
+                return Outcome(json: data, text: ServerPlanCLI.objectText(data)
+                    .ifEmpty("added: \(base) (\(ServerPlanCLI.staticTarget(subdomain: "", base: base)))"))
+            case "sync":
+                // The command resolved the folder; here it must exist. The panel checks it's in a registered dir.
+                let path = (form["path"] ?? "").trimmingCharacters(in: .whitespaces)
+                guard path.hasPrefix("/") else { throw Refusal(outcome: .error(400, "bad_path", "an absolute folder path", exit: .usage)) }
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                    throw Refusal(outcome: .error(400, "bad_path", "not a folder: \(path)", exit: .usage))
+                }
+                let domain = try await domainID(form["domain"])
+                let data: Data
+                do {
+                    data = try await raw("POST", "/domains/\(domain.id)/sync", json: ["local_path": path])
+                } catch ServerPlanError.forbidden(let message) {
+                    let hint = "the folder must be inside a registered project dir (claudedeck server dirs)"
+                    throw Refusal(outcome: .error(403, "not_in_project_dir", message.map { "\($0); \(hint)" } ?? hint, exit: .refused))
+                }
+                log("sync \(domain.fqdn) ← \(path)")
+                let message = ServerPlanCLI.object(data).flatMap { ServerPlanCLI.value($0, "message") }
+                return Outcome(json: data, text: message ?? ServerPlanCLI.objectText(data).ifEmpty("synced: \(domain.fqdn)"))
             case "domain-add":
                 // Server and port: given, or the project's settings.
                 let projects = try await client.projects()
@@ -512,6 +555,23 @@ public enum ServerPlanCLI {
             let base = ServerPlanCLI.value(row, "base_domain") ?? found.name.split(separator: ".").suffix(2).joined(separator: ".")
             return (found.id, found.name, base)
         }
+    }
+
+    // MARK: Static sites
+
+    /// A base domain (`example.com`), lowercased.
+    static func baseDomain(_ value: String?) throws -> String {
+        let base = (value ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        guard base.contains("."), !base.hasPrefix("."), !base.hasSuffix("."), !base.contains("/") else {
+            throw Runner.Refusal(outcome: .error(400, "bad_domain", "a base domain like example.com", exit: .usage))
+        }
+        return base
+    }
+
+    /// The panel's convention: `/opt/static/<base with dashes>` for the root site (quick-static),
+    /// `/opt/static/<sub>-<base with dashes>` for a subdomain.
+    public static func staticTarget(subdomain: String, base: String) -> String {
+        "/opt/static/" + (subdomain.isEmpty ? base : "\(subdomain).\(base)").lowercased().replacingOccurrences(of: ".", with: "-")
     }
 
     // MARK: Text

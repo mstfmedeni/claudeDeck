@@ -328,6 +328,9 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server dns sync DOMAIN` | `POST /domains/:id/dns-sync` | the owner's dialog |
 | `server cloudflare` · `zone add NAME` | `GET /cloudflare/status` · `POST /cloudflare/zones` | |
 | `server ns set DOMAIN` | `POST /domains/:id/namecheap/nameservers` | the owner's dialog (custom nameservers) |
+| `server static add SERVER BASE` | `POST /domains/quick-static` (scope `domains`) | none (autonomous) |
+| `server domain add --static SERVER SUB BASE [--target T] [--no-clean-urls]` | `POST /domains` (`type: static`) | none (autonomous) |
+| `server sync DOMAIN FOLDER` | `POST /domains/:id/sync` (scope `deploy`) | none (autonomous) |
 
 - SERVER, PROJECT, DOMAIN: an id or a name (FQDN for domains). `scan PATH` scans the registered dir
   the path is in and, for a project's own folder, prints that project.
@@ -337,9 +340,17 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   owner a dialog in the app (and a notification); refused, or no answer within 2 minutes: `403
   owner_refused`, exit 4. The command waits up to 150 s for it.
 - **v1.1 commands** (`dirs`, `scan`, `ports`, `project`, `env`, `dockerfile`, `db`, `domain`,
-  `dns`, `cloudflare`, `zone`, `ns`): a panel whose `/me` lacks the command's scope
-  (`projects_write`, `databases`, `domains`, `dns`), or that answers 404 for a read-only one,
-  answers `501 not_available` ("not available: ServerPlan doesn't offer this yet"), exit 4.
+  `dns`, `cloudflare`, `zone`, `ns`, `static`, `sync`): a panel whose `/me` lacks the command's
+  scope (`projects_write`, `databases`, `domains`, `dns`, `deploy`) or says it's older than 1.1,
+  or that answers 404 for a read-only one or for `static add` / `sync`, answers `501
+  not_available` ("not available: ServerPlan doesn't offer this yet"), exit 4.
+- **Static sites** (no container; nginx serves the files with SSL, clean URLs by default):
+  `static add` creates the root site of BASE in `/opt/static/<base with dashes>`; `domain add
+  --static` a subdomain's, in `/opt/static/<sub>-<base with dashes>` unless `--target` is given.
+  `sync` resolves FOLDER to an absolute path (symlinks resolved), the app checks it's a folder, and
+  the panel uploads it to the site's target and prints where; a folder outside the registered
+  project dirs is `403 not_in_project_dir`, exit 4. A site that already exists, or a bad value
+  ("gecersiz …"), is the panel's 400, exit 1.
 - `env set` takes `KEY=VALUE` lines from `--from-file FILE` or stdin (`-`) so secrets stay out of the
   shell history; `--secret KEY` marks secrets. Values are never printed, only the keys.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the

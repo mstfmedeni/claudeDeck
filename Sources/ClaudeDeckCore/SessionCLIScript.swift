@@ -60,6 +60,9 @@ extension SessionCLI {
       claudedeck server db create PROJECT
       claudedeck server domain list [--server S]
       claudedeck server domain add PROJECT SUBDOMAIN BASE [--server S] [--port N] [--websocket] [--target T]
+      claudedeck server domain add --static SERVER SUBDOMAIN BASE [--target /opt/static/DIR] [--no-clean-urls]
+      claudedeck server static add SERVER BASE      (the root static site of BASE)
+      claudedeck server sync DOMAIN FOLDER          (upload a static site's files)
       claudedeck server dns sync DOMAIN | zone add NAME | ns set DOMAIN
           SERVER, PROJECT: an id or a name. Not every panel has every command: see server features.
 
@@ -401,11 +404,13 @@ extension SessionCLI {
         env) cmd_server_env "$@"; return ;;
       esac
       p1=""; p2=""; p3=""; p4=""; n=0
-      wait=0; follow=0; force=0; websocket=0; stdin=0; file=""
+      wait=0; follow=0; force=0; websocket=0; stdin=0; file=""; static=0; clean=1
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
+          --static) static=1 ;;
+          --no-clean-urls) clean=0 ;;
           --wait) wait=1 ;;
           --follow|-f) follow=1 ;;
           --force) force=1 ;;
@@ -432,7 +437,7 @@ extension SessionCLI {
       done
       args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
       case "$sub" in
-        list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns) ;;
+        list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns|static|sync) ;;
         *) die "server: unknown command $sub (claudedeck help)" ;;
       esac
       case "$sub" in
@@ -451,8 +456,14 @@ extension SessionCLI {
             [ -z "$file" ] || [ -r "$file" ] || die "server dockerfile write: can't read $file" ;;
           *) die "server dockerfile: template or write PROJECT" ;; esac ;;
         db) [ "$p1" = create ] || die "server db: try server db create PROJECT"; args 2 "db create PROJECT" ;;
-        domain) case "$p1" in list) args 1 "domain list" ;; add) args 4 "domain add PROJECT SUBDOMAIN BASE" ;;
+        domain) case "$p1" in list) args 1 "domain list" ;;
+          add) if [ "$static" = 1 ]; then args 4 "domain add --static SERVER SUBDOMAIN BASE"; else args 4 "domain add PROJECT SUBDOMAIN BASE"; fi ;;
           *) die "server domain: list, or add PROJECT SUBDOMAIN BASE" ;; esac ;;
+        static) [ "$p1" = add ] || die "server static: try server static add SERVER BASE"; args 3 "static add SERVER BASE" ;;
+        sync) args 2 "sync DOMAIN FOLDER"
+          [ -d "$p2" ] || die "server sync: not a folder: $p2"
+          # Absolute, symlinks resolved: the panel checks it's inside a registered project dir.
+          folder=$(cd -P -- "$p2" && pwd -P) || die "server sync: can't open $p2" ;;
         dns) [ "$p1" = sync ] || die "server dns: try server dns sync DOMAIN"; args 2 "dns sync DOMAIN" ;;
         zone) [ "$p1" = add ] || die "server zone: try server zone add NAME"; args 2 "zone add NAME" ;;
         ns) [ "$p1" = set ] || die "server ns: try server ns set DOMAIN"; args 2 "ns set DOMAIN" ;;
@@ -508,6 +519,9 @@ extension SessionCLI {
         db) srv db-create --data-urlencode "project=$p2" ;;
         domain)
           if [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
+          elif [ "$static" = 1 ]; then max_time=150
+            srv domain-add --data-urlencode "static=1" --data-urlencode "server=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
+              --data-urlencode "clean_urls=$clean" --data-urlencode "target=$target"
           else max_time=150
             srv domain-add --data-urlencode "project=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
               --data-urlencode "server=$server" --data-urlencode "port=$port" --data-urlencode "websocket=$websocket" --data-urlencode "target=$target"
@@ -515,6 +529,8 @@ extension SessionCLI {
         dns) max_time=150; srv dns-sync --data-urlencode "domain=$p2" ;;
         zone) srv zone-add --data-urlencode "name=$p2" ;;
         ns) max_time=150; srv ns-set --data-urlencode "domain=$p2" ;;
+        static) max_time=150; srv static-add --data-urlencode "server=$p2" --data-urlencode "base=$p3" ;;
+        sync) max_time=600; srv sync --data-urlencode "domain=$p1" --data-urlencode "path=$folder" ;;
       esac
       finish
     }
@@ -732,6 +748,9 @@ extension SessionCLI {
     claudedeck server dns sync DOMAIN
     claudedeck server cloudflare | zone add example.com
     claudedeck server ns set DOMAIN                # Namecheap nameservers to Cloudflare's
+    claudedeck server static add SERVER example.com            # root static site, SSL, clean URLs
+    claudedeck server domain add --static SERVER docs example.com [--target /opt/static/DIR] [--no-clean-urls]
+    claudedeck server sync DOMAIN FOLDER           # upload FOLDER (inside a registered dir) to the site
     ```
 
     - The port is the container's internal port (Traefik routes the domain to it). Only
@@ -811,5 +830,18 @@ extension SessionCLI {
        are created automatically).
     6. For a fresh domain: `claudedeck server ns set api.example.com`.
     7. `claudedeck server deploy PROJECT --wait`.
+
+    ## Static site (ServerPlan v1.1)
+
+    No container: nginx serves the files (SSL and clean URLs on; the Cloudflare A record is
+    created). None of these needs the user's approval.
+
+    1. `claudedeck server static add SERVER example.com` for the root site, or
+       `claudedeck server domain add --static SERVER docs example.com` for a subdomain
+       (files in `/opt/static/docs-example-com` unless `--target` says otherwise).
+    2. Build into a folder inside the project, e.g. `dist` (the project must be in a registered
+       dir: `claudedeck server dirs`).
+    3. `claudedeck server sync docs.example.com PROJECT/dist` - uploads it; run again after each build.
+    4. For a fresh domain: `claudedeck server ns set docs.example.com`.
     """#
 }
