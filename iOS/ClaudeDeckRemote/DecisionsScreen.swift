@@ -16,6 +16,27 @@ extension RemoteStore {
         guard snapshot?.supports(RemoteSnapshot.Feature.decisions) == true, !text.isEmpty else { return false }
         return send(.answerDecision(id: id, answer: String(text.prefix(Decisions.maxAnswer))))
     }
+
+    /// Whether the Mac takes `dismissDecision` (removing one without answering).
+    var canDismissDecisions: Bool { snapshot?.supports(RemoteSnapshot.Feature.dismissDecision) == true }
+
+    /// The owner removes a pending decision without answering; the Mac tells the asking session.
+    @discardableResult
+    func dismissDecision(_ id: String) -> Bool {
+        guard canDismissDecisions else { return false }
+        return send(.dismissDecision(id: id))
+    }
+
+    /// Whether the Mac takes `changeDecisionAnswer` (changing an answer already given).
+    var canChangeDecisionAnswers: Bool { snapshot?.supports(RemoteSnapshot.Feature.changeDecisionAnswer) == true }
+
+    /// The owner changes an answer; the Mac sends the new one to the asking session.
+    @discardableResult
+    func changeDecisionAnswer(_ id: String, answer: String) -> Bool {
+        let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canChangeDecisionAnswers, !text.isEmpty else { return false }
+        return send(.changeDecisionAnswer(id: id, answer: String(text.prefix(Decisions.maxAnswer))))
+    }
 }
 
 // MARK: - Decisions
@@ -52,11 +73,13 @@ struct DecisionsScreen: View {
     @Environment(RemoteStore.self) private var store
     /// Answers sent and not yet in a snapshot (shown as sending; a lost one can be sent again).
     @State private var sent: [String: String] = [:]
+    @State private var showOtherToday = false
 
     var body: some View {
         let all = store.decisions ?? []
         let pending = all.filter(\.isPending)
-        let answered = all.filter { !$0.isPending }
+        // Cancelled ones never come from the Mac.
+        let (recent, otherToday) = DecisionSections.answered(all)
         Group {
             if all.isEmpty {
                 ContentUnavailableView("Nothing to Decide", systemImage: "signpost.right.and.left",
@@ -69,6 +92,15 @@ struct DecisionsScreen: View {
                                 DecisionCardPhone(decision: decision, sending: sent[decision.id]) { answer in
                                     if store.answerDecision(decision.id, answer: answer) { sent[decision.id] = answer }
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    if store.canDismissDecisions {
+                                        Button(role: .destructive) {
+                                            if store.dismissDecision(decision.id) { sent[decision.id] = nil }
+                                        } label: {
+                                            Label("Remove", systemImage: "xmark.circle")
+                                        }
+                                    }
+                                }
                             }
                         } header: {
                             Text("Waiting · \(pending.count)")
@@ -76,9 +108,18 @@ struct DecisionsScreen: View {
                             Text("Your answer goes to the session as its next message.")
                         }
                     }
-                    if !answered.isEmpty {
-                        Section("Answered") {
-                            ForEach(answered) { decision in answeredRow(decision) }
+                    if !recent.isEmpty {
+                        Section("Recently Answered") {
+                            ForEach(recent) { AnsweredDecisionPhoneRow(decision: $0) }
+                        }
+                    }
+                    if !otherToday.isEmpty {
+                        Section {
+                            DisclosureGroup(isExpanded: $showOtherToday) {
+                                ForEach(otherToday) { AnsweredDecisionPhoneRow(decision: $0) }
+                            } label: {
+                                Text("Other decisions today · \(otherToday.count)")
+                            }
                         }
                     }
                 }
@@ -91,24 +132,72 @@ struct DecisionsScreen: View {
         }
         .disabled(store.connection != .connected)
     }
+}
 
-    private func answeredRow(_ decision: OwnerDecision) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(decision.question).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-            Label(decision.answer ?? "", systemImage: "checkmark.circle.fill")
-                .font(.body.weight(.semibold))
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.primary)
-            HStack(spacing: 4) {
-                Text(decision.origin)
-                if let at = decision.answeredAt {
-                    Text("·")
-                    Text(at, format: .relative(presentation: .named))
+/// The options: a tap selects one and a Send button under them confirms it, so a stray tap never
+/// answers. The recommended one comes first and is marked; `current` (an answered decision's
+/// answer) is checked.
+struct DecisionChoicesPhone: View {
+    let decision: OwnerDecision
+    let current: String?
+    let confirm: (String) -> Void
+    @State private var selected: String?
+
+    var body: some View {
+        let ordered = decision.options.filter { $0 == decision.recommended } + decision.options.filter { $0 != decision.recommended }
+        ForEach(ordered, id: \.self) { option in
+            let isSelected = selected == option
+            Button { selected = isSelected ? nil : option } label: {
+                HStack {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : option == current ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.accentColor : option == current ? Color.green : Color.secondary)
+                    Text(option).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                    Spacer(minLength: 4)
+                    if option == decision.recommended, current == nil {
+                        Label("Recommended", systemImage: "star.fill").labelStyle(.titleAndIcon)
+                            .font(.caption2.weight(.semibold)).foregroundStyle(Color.accentColor)
+                    }
                 }
+                .padding(.vertical, 6).padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isSelected ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .font(.caption).foregroundStyle(.tertiary)
+            .disabled(option == current)
         }
-        .padding(.vertical, 2)
+        if let selected, selected != current {
+            Button {
+                self.selected = nil
+                confirm(selected)
+            } label: {
+                Label("Send “\(selected)”", systemImage: "paperplane.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+/// An answer in one's own words and its send button.
+struct DecisionTextAnswerPhone: View {
+    let placeholder: String
+    let send: (String) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField(placeholder, text: $text, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...4)
+            Button {
+                send(text)
+                text = ""
+            } label: {
+                Image(systemName: "arrow.up.circle.fill").font(.title2)
+            }
+            .buttonStyle(.borderless)
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel(Text("Send"))
+        }
     }
 }
 
@@ -120,7 +209,6 @@ struct DecisionCardPhone: View {
     let decision: OwnerDecision
     let sending: String?
     let answer: (String) -> Void
-    @State private var custom = ""
     @State private var expanded = false
 
     var body: some View {
@@ -141,6 +229,7 @@ struct DecisionCardPhone: View {
             Text(decision.question).font(.headline).fixedSize(horizontal: false, vertical: true)
             if let context = decision.context {
                 Text(context).font(.subheadline).foregroundStyle(.secondary)
+                    .lineSpacing(3)
                     .lineLimit(expanded ? nil : 4)
                     .fixedSize(horizontal: false, vertical: true)
                     .onTapGesture { expanded.toggle() }
@@ -148,46 +237,68 @@ struct DecisionCardPhone: View {
             if let sending {
                 Label("Sending “\(sending)”…", systemImage: "paperplane").font(.subheadline).foregroundStyle(.secondary)
             } else {
-                let ordered = decision.options.filter { $0 == decision.recommended } + decision.options.filter { $0 != decision.recommended }
-                ForEach(ordered, id: \.self) { option in
-                    if option == decision.recommended {
-                        Button { answer(option) } label: {
-                            HStack {
-                                Image(systemName: "star.fill").font(.caption)
-                                Text(option).multilineTextAlignment(.leading)
-                                Spacer(minLength: 4)
-                                Text("Recommended").font(.caption2.weight(.semibold)).opacity(0.85)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Button { answer(option) } label: {
-                            Text(option).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                HStack(spacing: 8) {
-                    TextField(decision.options.isEmpty ? String(localized: "Your answer") : String(localized: "Or answer in your own words"),
-                              text: $custom, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...4)
-                    Button {
-                        answer(custom)
-                        custom = ""
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill").font(.title2)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityLabel(Text("Send"))
-                }
+                DecisionChoicesPhone(decision: decision, current: nil, confirm: answer)
+                DecisionTextAnswerPhone(placeholder: decision.options.isEmpty ? String(localized: "Your answer")
+                                            : String(localized: "Or answer in your own words"), send: answer)
             }
         }
         .padding(.vertical, 6)
         // Buttons in a list row: each its own target, not the whole row.
         .buttonStyle(.borderless)
+    }
+}
+
+/// An answered decision, muted: the question, the answer and when. Change… (Macs with
+/// `Feature.changeDecisionAnswer`) shows the options and a field to answer anew.
+struct AnsweredDecisionPhoneRow: View {
+    @Environment(RemoteStore.self) private var store
+    let decision: OwnerDecision
+    @State private var changing = false
+    @State private var sentChange: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(decision.question).font(.subheadline).foregroundStyle(.secondary).lineLimit(changing ? nil : 2)
+                    HStack(spacing: 6) {
+                        Label(sentChange ?? decision.answer ?? "", systemImage: "checkmark.circle.fill")
+                            .font(.body.weight(.semibold))
+                            .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.primary)
+                        if decision.isChanged || sentChange != nil {
+                            Text("changed").font(.caption2.weight(.semibold)).foregroundStyle(.orange)
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        Text(decision.origin)
+                        if let at = decision.answeredAt {
+                            Text("·")
+                            Text(at, format: .relative(presentation: .named))
+                        }
+                    }
+                    .font(.caption).foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 4)
+                if store.canChangeDecisionAnswers {
+                    Button(changing ? String(localized: "Done") : String(localized: "Change…")) { changing.toggle() }
+                        .font(.subheadline)
+                }
+            }
+            .opacity(changing ? 1 : 0.7)
+            if changing {
+                DecisionChoicesPhone(decision: decision, current: decision.answer, confirm: change)
+                DecisionTextAnswerPhone(placeholder: String(localized: "Change in your own words"), send: change)
+            }
+        }
+        .padding(.vertical, 2)
+        .buttonStyle(.borderless)
+        .onChange(of: decision.answer) { sentChange = nil }
+    }
+
+    private func change(_ answer: String) {
+        if store.changeDecisionAnswer(decision.id, answer: answer) { sentChange = answer }
+        changing = false
     }
 }
 

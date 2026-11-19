@@ -60,6 +60,11 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             previousDecisions?(added)
             if let added { self?.decisionAsked(added) }
             self?.updateBadge()
+            // Answered, cancelled or removed: its notification goes too.
+            if let self, added == nil {
+                let done = self.model.decisions.decisions.filter { !$0.isPending }.map { "decision-\($0.id)" }
+                if !done.isEmpty { self.center?.removeDeliveredNotifications(withIdentifiers: done) }
+            }
         }
         ServerPlanController.shared.onNotice = { [weak self, weak model] notice in
             self?.serverPlanNotice(notice)

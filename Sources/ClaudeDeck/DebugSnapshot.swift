@@ -91,6 +91,22 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             model.answerDecision(String(file.dropLast(7)), answer: answer, from: "mac")
         }
+        // `<decision-id>.dismiss`: Remove (no answer); `<decision-id>.change`: changes its answer to
+        // the file's text; `decisions.size`: the Decisions tab's text size in points.
+        for file in files where file.hasSuffix(".dismiss") || file.hasSuffix(".change") || file == "decisions.size" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let text = contents(path)
+            try? FileManager.default.removeItem(atPath: path)
+            if file == "decisions.size" {
+                if let size = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    UserDefaults.windowState.set(size, forKey: DecisionsTextSize.key)
+                }
+            } else if file.hasSuffix(".dismiss") {
+                model.dismissDecision(String(file.dropLast(8)), from: "mac")
+            } else {
+                model.changeDecisionAnswer(String(file.dropLast(7)), answer: text, from: "mac")
+            }
+        }
         // `agent.add`: "name|webhook URL" adds an agent; `<session-uuid>.ask`: asks every agent
         // about that session (the file's text is the request).
         for file in files where file == "agent.add" {

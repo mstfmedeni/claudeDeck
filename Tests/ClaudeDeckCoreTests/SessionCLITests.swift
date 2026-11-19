@@ -805,6 +805,61 @@ import Testing
         #expect(SessionCLI.skill.contains("claudedeck decide") && SessionCLI.skill.contains("keep working"))
     }
 
+    @Test func decisionCancelAndSupersedes() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/decisions"
+        let cancelled = try run(["decision", "cancel", "d_0123456789", "--reason", "artık gerekmiyor"],
+                                answers: [("cancelled d_0123456789", "200 0")])
+        #expect(cancelled.code == 0 && cancelled.out == "cancelled d_0123456789\n")
+        let call = try #require(cancelled.curlCalls.first)
+        #expect(call.last == base + "/d_0123456789/cancel" && !call.contains("-G"))
+        #expect(call.contains("reason=artık gerekmiyor") && call.contains("format=text"))
+        let json = try run(["decision", "cancel", "--json", "--reason=x", "d_0123456789"], answers: [("{}", "200 0")])
+        #expect(json.curlCalls.first?.contains("format=json") == true && json.curlCalls.first?.contains("reason=x") == true)
+        // Usage errors never reach the API.
+        #expect(try run(["decision", "cancel"]).code == 2)
+        #expect(try run(["decision", "cancel", "1234"]).curlCalls.isEmpty)
+        #expect(try run(["decision", "cancel", "d_1", "d_2"]).code == 2)
+        #expect(try run(["decision", "cancel", "d_1", "--reason"]).code == 2)
+        #expect(try run(["decision", "get", "d_1", "--reason", "x"]).code == 2)
+        // Refusals: whose it is, already answered, unknown.
+        let notYours = try run(["decision", "cancel", "d_1"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(notYours.code == 4 && notYours.err.contains("only the session that asked it"))
+        let answered = try run(["decision", "cancel", "d_1"], answers: [(#"{"error":"already_answered"}"#, "409 4")])
+        #expect(answered.code == 4 && answered.err.contains("already_answered") && answered.err.contains("answered it already"))
+        #expect(try run(["decision", "cancel", "d_1"], answers: [(#"{"error":"unknown_decision"}"#, "404 5")]).code == 5)
+
+        // --supersedes goes with the question; a bad id never reaches the API.
+        let replaced = try run(["decide", "Hangi veritabanı?", "--supersedes", "d_0123456789"], answers: [("d_abcdefabcd", "200 0")])
+        #expect(replaced.code == 0 && replaced.out == "d_abcdefabcd\n" && replaced.err.isEmpty)
+        #expect(replaced.curlCalls.first?.contains("supersedes=d_0123456789") == true)
+        #expect(try run(["decide", "q", "--supersedes", "nope"]).curlCalls.isEmpty)
+        #expect(try run(["decide", "q", "--supersedes"]).code == 2)
+        let refused = try run(["decide", "q", "--supersedes=d_1"], answers: [(#"{"error":"already_answered"}"#, "409 4")])
+        #expect(refused.code == 4 && refused.out.isEmpty)
+    }
+
+    @Test func decideNotes() throws {
+        // The same question waiting: its id on stdout, a note on stderr, exit 0.
+        let duplicate = try run(["decide", "Hangi veritabanı?"], answers: [("d_0123456789", "200 e=0 n= m=already_pending:d_0123456789")])
+        #expect(duplicate.code == 0 && duplicate.out == "d_0123456789\n")
+        #expect(duplicate.err == "decide: already pending as d_0123456789\n")
+        // Not Turkish: asked anyway, with a warning.
+        let english = try run(["decide", "Which DB?"], answers: [("d_0123456780", "200 e=0 n= m=not_turkish")])
+        #expect(english.code == 0 && english.out == "d_0123456780\n")
+        #expect(english.err == "decide: owner-facing text should be Turkish (soru Türkçe olmalı)\n")
+        let both = try run(["decide", "Which DB?", "--json"], answers: [("{}", "200 e=0 n= m=already_pending:d_0123456789,not_turkish")])
+        #expect(both.code == 0 && both.err.contains("already pending as d_0123456789\n") && both.err.contains("should be Turkish"))
+        // No note: nothing on stderr. The older status line (no prefixes) still reads.
+        let plain = try run(["decide", "Hangi?"], answers: [("d_0123456781", "200 e=0 n= m=")])
+        #expect(plain.code == 0 && plain.err.isEmpty)
+        let older = try run(["decide", "Hangi?"], answers: [("d_0123456782", "200 0")])
+        #expect(older.code == 0 && older.err.isEmpty)
+        // A real curl's -w line carries the prefixes: a missing exit header still falls back by HTTP status.
+        let noExit = try run(["decision", "get", "d_1"], answers: [(#"{"error":"x"}"#, "404 e= n= m=")])
+        #expect(noExit.code == 4)
+        #expect(SessionCLI.skill.contains("--supersedes") && SessionCLI.skill.contains("decision cancel") && SessionCLI.skill.contains("Turkish"))
+    }
+
     // MARK: Closing
 
     @Test func closeRouteAndScope() throws {

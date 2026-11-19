@@ -19953,6 +19953,156 @@
           }
         }
       }
+    },
+    "Cancelled · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal edilenler · %lld"
+          }
+        }
+      }
+    },
+    "Smaller Text (⌘-)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha Küçük Yazı (⌘-)"
+          }
+        }
+      }
+    },
+    "Actual Size (⌘0)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerçek Boyut (⌘0)"
+          }
+        }
+      }
+    },
+    "Larger Text (⌘+)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daha Büyük Yazı (⌘+)"
+          }
+        }
+      }
+    },
+    "%lld pt": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pt"
+          }
+        }
+      }
+    },
+    "Remove this decision without answering; the session is told": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kararı yanıtlamadan kaldır; oturuma bildirilir"
+          }
+        }
+      }
+    },
+    "Removed without an answer": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yanıtlanmadan kaldırıldı"
+          }
+        }
+      }
+    },
+    "Cancelled by the session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum tarafından iptal edildi"
+          }
+        }
+      }
+    },
+    "Cancelled: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal edildi: %@"
+          }
+        }
+      }
+    },
+    "Recently Answered": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son yanıtlananlar"
+          }
+        }
+      }
+    },
+    "Other decisions today · %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugünkü diğer kararlar · %lld"
+          }
+        }
+      }
+    },
+    "Double-click to confirm": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylamak için çift tıkla"
+          }
+        }
+      }
+    },
+    "changed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "değiştirildi"
+          }
+        }
+      }
+    },
+    "Change in your own words": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi sözlerinle değiştir"
+          }
+        }
+      }
+    },
+    "Send “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” gönder"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

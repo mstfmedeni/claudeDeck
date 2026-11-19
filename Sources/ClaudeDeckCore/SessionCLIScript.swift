@@ -62,12 +62,17 @@ extension SessionCLI {
           Moves this session to another account (default: the first with room): it ends and
           resumes the same conversation there a moment after this prints. Nothing else to do.
 
-    Decisions for the owner (don't wait: the answer comes later as a message):
-      claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
+    Decisions for the owner (don't wait: the answer comes later as a message). Write them in Turkish:
+      claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P]
+                        [--supersedes ID] [--json]
           Asks the owner and returns at once with the decision's id (d_...). Keep working.
           --context - reads stdin. --project: id, name or path (default: this session's).
+          --supersedes ID cancels that pending one and asks this instead (both or neither).
+          The same question already waiting from this session: prints its id, nothing new.
       claudedeck decision get ID [--json]
-          pending, or answered: ANSWER.
+          pending, answered: ANSWER, or cancelled: REASON.
+      claudedeck decision cancel ID [--reason TEXT] [--json]
+          Withdraws a pending decision this session (or one it started) asked.
       claudedeck decisions [--pending] [--json]
           Every decision, newest first.
     Simulators (Settings > Agents: "Sessions may reserve simulators"):
@@ -169,13 +174,15 @@ extension SessionCLI {
     # call PATH CURL-ARGS...: the answer's body in $body, its exit code in $code.
     call() {
       path=$1; shift
-      out=$(curl -sS -m "${max_time:-40}" -w '\n%{http_code} %header{x-claudedeck-exit} %header{x-claudedeck-next}' \
+      out=$(curl -sS -m "${max_time:-40}" \
+        -w '\n%{http_code} e=%header{x-claudedeck-exit} n=%header{x-claudedeck-next} m=%header{x-claudedeck-note}' \
         -H "Authorization: Bearer $CLAUDEDECK_CLI_TOKEN" "$@" "$CLAUDEDECK_CLI_URL$path" 2>&1)
       status=$(printf '%s\n' "$out" | tail -n 1)
       body=$(printf '%s\n' "$out" | sed '$d')
-      # "<http> <exit header> <next header>"; either header may be missing.
+      # "<http> e=<exit header> n=<next header> m=<note header>"; any header may be missing
+      # (empty after its prefix, so the fields never shift).
       set -- $status
-      http=${1:-000}; code=${2:-}; next=${3:-}
+      http=${1:-000}; code=${2#e=}; next=${3#n=}; note=${4#m=}
       case "$http" in
         000) die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1 ;;
       esac
@@ -217,8 +224,11 @@ extension SessionCLI {
               serverplan_off) hint=" (ServerPlan isn't set up in ClaudeDeck)" ;;
               not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
-              not_yours) if [ "$command_name" = close ]; then hint=" (only this session and the sessions it started)"
-                else hint=" (only terminals this session opened, or ones beside it)"; fi ;;
+              not_yours) case "$command_name" in
+                  close) hint=" (only this session and the sessions it started)" ;;
+                  decide|decision) hint=" (only the session that asked it, or one that started that session)" ;;
+                  *) hint=" (only terminals this session opened, or ones beside it)" ;;
+                esac ;;
               close_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may close sessions they started\")" ;;
               busy) hint=" (Claude is working; wait for it, or close --force)" ;;
               still_running) hint=" (Claude didn't leave after /exit; close --force ends it)" ;;
@@ -231,6 +241,8 @@ extension SessionCLI {
               too_many_options) hint=" (at most 10 options)" ;;
               too_many_pending|too_many) hint=" (too many questions waiting; wait for answers)" ;;
               unknown_decision) hint=" (see claudedeck decisions)" ;;
+              already_answered) hint=" (the owner answered it already; see claudedeck decision get)" ;;
+              already_cancelled) hint=" (it was cancelled already)" ;;
               unknown_account) hint=" (see claudedeck account list)" ;;
               no_account) hint=" (no other account has room; see claudedeck account list)" ;;
               account_limited) hint=" (that account is at its usage limit)" ;;
@@ -442,8 +454,15 @@ extension SessionCLI {
       finish
     }
 
+    # check_decision_id ID COMMAND: a d_ id, letters and digits only.
+    check_decision_id() {
+      [ -n "$1" ] || die "$2: which one? See claudedeck decisions."
+      case "$1" in d_*) ;; *) die "$2: not a decision id: $1 (they start with d_)" ;; esac
+      case "$1" in *[!A-Za-z0-9_]*) die "$2: not a decision id: $1" ;; esac
+    }
+
     cmd_decide() {
-      question=""; options=""; recommend=""; context=""; project=""; have_q=0
+      question=""; options=""; recommend=""; context=""; project=""; supersedes=""; have_q=0
       while [ $# -gt 0 ]; do
         case "$1" in
           --options) [ $# -ge 2 ] || die "decide: --options needs \"A,B,C\""; options=$2; shift ;;
@@ -454,6 +473,8 @@ extension SessionCLI {
           --context=*) context=${1#*=} ;;
           --project) [ $# -ge 2 ] || die "decide: --project needs an id, name or path"; project=$2; shift ;;
           --project=*) project=${1#*=} ;;
+          --supersedes) [ $# -ge 2 ] || die "decide: --supersedes needs the id of the decision it replaces"; supersedes=$2; shift ;;
+          --supersedes=*) supersedes=${1#*=} ;;
           --json) json=1 ;;
           --) shift
               if [ $# -gt 0 ]; then
@@ -468,6 +489,7 @@ extension SessionCLI {
         shift
       done
       [ -n "$question" ] || die "decide: what's the question?"
+      [ -z "$supersedes" ] || check_decision_id "$supersedes" "decide --supersedes"
       [ "$context" = "-" ] && context=$(cat)
       case "$project" in
         /*|./*|../*) project=$(abs_path "$project") ;;
@@ -475,27 +497,47 @@ extension SessionCLI {
       need_session
       call /decisions --data-urlencode "question=$question" --data-urlencode "options=$options" \
         --data-urlencode "recommend=$recommend" --data-urlencode "context=$context" --data-urlencode "project=$project" \
-        --data-urlencode "format=$(fmt)"
+        --data-urlencode "supersedes=$supersedes" --data-urlencode "format=$(fmt)"
+      # Warnings that don't stop it (X-ClaudeDeck-Note: comma-separated codes).
+      case "$http" in
+        2??)
+          case ",$note," in
+            *,already_pending:*)
+              existing=${note#*already_pending:}; existing=${existing%%,*}
+              printf 'decide: already pending as %s\n' "$existing" >&2 ;;
+          esac
+          case ",$note," in
+            *,not_turkish,*) printf '%s\n' "decide: owner-facing text should be Turkish (soru Türkçe olmalı)" >&2 ;;
+          esac
+          ;;
+      esac
       finish
     }
 
     cmd_decision() {
-      [ "${1:-}" = get ] || die "decision: try claudedeck decision get ID"
-      shift
-      id=""
+      sub=${1:-}
+      case "$sub" in
+        get|cancel) shift ;;
+        *) die "decision: try claudedeck decision get ID, or claudedeck decision cancel ID [--reason TEXT]" ;;
+      esac
+      id=""; reason=""
       while [ $# -gt 0 ]; do
-        case "$1" in
-          --json) json=1 ;;
-          -*) die "decision get: unknown option $1" ;;
-          *) [ -z "$id" ] || die "decision get: one ID only"; id=$1 ;;
+        case "$sub:$1" in
+          *:--json) json=1 ;;
+          cancel:--reason) [ $# -ge 2 ] || die "decision cancel: --reason needs text"; reason=$2; shift ;;
+          cancel:--reason=*) reason=${1#*=} ;;
+          *:-*) die "decision $sub: unknown option $1" ;;
+          *) [ -z "$id" ] || die "decision $sub: one ID only"; id=$1 ;;
         esac
         shift
       done
-      [ -n "$id" ] || die "decision get: which one? See claudedeck decisions."
-      case "$id" in d_*) ;; *) die "decision get: not a decision id: $id (they start with d_)" ;; esac
-      case "$id" in *[!A-Za-z0-9_]*) die "decision get: not a decision id: $id" ;; esac
+      check_decision_id "$id" "decision $sub"
       need_session
-      call "/decisions/$id" -G --data-urlencode "format=$(fmt)"
+      if [ "$sub" = cancel ]; then
+        call "/decisions/$id/cancel" --data-urlencode "reason=$reason" --data-urlencode "format=$(fmt)"
+      else
+        call "/decisions/$id" -G --data-urlencode "format=$(fmt)"
+      fi
       finish
     }
 
@@ -1261,15 +1303,30 @@ extension SessionCLI {
     `[ClaudeDeck decision d_…]`.
 
     ```sh
-    claudedeck decide "Which database for the cache?" --options "Redis,SQLite,None" \
-      --recommend Redis --context "Redis adds a container; SQLite is enough below 1k rps."
+    claudedeck decide "Önbellek için hangi veritabanı?" --options "Redis,SQLite,Hiçbiri" \
+      --recommend Redis --context "Redis ayrı bir container ister; 1k rps altında SQLite yeter."
                                                    # prints d_1a2b3c4d5e
-    claudedeck decision get d_1a2b3c4d5e           # "pending" or "answered: Redis"
+    claudedeck decision get d_1a2b3c4d5e           # "pending", "answered: Redis" or "cancelled: …"
     claudedeck decisions --pending                 # everything still waiting
+    claudedeck decide "Önbellek için Redis mi, SQLite mı?" --options "Redis,SQLite" \
+      --supersedes d_1a2b3c4d5e                    # replaces the old question (cancels it)
+    claudedeck decision cancel d_1a2b3c4d5e --reason "artık gerekmiyor"
+                                                   # withdraw one that's obsolete
     ```
 
+    - **Write the question, the options and the context in Turkish**: the owner reads them.
+      `decide` warns on stderr when the text doesn't look Turkish.
     - Don't wait, poll or sleep for the answer. Don't ask the same thing twice: `decisions` lists
-      what's already waiting.
+      what's already waiting, and asking the same question again just prints the waiting one's id
+      (with a note on stderr).
+    - To change a question that's still waiting (new facts, other options), ask the new one with
+      `--supersedes OLD_ID` instead of leaving both. When a question no longer matters (you found
+      the answer, the plan changed), `decision cancel ID` it so the owner doesn't answer for
+      nothing. Only the session that asked, or one that started it, may cancel (exit 4 `not_yours`).
+    - The owner may also remove a question without answering; you then get a message
+      `[ClaudeDeck decision d_…] The owner dismissed your question …`: don't wait for it.
+    - The owner may change an answer later: `[ClaudeDeck decision d_…] The owner changed the answer
+      to your question … (was: …)`. The newest answer counts; adjust what you did on the old one.
     - Give 2-5 short options and recommend one; put the facts the owner needs in `--context`.
       The owner may also answer in their own words.
     - Options are separated by commas; when one contains a comma, put one option per line

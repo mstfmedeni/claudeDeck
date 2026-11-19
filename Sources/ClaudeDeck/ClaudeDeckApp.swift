@@ -151,6 +151,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let step else { return false }
                 let editorTab = NSApp.keyWindow != nil && NSApp.keyWindow === self.model.tabs.mainWindow && self.model.tabs.selected.fileURL != nil
                 if editorTab || EditorRegistry.isEditorWindow(NSApp.keyWindow) { EditorRegistry.zoom(by: step, model: self.model); return true }
+                // The Decisions tab in front: its own text size.
+                if NSApp.keyWindow != nil, NSApp.keyWindow === self.model.tabs.mainWindow, self.model.tabs.selected == .decisions {
+                    DecisionsTextSize.zoom(by: step)
+                    return true
+                }
                 self.model.zoomTerminals(by: step)
                 return true
             }

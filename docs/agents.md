@@ -161,8 +161,9 @@ claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck close ID|self [--force] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
-claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
+claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--supersedes ID] [--json]
 claudedeck decision get ID [--json]
+claudedeck decision cancel ID [--reason TEXT] [--json]
 claudedeck decisions [--pending] [--json]
 claudedeck account list|current [--json]
 claudedeck account switch [--to NAME] [--json]
@@ -217,7 +218,7 @@ claudedeck skill setup [--user|--project] [--force]
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
-- **decide**, **decision get**, **decisions:** a decision for the owner that doesn't block; see
+- **decide**, **decision get**, **decision cancel**, **decisions:** a decision for the owner that doesn't block; see
   [Decisions](#decisions-for-the-owner) below.
 - **account list|current|switch:** the Claude accounts; see
   [Claude accounts](#claude-accounts-and-usage-limits) below.
@@ -289,9 +290,10 @@ Off, they answer `404 not_found`.
 | GET | `/v1/cli/queue` · `/v1/cli/queue/{id}` | | start |
 | POST | `/v1/cli/queue/{id}/cancel` | | start |
 | GET/POST | `/v1/cli/server/{command}` | per command (below) | server |
-| POST | `/v1/cli/decisions` | `question, options, recommend, context, project` | decide |
+| POST | `/v1/cli/decisions` | `question, options, recommend, context, project, supersedes` | decide |
 | GET | `/v1/cli/decisions` | `pending=1` | decide |
 | GET | `/v1/cli/decisions/{id}` | | decide |
+| POST | `/v1/cli/decisions/{id}/cancel` | `reason` | decide |
 | GET | `/v1/cli/accounts` · `/v1/cli/accounts/current` | | list |
 | POST | `/v1/cli/accounts/switch` | `to` (empty or `auto`: the first account with room) | account |
 | GET | `/v1/cli/sessions/{ref}/status` | | list |
@@ -310,7 +312,7 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
 `bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
 `not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
-`404 unknown_decision`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
+`403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`. The routes for agents above (`/v1/projects`,
@@ -387,8 +389,11 @@ is none).
 ```sh
 claudedeck decide "Which database for the cache?" --options "Redis,SQLite,None" --recommend Redis \
   --context "Redis adds a container; SQLite is enough below 1k rps."   # prints d_1a2b3c4d5e
-claudedeck decision get d_1a2b3c4d5e    # "pending", or "answered: SQLite" (then id, question, options…)
+claudedeck decision get d_1a2b3c4d5e    # "pending", "answered: SQLite", "answered: SQLite (changed)" or "cancelled: REASON"
+                                        # (then id, question, options, "was: OLD" per earlier answer, delivery…)
 claudedeck decisions --pending          # ID, STATUS, PROJECT, QUESTION, ANSWER; newest first
+claudedeck decide "Önbellek için Redis mi, SQLite mı?" --options "Redis,SQLite" --supersedes d_1a2b3c4d5e
+claudedeck decision cancel d_1a2b3c4d5e --reason "artık gerekmiyor"   # prints "cancelled d_1a2b3c4d5e"
 ```
 
 A session that needs the owner's call doesn't stop and wait: `decide` returns at once with the
@@ -401,12 +406,37 @@ can't ask.
   dropped; none: the owner answers in words); `--recommend` one of the options (any case) or its
   number (`400 bad_recommend` otherwise); `--context` the facts the owner needs (at most 8 000
   characters; `-` reads stdin); `--project` an id, name or path as for `new` (default: the
-  caller's project; unknown: exit 5).
+  caller's project; unknown: exit 5); `--supersedes ID` (below).
+- **Turkish:** the owner reads these in Turkish. When the question and the options have no
+  Turkish-only letter (çğıöşü and their capitals) and none of a few common Turkish words (ve, bir,
+  mi/mı/mu/mü, için, ile, bu, ne, hangi, olsun), `decide` still asks but prints
+  `decide: owner-facing text should be Turkish (soru Türkçe olmalı)` on stderr (the API sends
+  `X-ClaudeDeck-Note: not_turkish`). It never refuses.
+- **No duplicates:** when the same session already has a pending decision with the same question
+  (case, runs of spaces and trailing punctuation ignored), `decide` creates nothing: it prints the
+  waiting one's id (its JSON with `--json`), exit 0, and `decide: already pending as d_…` on
+  stderr (`X-ClaudeDeck-Note: already_pending:d_…`). It doesn't count against the rate limit.
+- **Cancel:** `decision cancel ID [--reason TEXT]` withdraws a pending decision (status
+  `cancelled`, `cancel_reason`, `cancelled_at`; default reason "cancelled by SESSION"). Only the
+  session that asked it, or one in its `startedBy` ancestry (the session that started it, and up),
+  may (`403 not_yours`); an answered one is `409 already_answered`, a cancelled one `409
+  already_cancelled`, an unknown one `404 unknown_decision`; exit 4 / 5. The ancestry is the
+  deck's now plus the one recorded when it asked, so a parent can still cancel after the asking
+  session is gone.
+- **Replace:** `decide … --supersedes ID` cancels `ID` (same rule; reason `superseded by d_new`)
+  and asks the new one in one step. When `ID` can't be cancelled, nothing is created and the
+  refusal is the cancel's (403 / 404 / 409). If the new question is already pending from this
+  session, that one's id comes back and `ID` is cancelled as superseded by it.
+- **Cancelled ones** leave the pending list, the sidebar count, the phone's count and the
+  phone's list at once; the Mac keeps them in a collapsed "Cancelled" (İptal edilenler) history,
+  `decisions` lists them with status `cancelled`. They're never sent to phones (an older phone
+  would show an unknown status as waiting).
 - **The owner** sees it in **Your Decisions** (Window menu, and a tray above the sidebar's waiting
   tray with the count while any wait): question, project, the asking session, the context and the
-  options with the recommended one first and marked; one click on an option answers, or a few
-  words in the field. The phone shows the same list (remote feature `decisions`) and answers the
-  same way. A new decision is a notification on the Mac (unless notifications are off; clicking
+  options with the recommended one first and marked. A click on an option only selects it ("Double-click
+  to confirm"); a **double click** answers, so a stray click never does. Words of one's own go with
+  the **Send** button (Return doesn't send). The phone shows the same list (remote feature
+  `decisions`): a tap selects an option and a **Send "…"** button under the options confirms it. A new decision is a notification on the Mac (unless notifications are off; clicking
   opens the list) and a push to paired phones that aren't connected.
 - **The answer** goes to the asking Claude session as a message through its prompt queue: typed
   at its next "your turn" (at once when it's idle), never into a permission prompt or a question,
@@ -415,12 +445,33 @@ can't ask.
   it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
   `no_session` when the session is gone).
   The first answer counts; one from the other device a moment later is ignored (Activity Log).
+- **Recent answers, changeable:** under the pending ones, the last 5 answered decisions (muted:
+  question, answer, when) and a collapsed **Other decisions today** with the rest of today's;
+  older days aren't shown (the file keeps them). Today's cancelled ones are in their own collapsed
+  list on the Mac. **Change…** on one shows its options (same double click / Send rule) and a
+  field: the new answer replaces the old one (kept in `answer_history` with its time and device;
+  `changed_at`), and the asking session gets one line through its queue, as answers go:
+  `[ClaudeDeck decision d_…] The owner changed the answer to your question "…": NEW (was: OLD)`.
+  When the session is gone the change is only stored (`delivery: no_session`). `decision get`
+  then shows `answered: NEW (changed)` and a `was: OLD` line per earlier answer. The phone does
+  the same with Macs that have remote feature `changeDecisionAnswer` (older phones and Macs
+  ignore the extra fields and the new message).
+- **Removed by the owner:** **Remove** on a card (or its context menu) on the Mac, or a swipe on
+  the phone (Macs with remote feature `dismissDecision`), dismisses it without an answer: it is
+  cancelled with reason `owner dismissed`, and the asking session gets one line through its queue,
+  as answers go: `[ClaudeDeck decision d_…] The owner dismissed your question "…" without
+  answering. …` (`delivery` as for answers).
+- **Text size:** the tab's − / + in its header, or ⌘+ / ⌘- / ⌘0 while it's in front (11–24 pt,
+  15 by default; kept).
 - **JSON** (`--json`): `id, question, options, recommended, context, project_id, project,
-  session_id, session, created_at, status` (`pending`/`answered`)`, answer, answered_at,
-  answered_from` (`mac`/`phone`)`, delivery`; every key is always there.
+  session_id, session, created_at, status` (`pending`/`answered`/`cancelled`)`, answer, answered_at,
+  answered_from` (`mac`/`phone`)`, delivery, cancel_reason, cancelled_at, ancestors` (the asking
+  session's starters when it asked)`, answer_history` (`[{answer, answered_at, answered_from}]`,
+  earlier answers, oldest first)`, changed_at`; every key is always there.
 - **Limits:** 10 per 10 minutes per session (`429 too_many`), 50 waiting at once (`429
   too_many_pending`); exit 4. Kept in Application Support/decisions.json: every pending one and
-  the newest 200 answered. Asking, answering and refusals are in the Activity Log.
+  the newest 200 answered or cancelled. Asking, answering, cancelling, dismissing, duplicates and
+  refusals are in the Activity Log.
 
 ### Agenda board
 
@@ -561,7 +612,7 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).
 
-`404 unknown_decision`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
+`403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed`. The routes for agents above (`/v1/projects`,
 

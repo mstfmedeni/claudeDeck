@@ -1,41 +1,78 @@
 import ClaudeDeckCore
 import SwiftUI
 
-/// "Your Decisions": what sessions asked with `claudedeck decide`. They kept working; one tap on
-/// an option (or a few words of your own) answers, and the answer goes into the asking session as
-/// its next message (AppModel+Decisions.swift).
+/// The Decisions tab's text size: the − / + in its header and ⌘+ / ⌘- / ⌘0 while the tab is in
+/// front (the zoom key monitor in ClaudeDeckApp.swift). Kept per user like the window state.
+enum DecisionsTextSize {
+    static let key = "decisions.fontSize"
+    static let range: ClosedRange<Double> = 11...24
+    static let standard: Double = 15
+
+    /// nil resets to the standard size.
+    @MainActor static func zoom(by step: Double?) {
+        let defaults = UserDefaults.windowState
+        let current = defaults.object(forKey: key) as? Double ?? standard
+        let next = step.map { current + $0 } ?? standard
+        defaults.set(min(max(next, range.lowerBound), range.upperBound), forKey: key)
+    }
+}
+
+/// "Your Decisions": what sessions asked with `claudedeck decide`. They kept working; a double
+/// click on an option (or a few words of your own and Send) answers, and the answer goes into the
+/// asking session as its next message (AppModel+Decisions.swift). Remove dismisses one without
+/// answering; the recent answers can still be changed.
 struct DecisionsView: View {
     @Environment(AppModel.self) private var model
-    @State private var showAnswered = true
+    @AppStorage(DecisionsTextSize.key, store: .windowState) private var size = DecisionsTextSize.standard
+    @State private var showOtherToday = false
+    @State private var showCancelled = false
 
     var body: some View {
         let pending = model.decisions.pending.reversed() as [OwnerDecision]
-        let answered = model.decisions.newestFirst.filter { !$0.isPending }
+        let all = model.decisions.decisions
+        let (recent, otherToday) = DecisionSections.answered(all)
+        let cancelled = DecisionSections.cancelledToday(all)
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: size) {
                 header(pending: pending.count)
                 if pending.isEmpty {
                     emptyState
                 } else {
                     ForEach(pending) { decision in
-                        DecisionCard(decision: decision)
+                        DecisionCard(decision: decision, size: size)
                             .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .move(edge: .top))))
                     }
                 }
-                if !answered.isEmpty {
-                    DisclosureGroup(isExpanded: $showAnswered) {
-                        VStack(spacing: 6) {
-                            ForEach(answered.prefix(50)) { AnsweredDecisionRow(decision: $0) }
+                if !recent.isEmpty {
+                    Text("Recently Answered").font(.system(size: size * 1.1, weight: .semibold)).padding(.top, 8)
+                    VStack(spacing: 8) {
+                        ForEach(recent) { AnsweredDecisionRow(decision: $0, size: size) }
+                    }
+                }
+                if !otherToday.isEmpty {
+                    DisclosureGroup(isExpanded: $showOtherToday) {
+                        VStack(spacing: 8) {
+                            ForEach(otherToday) { AnsweredDecisionRow(decision: $0, size: size) }
                         }
                         .padding(.top, 6)
                     } label: {
-                        Text("Answered · \(answered.count)").font(.headline)
+                        Text("Other decisions today · \(otherToday.count)").font(.system(size: size * 1.05, weight: .semibold))
                     }
-                    .padding(.top, 8)
+                }
+                if !cancelled.isEmpty {
+                    DisclosureGroup(isExpanded: $showCancelled) {
+                        VStack(spacing: 6) {
+                            ForEach(cancelled) { CancelledDecisionRow(decision: $0, size: size) }
+                        }
+                        .padding(.top, 6)
+                    } label: {
+                        Text("Cancelled · \(cancelled.count)").font(.system(size: size * 1.05, weight: .semibold))
+                    }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: 780)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 24)
+            .frame(maxWidth: 1400)
             .frame(maxWidth: .infinity)
             .animation(.snappy(duration: 0.25), value: pending.map(\.id))
         }
@@ -45,26 +82,45 @@ struct DecisionsView: View {
     private func header(pending: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Your Decisions").font(.title2.weight(.semibold))
+                Text("Your Decisions").font(.system(size: size * 1.5, weight: .semibold))
                 if pending > 0 {
-                    Text("\(pending) waiting").font(.callout.weight(.semibold)).foregroundStyle(.orange)
+                    Text("\(pending) waiting").font(.system(size: size * 0.95, weight: .semibold)).foregroundStyle(.orange)
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(Color.orange.opacity(0.12), in: Capsule())
                 }
                 Spacer()
+                textSizeControl
             }
             Text("Sessions keep working while these wait. Your answer reaches the session as its next message.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.system(size: size * 0.95)).foregroundStyle(.secondary)
         }
         .padding(.bottom, 4)
     }
 
+    /// − 15 pt + : the text size of the whole tab (also ⌘+ / ⌘- / ⌘0).
+    private var textSizeControl: some View {
+        HStack(spacing: 2) {
+            Button { DecisionsTextSize.zoom(by: -1) } label: { Image(systemName: "minus") }
+                .disabled(size <= DecisionsTextSize.range.lowerBound)
+                .help("Smaller Text (⌘-)")
+            Button { DecisionsTextSize.zoom(by: nil) } label: {
+                Text("\(Int(size)) pt").font(.caption.monospacedDigit()).frame(minWidth: 38)
+            }
+            .help("Actual Size (⌘0)")
+            Button { DecisionsTextSize.zoom(by: 1) } label: { Image(systemName: "plus") }
+                .disabled(size >= DecisionsTextSize.range.upperBound)
+                .help("Larger Text (⌘+)")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.regular)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "signpost.right.and.left").font(.system(size: 34)).foregroundStyle(.tertiary)
-            Text("Nothing to decide").font(.headline)
+            Image(systemName: "signpost.right.and.left").font(.system(size: size * 2.3)).foregroundStyle(.tertiary)
+            Text("Nothing to decide").font(.system(size: size * 1.1, weight: .semibold))
             Text("A session asks with claudedeck decide (Settings › Agents › Command-line tool for sessions).")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.system(size: size * 0.95)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
@@ -72,54 +128,69 @@ struct DecisionsView: View {
 }
 
 /// A pending decision: who asks and why, the options with the recommended one first in line, and
-/// a field for an answer of one's own.
+/// a field for an answer of one's own. Remove (the button or the context menu) dismisses it.
 struct DecisionCard: View {
     @Environment(AppModel.self) private var model
     let decision: OwnerDecision
+    let size: Double
     @State private var custom = ""
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            origin
-            Text(decision.question).font(.title3.weight(.semibold)).textSelection(.enabled)
+        VStack(alignment: .leading, spacing: size * 0.75) {
+            DecisionOrigin(decision: decision, size: size) {
+                Button(action: dismiss) {
+                    Label("Remove", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Remove this decision without answering; the session is told")
+            }
+            Text(decision.question).font(.system(size: size * 1.3, weight: .semibold)).textSelection(.enabled)
+                .lineSpacing(size * 0.2)
                 .fixedSize(horizontal: false, vertical: true)
             if let context = decision.context {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(context).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                        .lineLimit(expanded ? nil : 5)
+                    Text(context).font(.system(size: size)).foregroundStyle(.secondary).textSelection(.enabled)
+                        .lineSpacing(size * 0.35)
+                        .lineLimit(expanded ? nil : 8)
                         .fixedSize(horizontal: false, vertical: true)
-                    if context.count > 320 || context.filter(\.isNewline).count > 4 {
+                    if context.count > 600 || context.filter(\.isNewline).count > 7 {
                         Button(expanded ? String(localized: "Less") : String(localized: "More")) { expanded.toggle() }
-                            .buttonStyle(.link).font(.caption)
+                            .buttonStyle(.link).font(.system(size: size * 0.85))
                     }
                 }
             }
             if !decision.options.isEmpty {
-                DecisionOptions(decision: decision) { model.answerDecision(decision.id, answer: $0, from: "mac") }
+                DecisionChoices(decision: decision, size: size, current: nil) { model.answerDecision(decision.id, answer: $0, from: "mac") }
             }
-            HStack(spacing: 8) {
-                TextField(decision.options.isEmpty ? String(localized: "Your answer") : String(localized: "Or answer in your own words"),
-                          text: $custom, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...4)
-                    .onSubmit(sendCustom)
-                Button("Send", action: sendCustom)
-                    .disabled(Decisions.cleanAnswer(custom) == nil)
+            DecisionTextAnswer(size: size,
+                               placeholder: decision.options.isEmpty ? String(localized: "Your answer") : String(localized: "Or answer in your own words")) {
+                model.answerDecision(decision.id, answer: $0, from: "mac")
             }
         }
-        .padding(16)
+        .padding(size * 1.2)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.orange.opacity(0.35)))
+        .contextMenu {
+            Button("Remove", role: .destructive, action: dismiss)
+        }
     }
 
-    private func sendCustom() {
-        guard Decisions.cleanAnswer(custom) != nil else { return }
-        model.answerDecision(decision.id, answer: custom, from: "mac")
-        custom = ""
+    private func dismiss() {
+        model.dismissDecision(decision.id, from: "mac")
     }
+}
 
-    private var origin: some View {
+/// Project · session (a link to it while it's in the deck) · age · id, and `trailing`.
+struct DecisionOrigin<Trailing: View>: View {
+    @Environment(AppModel.self) private var model
+    let decision: OwnerDecision
+    let size: Double
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "signpost.right.and.left").foregroundStyle(.orange)
             if !decision.project.isEmpty { Text(decision.project).fontWeight(.semibold) }
@@ -128,82 +199,213 @@ struct DecisionCard: View {
                 Button(decision.session) { model.reveal(sessionID); model.tabs.selectSessions() }
                     .buttonStyle(.link)
                     .help("Show the session that asked")
-            } else if !decision.session.isEmpty {
+            } else if !decision.session.isEmpty, decision.session != decision.project {
                 Text("·").foregroundStyle(.tertiary)
                 Text(decision.session).foregroundStyle(.secondary)
             }
             Spacer()
             Text(decision.createdAt, style: .relative).foregroundStyle(.tertiary).monospacedDigit()
-            Text(decision.id).font(.caption.monospaced()).foregroundStyle(.tertiary).textSelection(.enabled)
+            Text(decision.id).font(.system(size: size * 0.8, design: .monospaced)).foregroundStyle(.tertiary).textSelection(.enabled)
+            trailing
         }
-        .font(.callout)
+        .font(.system(size: size * 0.9))
     }
 }
 
-/// The options as buttons; the agent's recommendation is prominent and marked.
-struct DecisionOptions: View {
+/// The options as chips: a click selects one, a double click confirms it (a stray click never
+/// answers). The agent's recommendation comes first and is marked; `current` (an answered
+/// decision's answer) is checked.
+struct DecisionChoices: View {
     let decision: OwnerDecision
-    let pick: (String) -> Void
+    let size: Double
+    let current: String?
+    let confirm: (String) -> Void
+    @State private var selected: String?
 
     var body: some View {
         // Recommended first: the likely answer is the first one the eye lands on.
         let ordered = decision.options.filter { $0 == decision.recommended } + decision.options.filter { $0 != decision.recommended }
-        FlowLayout(spacing: 8) {
-            ForEach(ordered, id: \.self) { option in
-                if option == decision.recommended {
-                    Button { pick(option) } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "star.fill").font(.caption2)
-                            Text(option)
-                            Text("Recommended").font(.caption2.weight(.semibold)).opacity(0.85)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .help("The asking session recommends this")
-                } else {
-                    Button(option) { pick(option) }.buttonStyle(.bordered)
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            FlowLayout(spacing: 8) {
+                ForEach(ordered, id: \.self) { option in chip(option) }
+            }
+            if let selected, selected != current {
+                Label("Double-click to confirm", systemImage: "hand.tap")
+                    .font(.system(size: size * 0.85)).foregroundStyle(.secondary)
+                    .help(selected)
             }
         }
-        .controlSize(.large)
+        .font(.system(size: size))
+    }
+
+    private func chip(_ option: String) -> some View {
+        let isSelected = selected == option
+        let isCurrent = current == option
+        let isRecommended = option == decision.recommended
+        return HStack(spacing: 5) {
+            if isCurrent {
+                Image(systemName: "checkmark").font(.system(size: size * 0.75, weight: .bold))
+            } else if isRecommended {
+                Image(systemName: "star.fill").font(.system(size: size * 0.7))
+            }
+            Text(option)
+            if isRecommended, current == nil {
+                Text("Recommended").font(.system(size: size * 0.72, weight: .semibold)).opacity(0.8)
+            }
+        }
+        .padding(.horizontal, size * 0.8)
+        .padding(.vertical, size * 0.45)
+        .foregroundStyle(isSelected ? Color.white : (isCurrent ? Color.green : Color.primary))
+        .background(isSelected ? Color.accentColor : Color.secondary.opacity(isRecommended && current == nil ? 0.16 : 0.09),
+                    in: RoundedRectangle(cornerRadius: size * 0.5, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.5, style: .continuous)
+            .strokeBorder(isSelected ? Color.accentColor : (isCurrent ? Color.green.opacity(0.6)
+                : isRecommended ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25)), lineWidth: isRecommended || isCurrent ? 1.5 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard option != current else { return }
+            selected = nil
+            confirm(option)
+        }
+        .simultaneousGesture(TapGesture().onEnded { selected = option })
+        .help(isRecommended ? String(localized: "The asking session recommends this") : "")
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { if option != current { confirm(option) } }
     }
 }
 
+/// An answer in one's own words; only the Send button sends it (Return doesn't).
+struct DecisionTextAnswer: View {
+    let size: Double
+    let placeholder: String
+    let send: (String) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField(placeholder, text: $text, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: size))
+                .lineLimit(1...6)
+            Button("Send") {
+                guard Decisions.cleanAnswer(text) != nil else { return }
+                send(text)
+                text = ""
+            }
+            .font(.system(size: size))
+            .disabled(Decisions.cleanAnswer(text) == nil)
+        }
+    }
+}
+
+/// An answered decision, muted: the question, the answer and when. Change… shows the options
+/// (double click) and a field to answer anew; the session gets the new answer as a message.
 struct AnsweredDecisionRow: View {
     @Environment(AppModel.self) private var model
     let decision: OwnerDecision
+    let size: Double
+    @State private var changing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: size * 0.5) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green.opacity(0.8))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(decision.question).font(.system(size: size * 0.95)).foregroundStyle(.secondary)
+                        .lineLimit(changing ? nil : 2).textSelection(.enabled)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(decision.answer ?? "").font(.system(size: size, weight: .semibold)).textSelection(.enabled)
+                        if decision.isChanged {
+                            Text("changed").font(.system(size: size * 0.75, weight: .semibold)).foregroundStyle(.orange)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Color.orange.opacity(0.12), in: Capsule())
+                                .help(decision.answerHistory.map(\.answer).joined(separator: " → "))
+                        }
+                    }
+                    details
+                }
+                Spacer()
+                Button(changing ? String(localized: "Done") : String(localized: "Change…")) { changing.toggle() }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: size * 0.85))
+            }
+            if changing {
+                VStack(alignment: .leading, spacing: size * 0.5) {
+                    if !decision.options.isEmpty {
+                        DecisionChoices(decision: decision, size: size * 0.95, current: decision.answer) { change($0) }
+                    }
+                    DecisionTextAnswer(size: size * 0.95, placeholder: String(localized: "Change in your own words")) { change($0) }
+                }
+                .padding(.leading, size * 1.6)
+            }
+        }
+        .padding(size * 0.7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(changing ? 1 : 0.72)
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func change(_ answer: String) {
+        model.changeDecisionAnswer(decision.id, answer: answer, from: "mac")
+        changing = false
+    }
+
+    private var details: some View {
+        HStack(spacing: 6) {
+            Text(decision.origin)
+            if let at = decision.answeredAt {
+                Text("·")
+                Text(at, format: .relative(presentation: .named))
+            }
+            Text("·")
+            Text(decision.answeredFrom == "phone" ? String(localized: "on the phone") : String(localized: "on the Mac"))
+            if decision.delivery == "queued" {
+                Text("·")
+                Text("sent to the session")
+            } else if decision.delivery == "terminal" {
+                Text("·")
+                Text("kept for claudedeck decision get")
+            } else if decision.delivery == "no_session" {
+                Text("·")
+                Text("the session was gone").foregroundStyle(.orange)
+            }
+        }
+        .font(.system(size: size * 0.8)).foregroundStyle(.tertiary)
+    }
+}
+
+/// A cancelled or removed decision, in today's collapsed list.
+struct CancelledDecisionRow: View {
+    let decision: OwnerDecision
+    let size: Double
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Image(systemName: "xmark.circle").foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 3) {
-                Text(decision.question).font(.callout).lineLimit(2).foregroundStyle(.secondary)
-                Text(decision.answer ?? "").font(.callout.weight(.semibold)).textSelection(.enabled)
+                Text(decision.question).font(.system(size: size * 0.95)).lineLimit(2).foregroundStyle(.secondary)
+                Text(reason).font(.system(size: size * 0.9)).foregroundStyle(.secondary).textSelection(.enabled)
                 HStack(spacing: 6) {
                     Text(decision.origin)
-                    if let at = decision.answeredAt {
+                    if let at = decision.cancelledAt {
                         Text("·")
                         Text(at, format: .relative(presentation: .named))
                     }
-                    Text("·")
-                    Text(decision.answeredFrom == "phone" ? String(localized: "on the phone") : String(localized: "on the Mac"))
-                    if decision.delivery == "queued" {
-                        Text("·")
-                        Text("sent to the session")
-                    } else if decision.delivery == "terminal" {
-                        Text("·")
-                        Text("kept for claudedeck decision get")
-                    } else if decision.delivery == "no_session" {
-                        Text("·")
-                        Text("the session was gone").foregroundStyle(.orange)
-                    }
                 }
-                .font(.caption).foregroundStyle(.tertiary)
+                .font(.system(size: size * 0.8)).foregroundStyle(.tertiary)
             }
             Spacer()
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(size * 0.6)
+        .opacity(0.72)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var reason: String {
+        let reason = decision.cancelReason ?? ""
+        if reason == Decisions.ownerDismissed { return String(localized: "Removed without an answer") }
+        return reason.isEmpty ? String(localized: "Cancelled by the session") : String(localized: "Cancelled: \(reason)")
     }
 }
 
