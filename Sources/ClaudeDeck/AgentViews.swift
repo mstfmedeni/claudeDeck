@@ -138,6 +138,12 @@ struct AgentsSettingsSection: View {
                 Text("claudedeck new --permission-mode bypassPermissions or --allow Bash (every shell command), also from a project preset. Such a session runs commands without asking. Off: refused; sessions started that way earlier start without it.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Toggle("Sessions may close sessions they started", isOn: Binding(
+                get: { model.deck.settings.sessionsMayCloseSessions },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayCloseSessions = on } }
+            ))
+            Text("claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Sessions may use ServerPlan", isOn: Binding(
                 get: { model.deck.settings.sessionsMayUseServerPlan },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayUseServerPlan = on } }

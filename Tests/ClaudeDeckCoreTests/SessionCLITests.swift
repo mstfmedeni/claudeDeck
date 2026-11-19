@@ -779,4 +779,92 @@ import Testing
         #expect(try run(["decisions", "--all"]).code == 2)
         #expect(SessionCLI.skill.contains("claudedeck decide") && SessionCLI.skill.contains("keep working"))
     }
+
+    // MARK: Closing
+
+    @Test func closeRouteAndScope() throws {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/self/close") == .route(.close("self")))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/q_0123456789/close") == .route(.close("q_0123456789")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd/close") == .methodNotAllowed)
+        #expect(SessionCLI.Route.close("x").scope == .close)
+        #expect(SessionCLI.fullScopes.contains(.close) && !SessionCLI.openedScopes.contains(.close))
+        var book = SessionCLIBook()
+        let claude = UUID(), opened = UUID()
+        let claudeToken = book.token(for: claude, scopes: SessionCLI.scopes(openedBy: nil))
+        let openedToken = book.token(for: opened, scopes: SessionCLI.scopes(openedBy: claude))
+        func refusal(_ token: String) -> AgentHTTPResponse? {
+            if case .failure(let refusal) = SessionCLI.resolve(request("POST", "/v1/cli/sessions/self/close", token: token), book: book) { return refusal.response }
+            return nil
+        }
+        #expect(refusal(claudeToken) == nil)
+        // A terminal another session opened may not close anything, itself included.
+        let refused = try #require(refusal(openedToken))
+        #expect(refused.status == 403 && refused.headers[SessionCLI.exitHeader] == "4")
+    }
+
+    @Test func closeOnlyItselfAndWhatItStarted() {
+        let me = UUID(), child = UUID(), grandchild = UUID(), sibling = UUID(), parent = UUID(), owners = UUID()
+        // I started child, child started grandchild; parent started me and sibling; nobody started owners.
+        let startedBy = [child: me, grandchild: child, sibling: parent, me: parent]
+        #expect(SessionCLI.mayClose(caller: me, target: me, startedBy: startedBy))
+        #expect(SessionCLI.mayClose(caller: me, target: child, startedBy: startedBy))
+        #expect(SessionCLI.mayClose(caller: me, target: grandchild, startedBy: startedBy))
+        #expect(!SessionCLI.mayClose(caller: me, target: sibling, startedBy: startedBy))
+        #expect(!SessionCLI.mayClose(caller: me, target: parent, startedBy: startedBy)) // the one that started me
+        #expect(!SessionCLI.mayClose(caller: me, target: owners, startedBy: startedBy)) // the owner's
+        #expect(!SessionCLI.mayClose(caller: child, target: me, startedBy: startedBy))
+        #expect(SessionCLI.mayClose(caller: parent, target: grandchild, startedBy: startedBy))
+        // A loop in a broken deck ends.
+        let a = UUID(), b = UUID()
+        #expect(!SessionCLI.mayClose(caller: me, target: a, startedBy: [a: b, b: a]))
+    }
+
+    @Test func closeSettingAndAnswer() throws {
+        #expect(!DeckSettings().sessionsMayCloseSessions)
+        let old = try JSONDecoder().decode(DeckSettings.self, from: Data(#"{"sessionCLIEnabled":true,"sessionsMayStartSessions":true}"#.utf8))
+        #expect(old.sessionsMayStartSessions && !old.sessionsMayCloseSessions)
+        var on = DeckSettings()
+        on.sessionsMayCloseSessions = true
+        #expect(try JSONDecoder().decode(DeckSettings.self, from: JSONEncoder().encode(on)).sessionsMayCloseSessions)
+        let id = UUID(uuidString: "C0000000-0000-0000-0000-000000000001")!
+        let data = try JSONEncoder().encode(SessionCLIClosed(closed: true, id: id, forced: false))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["closed"] as? Bool == true && object["forced"] as? Bool == false && object["id"] as? String == id.uuidString)
+        #expect(object.count == 3)
+        let pending = try JSONEncoder().encode(SessionCLIClosed(closed: false, id: id, forced: false, pending: true))
+        #expect(String(decoding: pending, as: UTF8.self).contains(#""pending":true"#))
+        #expect(SessionCLI.closeGrace == 15)
+    }
+
+    @Test func closeArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/sessions/"
+        let closed = try run(["close", "d1234567"], answers: [("closed", "200 0")])
+        #expect(closed.code == 0 && closed.out == "closed\n")
+        let call = try #require(closed.curlCalls.first)
+        #expect(call.last == base + "d1234567/close" && !call.contains("-G"))
+        #expect(call.contains("force=0") && call.contains("format=text") && call.contains("60"))
+        let forced = try run(["close", "--force", "self", "--json"], answers: [(#"{"closed":false,"pending":true}"#, "200 0")])
+        #expect(forced.curlCalls.first?.contains("force=1") == true && forced.curlCalls.first?.contains("format=json") == true)
+        #expect(forced.curlCalls.first?.last == base + "self/close")
+        #expect(try run(["close", "q_0123456789"], answers: [("closed", "200 0")]).curlCalls.first?.last == base + "q_0123456789/close")
+        // Usage: nothing reaches the API.
+        for args in [["close"], ["close", "a", "b"], ["close", "a/../b"], ["close", "abcd", "--bogus"]] {
+            let usage = try run(args)
+            #expect(usage.code == 2 && usage.curlCalls.isEmpty, "\(args)")
+        }
+        #expect(try run(["close", "abcd"], session: false).code == 2)
+        // The API's refusals, with hints.
+        let off = try run(["close", "abcd"], answers: [(#"{"error":"close_off"}"#, "403 4")])
+        #expect(off.code == 4 && off.err.contains("Sessions may close sessions they started"))
+        let mine = try run(["close", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(mine.code == 4 && mine.err.contains("sessions it started"))
+        #expect(try run(["close", "abcd"], answers: [(#"{"error":"unknown_session"}"#, "404 5")]).code == 5)
+        let busy = try run(["close", "abcd"], answers: [(#"{"error":"busy"}"#, "409 1")])
+        #expect(busy.code == 1 && busy.err.contains("--force"))
+        #expect(try run(["close", "abcd"], answers: [(#"{"error":"blocked"}"#, "409 3")]).code == 3)
+        let slow = try run(["close", "abcd"], answers: [(#"{"error":"still_running"}"#, "409 124")])
+        #expect(slow.code == 124 && slow.err.contains("--force"))
+        #expect(try run(["help"]).out.contains("claudedeck close ID|self"))
+        #expect(SessionCLI.skill.contains("claudedeck close") && SessionCLI.skill.contains("close_off"))
+    }
 }

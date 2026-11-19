@@ -333,7 +333,7 @@ P="$ROOT/projects"
 DEFAULTS=false; [ "${CLAUDEDECK_DEMO_DEFAULTS:-}" = 1 ] && DEFAULTS=true
 CLI=false; [ "${CLAUDEDECK_DEMO_CLI:-}" = 1 ] && [ "$DEFAULTS" = false ] && CLI=true
 # CLAUDEDECK_DEMO_AUTONOMY=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may add projects, start Claude
-# sessions and use ServerPlan (claudedeck project add / new / server).
+# sessions, use ServerPlan and close the sessions they started (claudedeck project add / new / server / close).
 AUTONOMY=false; [ "$CLI" = true ] && [ "${CLAUDEDECK_DEMO_AUTONOMY:-}" = 1 ] && AUTONOMY=true
 # CLAUDEDECK_DEMO_SIM_HOLDS=1 (with CLAUDEDECK_DEMO_CLI=1): sessions may reserve simulators
 # (claudedeck sim; real simctl: it creates and boots "ClaudeDeck · …" simulators).
@@ -424,7 +424,7 @@ cat > "$ROOT/data/deck.json" <<EOF
   ],
   "settings": { "resumeOnLaunch": true, "compactOnResume": false, "notifications": true, "bounceDock": false, "confirmQuit": false,
                 "pencilMCP": false, "terminalFontSize": 11,
-                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY,
+                "agentAPIEnabled": $CLI, "agentAPIPort": ${CLAUDEDECK_DEMO_AGENT_PORT:-47832}, "sessionCLIEnabled": $CLI, "sessionsMayStartSessions": $AUTONOMY, "sessionsMayUseServerPlan": $AUTONOMY, "sessionsMayCloseSessions": $AUTONOMY,
                 "simulators": $SIMULATORS, "keepSessionsRunning": $KEEP_SESSIONS,
                 "sessionsMayUseSimulators": $SIM_HOLDS, "stallWatch": $STALL_WATCH }
 }
