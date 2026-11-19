@@ -27,6 +27,12 @@ struct PtydSettingsRows: View {
             let count = model.terminals.helperSessionIDs.count
             Text("Helper running (build \(ptyd.helperBuild ?? "?")), sessions in it: \(count)")
                 .font(.caption).foregroundStyle(.secondary)
+            if ptyd.isOutdated, let build = ptyd.helperBuild {
+                Text("Helper is outdated (build \(build), app build \(PtydController.appBuild))")
+                    .font(.caption).foregroundStyle(.orange)
+                Text("It keeps serving the sessions running in it. Restart it to run this build's helper; with no sessions in it, ClaudeDeck replaces it by itself.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         if let problem = ptyd.problem {
             Text(problem).font(.caption).foregroundStyle(.red)
@@ -40,9 +46,25 @@ struct PtydSettingsRows: View {
                     .disabled(ptyd.isReadOnly)
             }
         }
-        if ptyd.isReadOnly || !ptyd.held.isEmpty {
-            Button("Restart Helper (Restarts Sessions)…") { model.confirmRestartHelper() }
+        // Always offered while a helper runs (or holds sessions): it's also how an outdated helper
+        // is upgraded and how a new privacy grant (Full Disk Access) takes effect.
+        if ptyd.isConnected || !ptyd.held.isEmpty {
+            PtydRestartButton()
         }
+    }
+}
+
+/// "Restart Helper (Restarts Sessions)…", disabled while a restart runs.
+struct PtydRestartButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button {
+            model.confirmRestartHelper()
+        } label: {
+            model.ptyd.restarting ? Text("Restarting…") : Text("Restart Helper (Restarts Sessions)…")
+        }
+        .disabled(model.ptyd.restarting)
     }
 }
 

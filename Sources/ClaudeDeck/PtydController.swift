@@ -9,10 +9,17 @@ import ServiceManagement
 /// AppModel which sessions to attach instead of starting (PtydLaunchPlan).
 ///
 /// The helper runs as a launch agent registered with SMAppService (the plist ships in
-/// Contents/Library/LaunchAgents), so macOS lists it under ClaudeDeck in Login Items and should
-/// attribute the sessions' privacy (TCC) requests to ClaudeDeck rather than to a separate binary
-/// (not verified yet: check folder access on first use). In demo mode, with CLAUDEDECK_DATA_DIR set,
-/// or when the build has no plist, it runs as a detached child process instead (no launchd).
+/// Contents/Library/LaunchAgents), so macOS lists it under ClaudeDeck in Login Items. Privacy
+/// (TCC) is another matter: macOS treats the launch agent as its own responsible process, so
+/// ClaudeDeck.app's Full Disk Access / Desktop grants don't cover the sessions in it (verified),
+/// and a new grant only applies once the helper process restarts. `checkAccess` compares what the
+/// app and the helper can open (PtydAccessProbe) for Settings and the banner. In demo mode, with
+/// CLAUDEDECK_DATA_DIR set, or when the build has no plist, it runs as a detached child process
+/// instead (no launchd).
+///
+/// Upgrades: a helper of another build with no live session is replaced at once (`adopt`); one
+/// that still serves sessions keeps doing so, Settings offers the restart, and once its last
+/// session ends it is replaced too (`upgradeIfIdle`).
 @MainActor
 @Observable
 final class PtydController {
@@ -63,6 +70,11 @@ final class PtydController {
     }
 
     var isConnected: Bool { client != nil }
+    /// The connected helper is another build than this app (or can't be fully driven).
+    var isOutdated: Bool {
+        guard let client else { return false }
+        return client.welcome.build != Self.appBuild || !client.isFull
+    }
     var isReadOnly: Bool { client?.compatibility == .readOnly }
     var aliveCount: Int { liveSessions.values.filter(\.alive).count }
 
@@ -182,6 +194,7 @@ final class PtydController {
                 self.model?.terminals.helperExited(info, from: connected)
                 self.orphans.removeAll { $0.id == info.id }
                 self.retireIfDone()
+                self.upgradeIfIdle()
             }
         }
         connected.onDisconnect = { [weak self, weak connected] in
@@ -457,6 +470,21 @@ final class PtydController {
         // The dropped connection starts the new helper too; `connect` runs one attempt at a time.
         await connect(startIfNeeded: model?.deck.settings.keepSessionsRunning == true)
         await model?.recoverHelperSessions(toRecover)
+    }
+
+    /// An outdated helper kept serving sessions (`adopt`): once the last one has ended, it is
+    /// replaced by this build's, which interrupts nothing. Checked again after a moment, so a
+    /// session starting right then isn't caught in the restart.
+    private func upgradeIfIdle() {
+        guard isOutdated, aliveCount == 0, held.isEmpty, !restarting,
+              model?.deck.settings.keepSessionsRunning == true else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, self.isOutdated, self.aliveCount == 0, self.held.isEmpty, !self.restarting,
+                  self.model?.deck.settings.keepSessionsRunning == true else { return }
+            ptydLog.info("upgrading the idle helper build \(self.helperBuild ?? "?", privacy: .public) to \(Self.appBuild, privacy: .public)")
+            await self.restartHelper()
+        }
     }
 
     /// Ends the sessions running in the helper that this deck doesn't know.

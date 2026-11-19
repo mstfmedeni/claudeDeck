@@ -20743,6 +20743,26 @@
           }
         }
       }
+    },
+    "Helper is outdated (build %@, app build %@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcı eski sürüm (build %@, uygulama build %@)"
+          }
+        }
+      }
+    },
+    "It keeps serving the sessions running in it. Restart it to run this build's helper; with no sessions in it, ClaudeDeck replaces it by itself.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İçinde çalışan oturumlara hizmet etmeyi sürdürür. Bu sürümün yardımcısına geçmek için yeniden başlatın; içinde oturum kalmayınca ClaudeDeck onu kendiliğinden yeniler."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
