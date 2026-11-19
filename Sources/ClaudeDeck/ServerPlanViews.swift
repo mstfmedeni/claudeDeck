@@ -96,10 +96,21 @@ struct ServerPlanSidebarSection: View {
         let controller = ServerPlanController.shared
         Section(isExpanded: $expanded) {
             if controller.servers.isEmpty {
-                Text(controller.lastError ?? (controller.lastRefresh == nil ? String(localized: "Loading…") : String(localized: "No servers")))
-                    .sidebarFont(.callout).foregroundStyle(controller.lastError == nil ? .tertiary : .secondary)
-                    .lineLimit(3)
-                    .selectionDisabled()
+                // A cleared panel error stays as the explanation, without the alarm.
+                let shown = controller.shownLastError
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(controller.lastError ?? (controller.lastRefresh == nil ? String(localized: "Loading…") : String(localized: "No servers")))
+                        .sidebarFont(.callout).foregroundStyle(shown == nil ? .tertiary : .secondary)
+                        .lineLimit(3)
+                    if shown != nil {
+                        Spacer(minLength: 4)
+                        ServerPlanClearButton { controller.clearPanelError() }
+                    }
+                }
+                .contextMenu {
+                    if shown != nil { Button("Clear Error") { controller.clearPanelError() } }
+                }
+                .selectionDisabled()
             }
             ForEach(controller.servers) { server in
                 ServerPlanServerRow(server: server).selectionDisabled()
@@ -109,7 +120,13 @@ struct ServerPlanSidebarSection: View {
                 ForEach(unassigned) { ServerPlanProjectRow(project: $0, serverName: nil).selectionDisabled() }
             }
             if let error = controller.actionError {
-                Text(error).sidebarFont(.caption).foregroundStyle(.orange).lineLimit(3).selectionDisabled()
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(error).sidebarFont(.caption).foregroundStyle(.orange).lineLimit(3)
+                    Spacer(minLength: 4)
+                    ServerPlanClearButton { controller.actionError = nil }
+                }
+                .contextMenu { Button("Clear Error") { controller.actionError = nil } }
+                .selectionDisabled()
             }
         } header: {
             ServerPlanSidebarHeader(expanded: $expanded)
@@ -141,10 +158,19 @@ private struct ServerPlanSidebarHeader: View {
                         .help("Refresh from ServerPlan")
                 }
             }
-            if controller.lastError != nil {
+            if let error = controller.shownLastError {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    .help(controller.lastError ?? "")
+                    .help(error)
             }
+            if controller.hasClearableErrors {
+                Button { controller.clearAll() } label: { Image(systemName: "xmark.circle") }
+                    .buttonStyle(.borderless)
+                    .help("Clear All Errors (only here; nothing changes on ServerPlan)")
+            }
+        }
+        .contextMenu {
+            Button("Clear All Errors") { controller.clearAll() }.disabled(!controller.hasClearableErrors)
+            Button("Refresh") { Task { await controller.refresh(force: true) } }
         }
         // The whole header opens and closes the section.
         .contentShape(Rectangle())
@@ -275,6 +301,7 @@ private struct ServerDot: View {
 private struct ServerPlanServerRow: View {
     @Environment(AppModel.self) private var model
     let server: ServerPlanServer
+    @State private var hovering = false
 
     var body: some View {
         let controller = ServerPlanController.shared
@@ -302,11 +329,16 @@ private struct ServerPlanServerRow: View {
 
     private func label(_ controller: ServerPlanController) -> some View {
         let health = controller.health[server.id]
+        // A cleared problem: grey dot, the host instead of the error, no Docker warning.
+        let alarm = controller.showsServerIssue(server)
+        let down = health?.reachable == false || server.effectiveStatus == .offline
         return HStack(spacing: 6) {
-            ServerDot(status: health?.reachable == false ? .offline : server.effectiveStatus)
+            ServerDot(status: down ? (alarm ? .offline : .unknown) : server.effectiveStatus)
             VStack(alignment: .leading, spacing: 1) {
                 Text(server.name).lineLimit(1)
-                if let health, health.reachable == false {
+                if !alarm, controller.serverIssue(server) != nil {
+                    Text(server.host ?? String(localized: "Error cleared")).sidebarFont(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                } else if let health, health.reachable == false {
                     Text(health.error ?? String(localized: "Unreachable")).sidebarFont(.caption).foregroundStyle(.red).lineLimit(1)
                 } else if let health {
                     Text(Self.healthLine(health)).sidebarFont(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -315,10 +347,12 @@ private struct ServerPlanServerRow: View {
                 }
             }
             Spacer(minLength: 4)
-            if health?.reachable != false, health?.dockerOK == false {
+            if alarm, health?.reachable != false, health?.dockerOK == false {
                 Image(systemName: "shippingbox").foregroundStyle(.orange).help("Docker isn't answering on this server")
             }
+            if alarm, hovering { ServerPlanClearButton { controller.clearServerIssue(server) } }
         }
+        .onHover { hovering = $0 }
         .help([server.host, health?.uptime, health?.loadAverage.map { String(localized: "load \($0)") }].compactMap { $0 }.joined(separator: " · "))
     }
 
@@ -328,6 +362,10 @@ private struct ServerPlanServerRow: View {
     }
 
     @ViewBuilder private func menu(_ controller: ServerPlanController) -> some View {
+        if controller.showsServerIssue(server) {
+            Button("Clear Error") { controller.clearServerIssue(server) }
+            Divider()
+        }
         if controller.canOpenTerminal {
             Button("Open Terminal") { model.openServerPlanTerminal(serverID: server.id, serverName: server.name, runClaude: false) }
             if controller.canRunClaude(on: server.id) {
@@ -346,12 +384,16 @@ private struct ServerPlanProjectRow: View {
     let serverName: String?
     /// Under a ClaudeDeck project: which server it deploys to, after a server icon.
     var showsServer = false
+    @State private var hovering = false
 
     var body: some View {
         let controller = ServerPlanController.shared
         let deploy = controller.latestDeploy(of: project)
+        let failing = controller.showsFailure(deploy)
+        // Failed, but cleared by the owner: no red, no Fix button.
+        let cleared = deploy?.status == .failed && !failing
         HStack(spacing: 6) {
-            DeployBadge(status: deploy?.status)
+            DeployBadge(status: deploy?.status, muted: cleared)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(project.name).lineLimit(1)
@@ -369,14 +411,22 @@ private struct ServerPlanProjectRow: View {
                     }
                 }
                 if let deploy {
-                    Text(DeployBadge.label(deploy)).sidebarFont(.caption).foregroundStyle(deploy.status == .failed ? .red : .secondary).lineLimit(1)
+                    if cleared {
+                        Text("Last deploy failed").sidebarFont(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                    } else {
+                        Text(DeployBadge.label(deploy)).sidebarFont(.caption).foregroundStyle(failing ? .red : .secondary).lineLimit(1)
+                    }
                 }
             }
             Spacer(minLength: 4)
             if let deploy, deploy.status.isFinished { RowTime(date: deploy.finishedAt) }
-            if let deploy, deploy.status == .failed { repairButton(deploy, controller) }
+            if let deploy, failing {
+                repairButton(deploy, controller)
+                if hovering { ServerPlanClearButton { controller.clearDeploy(deploy) } }
+            }
         }
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .onTapGesture(count: 2) {
             if let deploy { controller.sheet = .deploy(id: deploy.id, title: project.name) }
         }
@@ -407,6 +457,7 @@ private struct ServerPlanProjectRow: View {
         if let deploy {
             Button("Show Deploy Log") { controller.sheet = .deploy(id: deploy.id, title: project.name) }
             if deploy.status == .failed { Button("Fix with Claude") { controller.fixWithClaude(deploy.id) } }
+            if controller.showsFailure(deploy) { Button("Clear Error") { controller.clearDeploy(deploy) } }
         }
         // Under its project already: no "Show Project".
         if !showsServer, let deckProject = controller.deckProject(for: project) {
@@ -424,15 +475,29 @@ private struct ServerPlanProjectRow: View {
     }
 }
 
+/// Clears one error from the sidebar (local: nothing changes on ServerPlan).
+struct ServerPlanClearButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Image(systemName: "xmark.circle.fill") }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Clear Error")
+    }
+}
+
 /// The last deploy's status as a small icon.
 struct DeployBadge: View {
     let status: ServerPlanDeployStatus?
+    /// A failure the owner cleared: grey instead of red.
+    var muted = false
 
     var body: some View {
         Group {
             switch status {
             case .success?: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            case .failed?: Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+            case .failed?: Image(systemName: "xmark.octagon.fill").foregroundStyle(muted ? Color.secondary : Color.red)
             case .cancelled?: Image(systemName: "slash.circle").foregroundStyle(.secondary)
             case let s? where s.isRunning: Image(systemName: "arrow.triangle.2.circlepath.circle.fill").foregroundStyle(.blue)
             default: Image(systemName: "shippingbox").foregroundStyle(.tertiary)
@@ -535,6 +600,10 @@ private struct ServerPlanDeploySheet: View {
                         Button("Fix with Claude") { controller.fixWithClaude(deploymentID) }
                             .disabled(controller.repairing.contains(deploymentID))
                     }
+                }
+                if let deployment, controller.showsFailure(deployment) {
+                    Button("Clear Error") { controller.clearDeploy(deployment) }
+                        .help("Clears it from the sidebar and the phone; ServerPlan keeps the deploy")
                 }
                 Spacer()
                 Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)

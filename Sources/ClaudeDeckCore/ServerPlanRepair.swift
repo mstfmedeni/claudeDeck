@@ -94,3 +94,93 @@ extension DeckData {
         }
     }
 }
+
+// MARK: - Cleared failures
+
+/// A ServerPlan failure as the sidebar shows it: what failed (`key`) and what it said
+/// (`signature`). The same key with another signature is a new failure.
+public struct ServerIssue: Sendable, Hashable {
+    public var key: String
+    public var signature: String
+
+    public init(key: String, signature: String) {
+        self.key = key
+        self.signature = signature
+    }
+
+    /// A failed deploy. A redeploy has a new id, so its failure is a new issue.
+    public static func deploy(panel: URL, deploymentID: Int, status: String = "failed") -> ServerIssue {
+        ServerIssue(key: DeployRepair.key(panel: panel, deploymentID: deploymentID), signature: status)
+    }
+
+    /// A server that can't be reached or whose Docker doesn't answer (`signature`: the message).
+    public static func server(panel: URL, serverID: Int, message: String) -> ServerIssue {
+        ServerIssue(key: serverKey(panel: panel, serverID: serverID), signature: message)
+    }
+
+    /// The panel itself failing (refresh errors, a revoked token).
+    public static func panel(_ panel: URL, message: String) -> ServerIssue {
+        ServerIssue(key: panelKey(panel), signature: message)
+    }
+
+    public static func serverKey(panel: URL, serverID: Int) -> String { "\(panel.host() ?? "")#server:\(serverID)" }
+    public static func panelKey(_ panel: URL) -> String { "\(panel.host() ?? "")#panel" }
+}
+
+/// A failure the owner cleared (on this Mac, or from the phone). Local only: the panel keeps it.
+public struct DismissedServerIssue: Codable, Sendable, Equatable {
+    public var key: String
+    public var signature: String
+    public var dismissedAt: Date
+
+    public init(key: String, signature: String, dismissedAt: Date = Date()) {
+        self.key = key
+        self.signature = signature
+        self.dismissedAt = dismissedAt
+    }
+}
+
+public enum ServerIssues {
+    /// Cleared failures are forgotten after this long, unless the failure is still listed.
+    public static let maxAge: TimeInterval = 30 * 24 * 3600
+    public static let maxEntries = 500
+}
+
+extension DeckData {
+    /// Whether this failure was cleared (the same key with the same signature).
+    public func isDismissed(_ issue: ServerIssue) -> Bool {
+        dismissedServerIssues.contains { $0.key == issue.key && $0.signature == issue.signature }
+    }
+
+    /// Clears failures (one entry per key: clearing it again replaces the old signature).
+    public mutating func dismissServerIssues(_ issues: [ServerIssue], now: Date = Date()) {
+        guard !issues.isEmpty else { return }
+        let keys = Set(issues.map(\.key))
+        dismissedServerIssues.removeAll { keys.contains($0.key) }
+        var seen: Set<String> = []
+        for issue in issues where seen.insert(issue.key).inserted {
+            dismissedServerIssues.append(DismissedServerIssue(key: issue.key, signature: issue.signature, dismissedAt: now))
+        }
+        if dismissedServerIssues.count > ServerIssues.maxEntries {
+            dismissedServerIssues.removeFirst(dismissedServerIssues.count - ServerIssues.maxEntries)
+        }
+    }
+
+    /// Forgets the clearing of failures that went away (a server back up, the panel answering
+    /// again), so the next time it fails it shows. Returns whether anything changed.
+    @discardableResult
+    public mutating func forgetServerIssues(_ keys: Set<String>) -> Bool {
+        let before = dismissedServerIssues.count
+        dismissedServerIssues.removeAll { keys.contains($0.key) }
+        return dismissedServerIssues.count != before
+    }
+
+    /// Drops entries older than `ServerIssues.maxAge`, except those whose failure is still
+    /// listed (`active`: their keys), which would otherwise come back. Returns whether anything changed.
+    @discardableResult
+    public mutating func pruneDismissedServerIssues(keeping active: Set<String> = [], now: Date = Date()) -> Bool {
+        let before = dismissedServerIssues.count
+        dismissedServerIssues.removeAll { now.timeIntervalSince($0.dismissedAt) > ServerIssues.maxAge && !active.contains($0.key) }
+        return dismissedServerIssues.count != before
+    }
+}

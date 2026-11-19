@@ -20453,6 +20453,86 @@
           }
         }
       }
+    },
+    "Clear Error": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hatayı Temizle"
+          }
+        }
+      }
+    },
+    "Clear All Errors": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tümünü Temizle"
+          }
+        }
+      }
+    },
+    "Clear All Errors (only here; nothing changes on ServerPlan)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tümünü temizle (yalnızca burada; ServerPlan'da hiçbir şey değişmez)"
+          }
+        }
+      }
+    },
+    "Clear All": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tümünü Temizle"
+          }
+        }
+      }
+    },
+    "Error cleared": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hata temizlendi"
+          }
+        }
+      }
+    },
+    "Last deploy failed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son dağıtım başarısız oldu"
+          }
+        }
+      }
+    },
+    "Clears it from the sidebar and the phone; ServerPlan keeps the deploy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kenar çubuğundan ve telefondan kaldırır; ServerPlan dağıtımı tutar"
+          }
+        }
+      }
+    },
+    "Swipe to clear one. Clearing only hides it here and on the Mac; ServerPlan keeps the deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Birini temizlemek için kaydır. Temizlemek yalnızca burada ve Mac'te gizler; ServerPlan dağıtımı tutar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

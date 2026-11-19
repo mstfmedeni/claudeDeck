@@ -214,6 +214,11 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case serverPlanRepair(deploymentID: Int)
     /// Host → remote: the session the repair went to, or why it didn't start.
     case serverPlanRepairResult(deploymentID: Int, sessionID: UUID?, error: String?)
+    /// Remote → host: clear these failed deploys from the Mac's sidebar and the phone's list
+    /// (local bookkeeping: nothing changes on the panel). `all`: every ServerPlan failure the Mac
+    /// shows, server and panel errors too. Hosts with `Feature.dismissServerIssues`; the next
+    /// snapshot leaves them out.
+    case dismissServerIssues(deploymentIDs: [Int], all: Bool)
     /// Remote → host: the owner's answer to a decision a session left (`decisions` in the
     /// snapshot; hosts with `Feature.decisions`). The next snapshot shows it answered; a decision
     /// answered elsewhere first keeps that answer.
@@ -409,11 +414,13 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let changeDecisionAnswer = "changeDecisionAnswer"
         /// `RemoteSession.agent` and the `agents…` counts in the snapshot (read-only).
         public static let agentTree = "agentTree"
+        /// `dismissServerIssues`; `RemoteServerPlan.Project.lastDeployCleared`.
+        public static let dismissServerIssues = "dismissServerIssues"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
-                                              changeDecisionAnswer, agentTree]
+                                              changeDecisionAnswer, agentTree, dismissServerIssues]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -470,6 +477,9 @@ public struct RemoteServerPlan: Codable, Sendable, Equatable {
         /// As `Deploy.status`.
         public var lastDeployStatus: String?
         public var lastDeployAt: Date?
+        /// The last deploy failed and that failure was cleared on the Mac (hosts with
+        /// `Feature.dismissServerIssues`): shown without the alarm.
+        public var lastDeployCleared: Bool?
         public init(id: Int, name: String, serverID: Int?, lastDeployID: Int?, lastDeployStatus: String?, lastDeployAt: Date?) {
             self.id = id
             self.name = name

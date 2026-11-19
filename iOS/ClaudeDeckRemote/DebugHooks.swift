@@ -5,7 +5,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
-///   fix.txt (a ServerPlan deploy id: Fix with Claude) · <decision-id>.decide (the answer) · show.txt also takes dashboard / servers / simulators / decisions / agenda / connectionlog ·
+///   fix.txt (a ServerPlan deploy id: Fix with Claude) · clear.txt ("all" or deploy ids: clear failed deploys) · <decision-id>.decide (the answer) · show.txt also takes dashboard / servers / simulators / decisions / agenda / connectionlog ·
 ///   track.txt (seconds: the main run loop stays in tracking mode, as while a finger is on the screen) ·
 ///   homefiles.txt (a folder in the Mac's home) · addresses.txt (one per line; empty: automatic) · pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
@@ -97,6 +97,15 @@ final class DebugHooks {
                       let id = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 try? FileManager.default.removeItem(at: url)
                 store.fixDeploy(id)
+            } else if file == "clear.txt" {
+                // ServerPlan: "all", or failed deploy ids, cleared as the swipe / Clear All does.
+                let words = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(whereSeparator: \.isWhitespace).map(String.init)
+                try? FileManager.default.removeItem(at: url)
+                if words.first == "all" {
+                    store.clearDeploys(store.serverPlan?.deploys.filter { $0.status == "failed" }.map(\.id) ?? [], all: true)
+                } else {
+                    store.clearDeploys(words.compactMap { Int($0) })
+                }
             } else if file.hasPrefix("d_"), file.hasSuffix(".decide") {
                 // A decision answered with the file's text, as a tap on an option does.
                 let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""

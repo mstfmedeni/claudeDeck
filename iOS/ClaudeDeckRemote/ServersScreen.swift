@@ -48,11 +48,12 @@ enum ServerStyle {
 
 /// The list's row for the Servers screen: how many servers, and what's wrong.
 struct ServersRow: View {
+    @Environment(RemoteStore.self) private var store
     let plan: RemoteServerPlan
 
     var body: some View {
         let offline = plan.servers.filter { $0.status == "offline" }.count
-        let failed = plan.deploys.filter { $0.status == "failed" }.count
+        let failed = plan.deploys.filter { $0.status == "failed" && !store.clearedDeploys.contains($0.id) }.count
         NavigationLink(value: MacScreen.servers) {
             Label {
                 HStack {
@@ -98,7 +99,7 @@ struct ServersScreen: View {
     }
 
     private func list(_ plan: RemoteServerPlan) -> some View {
-        let failures = plan.deploys.filter { $0.status == "failed" }
+        let failures = plan.deploys.filter { $0.status == "failed" && !store.clearedDeploys.contains($0.id) }
         let running = plan.deploys.filter { ServerStyle.running.contains($0.status) }
         let projects = plan.projects ?? []
         let serverIDs = Set(plan.servers.map(\.id))
@@ -106,9 +107,32 @@ struct ServersScreen: View {
         return List {
             if !failures.isEmpty {
                 Section {
-                    ForEach(failures) { deploy in failureRow(deploy) }
+                    ForEach(failures) { deploy in
+                        failureRow(deploy)
+                            .swipeActions(edge: .trailing) {
+                                // Only Macs that take it (older ones would drop the message).
+                                if store.canClearServerErrors {
+                                    Button(role: .destructive) { store.clearDeploys([deploy.id]) } label: {
+                                        Label("Clear", systemImage: "xmark.circle")
+                                    }
+                                }
+                            }
+                    }
                 } header: {
-                    Text("Failed Deploys")
+                    HStack {
+                        Text("Failed Deploys")
+                        Spacer()
+                        if store.canClearServerErrors {
+                            Button("Clear All") { store.clearDeploys(failures.map(\.id), all: true) }
+                                .font(.caption.weight(.semibold))
+                                .textCase(nil)
+                                .disabled(store.connection != .connected)
+                        }
+                    }
+                } footer: {
+                    if store.canClearServerErrors {
+                        Text("Swipe to clear one. Clearing only hides it here and on the Mac; ServerPlan keeps the deploy.")
+                    }
                 }
             }
             if !running.isEmpty {
@@ -168,7 +192,7 @@ struct ServersScreen: View {
                 }
             }
             Spacer(minLength: 6)
-            if let status = project.lastDeployStatus { DeployPill(status: status) }
+            if let status = project.lastDeployStatus { DeployPill(status: status, muted: project.lastDeployCleared == true) }
         }
     }
 
@@ -216,9 +240,11 @@ struct ServersScreen: View {
 
 private struct DeployPill: View {
     let status: String
+    /// A failure cleared on the Mac: grey.
+    var muted = false
 
     var body: some View {
-        let color = ServerStyle.color(deploy: status)
+        let color = muted ? Color.secondary : ServerStyle.color(deploy: status)
         Text(ServerStyle.label(deploy: status))
             .font(.caption2.weight(.semibold))
             .foregroundStyle(color == .secondary ? Color.secondary : color)
