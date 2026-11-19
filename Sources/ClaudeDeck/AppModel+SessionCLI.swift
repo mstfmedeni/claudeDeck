@@ -102,6 +102,8 @@ extension AppModel {
             return cliDecisions(form: form, json: json)
         case .decision(let id):
             return cliDecision(id, json: json)
+        case .close(let ref):
+            return await cliClose(caller, ref: ref, form: form, json: json)
         }
     }
 

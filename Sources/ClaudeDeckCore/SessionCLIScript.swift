@@ -31,6 +31,11 @@ extension SessionCLI {
       claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
           --all: until every one stopped running (3 if any needs the user, else 1 if any
           failed, else 0). --any: until the first one does, with its code.
+      claudedeck close ID|self [--force] [--json]
+          Ends this session or one it started, like End Session (it stays in the sidebar and
+          can be resumed), and closes its pane. An idle Claude gets /exit (up to 15 s); --force
+          ends the process when Claude is busy, blocked or doesn't leave. "self" ends after the
+          current turn (--force: right away). Needs "Sessions may close sessions they started".
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -183,7 +188,12 @@ extension SessionCLI {
               serverplan_off) hint=" (ServerPlan isn't set up in ClaudeDeck)" ;;
               not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
-              not_yours) hint=" (only terminals this session opened, or ones beside it)" ;;
+              not_yours) if [ "$command_name" = close ]; then hint=" (only this session and the sessions it started)"
+                else hint=" (only terminals this session opened, or ones beside it)"; fi ;;
+              close_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may close sessions they started\")" ;;
+              busy) hint=" (Claude is working; wait for it, or close --force)" ;;
+              still_running) hint=" (Claude didn't leave after /exit; close --force ends it)" ;;
+              read_only) hint=" (it runs in another app's session helper)" ;;
               unknown_session) hint=" (see claudedeck list)" ;;
               ambiguous) hint=" (give more of the id)" ;;
               not_running) hint=" (it isn't running)" ;;
@@ -342,6 +352,25 @@ extension SessionCLI {
         fi
         finish
       done
+    }
+
+    cmd_close() {
+      id=""; force=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --force) force=1 ;;
+          --json) json=1 ;;
+          -*) die "close: unknown option $1" ;;
+          *) [ -z "$id" ] || die "close: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      check_id "$id" close
+      need_session
+      # Up to 15 s for Claude to leave after /exit, then the end of the process.
+      max_time=60
+      call "/sessions/$id/close" --data-urlencode "force=$force" --data-urlencode "format=$(fmt)"
+      finish
     }
 
     cmd_notify() {
@@ -1027,6 +1056,7 @@ extension SessionCLI {
       send) cmd_send "$@" ;;
       capture) cmd_capture "$@" ;;
       wait) cmd_wait "$@" ;;
+      close) cmd_close "$@" ;;
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
@@ -1148,6 +1178,26 @@ extension SessionCLI {
       (`--queue` waits for you: the start happens once there's room).
     - The user gets a notification for each and can see them in the activity log. Start
       sessions only when parallel work really helps, and say why in the prompt.
+
+    ### Closing sessions
+
+    Only when the user turned on "Sessions may close sessions they started" (otherwise exit 4
+    `close_off`; don't retry).
+
+    ```sh
+    claudedeck close ID [--force] [--json]         # a session you started (or one they started)
+    claudedeck close self [--force]                # yourself, once this turn is over
+    ```
+
+    - Close a session you started once its work is done and you've read its result: it frees one
+      of the 8 running slots (a queued `new --queue` starts in it). It ends like the user's End
+      Session (an idle Claude gets `/exit`); the session stays in the sidebar with its history and
+      the user can resume it. Prints `closed` (`--json`: `{"closed":true,"id":…,"forced":false}`).
+    - Never sessions the user started (exit 4 `not_yours`). Claude busy: exit 1 `busy`; waiting on
+      the user: exit 3 `blocked`; still there 15 s after `/exit`: exit 124 `still_running`. Use
+      `--force` only when you mean to cut its work off.
+    - `close self` returns at once (`closing: after this turn`) and the session ends when your
+      turn is over; finish your reply first. The session that started you gets a note.
 
     ### ServerPlan
 

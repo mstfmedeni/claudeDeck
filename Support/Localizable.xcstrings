@@ -17991,6 +17991,46 @@
         }
       }
     },
+    "Sessions may close sessions they started": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar başlattıkları oturumları kapatabilir"
+          }
+        }
+      }
+    },
+    "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck close: bir oturum kendini ve başlattığı oturumları (ve onların başlattıklarını) sonlandırabilir, sizinkileri asla. Her kapatma etkinlik günlüğüne yazılır; oturum kenar çubuğunda kalır ve sürdürülebilir."
+          }
+        }
+      }
+    },
+    "%@, a session this one started, closed itself.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumun başlattığı %@ kendini kapattı."
+          }
+        }
+      }
+    },
+    "%@ closed %@, a session this one started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, bu oturumun başlattığı %2$@ oturumunu kapattı."
+          }
+        }
+      }
+    },
     "Sessions may use ServerPlan": {
       "localizations": {
         "tr": {

@@ -158,6 +158,7 @@ claudedeck send ID TEXT [--enter] [--json]
 claudedeck capture ID [--lines N] [--trim] [--json]
 claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
+claudedeck close ID|self [--force] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
@@ -199,6 +200,8 @@ claudedeck skill setup [--user|--project] [--force]
   given when several did). Timeout: 124. One line per id (`--json`: `{mode, result, first,
   sessions: [{ref, id, queue_id, result, exit_code, state, detail}]}`). Every id is checked
   first: an unknown one is exit 5, `self` exit 2.
+- **close:** ends a session the way End Session does, and closes its pane; see
+  [Closing sessions](#closing-sessions) below.
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -219,17 +222,17 @@ claudedeck skill setup [--user|--project] [--force]
 | 3 | `wait`: the Claude session needs you (a permission or a question), or the terminal's program does (Program Status); `send`: one is on screen |
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
 | 5 | Unknown id, project, server, container, deployment, skill, queue id or decision |
-| 124 | `wait` timed out; still running |
+| 124 | `wait` timed out; still running; `close`: Claude was still there 15 s after `/exit` |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | close |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | |
 
-`start` (project add, new) and `server` also need their settings (below).
+`start` (project add, new), `server` and `close` also need their settings (below).
 
 `send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
 session gets the text **as a note** unless **May type into Claude: sessions may send text to other
@@ -268,6 +271,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/decisions` | `question, options, recommend, context, project` | decide |
 | GET | `/v1/cli/decisions` | `pending=1` | decide |
 | GET | `/v1/cli/decisions/{id}` | | decide |
+| POST | `/v1/cli/sessions/{ref}/close` | `force=1`; `{ref}` may be a started queue id | close |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -278,7 +282,8 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
 `bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
 `not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
-`404 unknown_decision`, `429 too_many_pending`. The routes for agents above (`/v1/projects`,
+`404 unknown_decision`, `429 too_many_pending`; for `close` `403 close_off` / `not_yours`,
+`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
 
 ### Decisions for the owner
@@ -459,6 +464,43 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   Every action is in the agent Activity Log, and the owner gets a notification "started Y in Z"
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).
+
+### Closing sessions
+
+```sh
+claudedeck close ID|self [--force] [--json]
+```
+
+It needs **Sessions may close sessions they started** (Settings › Agents › Command-line tool; off
+by default, `403 close_off`, exit 4). It ends the session the way the owner's **End Session**
+(**Close Terminal** for a terminal) does, then closes its pane like the pane's close button: the
+session stays in the sidebar with its transcript and can be resumed later. A session in the
+session helper (keep sessions running) really ends too: the helper's process gets the `/exit` or
+the signals, as with End Session. A session watched read-only in another app's helper can't be
+closed (`409 read_only`).
+
+- **Whose:** only the caller itself (`self`, or its own id) and the sessions it started with
+  `new`, directly or through sessions they started (`startedBy` all the way up). Never a session
+  the owner started, a session that started the caller, a sibling, or a terminal opened with
+  `claudedeck open` (`403 not_yours`). Terminals opened with `claudedeck open` don't have the
+  scope at all (`403 not_allowed`). Unknown id: `404 unknown_session`, exit 5.
+- **How:** an idle Claude gets Ctrl+C (clears a draft) and `/exit`, as a restart does, and the
+  command waits up to 15 s for it to leave. Still there: `409 still_running`, exit 124, unless
+  `--force`, which then ends the process (SIGHUP and SIGTERM, SIGKILL after 5 s). Claude working:
+  `409 busy`, exit 1; waiting on a permission or question: `409 blocked`, exit 3; with `--force`
+  either is ended at once. A terminal is always ended with the signals (that's what Close
+  Terminal does). A session that isn't running only has its pane closed (`closed`, exit 0).
+- **Itself:** `close self` can't wait for itself (it is inside the command), so it answers at once
+  (`closing: after this turn`, exit 0; `--json`: `{"closed": false, "pending": true, "id": …,
+  "forced": false}`) and the app types `/exit` once a hook says the current turn is over (given up
+  after 30 minutes, logged). `close self --force` ends it half a second after the answer.
+- **Answer:** `closed` (`--json`: `{"closed": true, "id": "…", "forced": false}`); `forced` is
+  true when the process was ended with a signal instead of `/exit`.
+- **After:** every close (and every refusal) is in the Activity Log. When the closed session was
+  started by a Claude session other than the caller (a grandchild, or one that closed itself), that
+  session gets a note ("X closed Y, a session this one started."). Sessions started with `new`
+  count against the 8 running at once only while they run, so a close frees a slot at once and a
+  queued `new --queue` starts within 2 seconds.
 
 ### ServerPlan (`claudedeck server …`)
 

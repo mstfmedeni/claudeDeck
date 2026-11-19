@@ -72,6 +72,9 @@ public enum SessionCLI {
         case server
         /// A question for the owner that doesn't block (`claudedeck decide`), and reading the answers.
         case decide
+        /// Ending itself or a session it started (also needs Settings › "Sessions may close
+        /// sessions they started").
+        case close
     }
 
     /// Claude sessions and the user's own terminals.
@@ -114,6 +117,8 @@ public enum SessionCLI {
         case decisions
         /// `GET /v1/cli/decisions/{id}`.
         case decision(String)
+        /// `POST /v1/cli/sessions/{ref}/close`.
+        case close(String)
 
         public var scope: Scope {
             switch self {
@@ -129,6 +134,7 @@ public enum SessionCLI {
             case .server: .server
             case .waitMany: .wait
             case .decide, .decisions, .decision: .decide
+            case .close: .close
             }
         }
     }
@@ -173,6 +179,7 @@ public enum SessionCLI {
             case "send": return expect("POST", .send(ref))
             case "screen": return expect("GET", .capture(ref))
             case "wait": return expect("GET", .wait(ref))
+            case "close": return expect("POST", .close(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -237,6 +244,30 @@ public enum SessionCLI {
             return mayTypeIntoClaude || targetStartedBy == caller ? .type : .note
         }
     }
+
+    // MARK: Closing
+
+    /// `close`: the caller itself, or a session it started (directly or through sessions it
+    /// started: `startedBy` all the way up). Never one the owner started (no `startedBy`), nor a
+    /// terminal another session opened. `startedBy` gives each session's starter.
+    public static func mayClose(caller: UUID, target: UUID, startedBy: [UUID: UUID]) -> Bool {
+        if target == caller { return true }
+        var current = target
+        // Bounded: a broken deck with a loop can't hang the API.
+        for _ in 0..<64 {
+            guard let parent = startedBy[current] else { return false }
+            if parent == caller { return true }
+            current = parent
+        }
+        return false
+    }
+
+    /// How long `close` waits for Claude to leave after `/exit` before it gives up (or, with
+    /// `--force`, ends the process).
+    public static let closeGrace: TimeInterval = 15
+    /// `close self` without `--force`: `/exit` waits in the prompt queue until the current turn
+    /// is over; after this long the close is given up (logged).
+    public static let selfCloseLimit: TimeInterval = 30 * 60
 
     // MARK: Waiting
 
@@ -629,6 +660,21 @@ public struct SessionCLIWaited: Encodable, Sendable, Equatable {
         try c.encode(exitCode, forKey: .exitCode)
         try c.encode(state, forKey: .state)
         try c.encode(detail, forKey: .detail)
+    }
+}
+
+/// `POST /v1/cli/sessions/{ref}/close`. `closed`: it has ended (false while `close self` waits for
+/// the turn to end: `pending`); `forced`: its process was ended with a signal instead of `/exit`.
+public struct SessionCLIClosed: Encodable, Sendable, Equatable {
+    public var closed: Bool
+    public var id: UUID
+    public var forced: Bool
+    public var pending: Bool
+    public init(closed: Bool, id: UUID, forced: Bool, pending: Bool = false) {
+        self.closed = closed
+        self.id = id
+        self.forced = forced
+        self.pending = pending
     }
 }
 
