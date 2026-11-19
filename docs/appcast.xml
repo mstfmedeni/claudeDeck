@@ -6,6 +6,16 @@
     <description>ClaudeDeck updates</description>
     <language>en</language>
     <item>
+      <title>ClaudeDeck 0.6.1</title>
+      <pubDate>Thu, 19 Nov 2026 00:07:43 GMT</pubDate>
+      <sparkle:version>38</sparkle:version>
+      <sparkle:shortVersionString>0.6.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/mstfmedeni/claudeDeck/releases/tag/v0.6.1</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<p><b>Full Changelog</b>: https://github.com/mstfmedeni/claudeDeck/compare/v0.6.0...v0.6.1</p>]]></description>
+      <enclosure url="https://github.com/mstfmedeni/claudeDeck/releases/download/v0.6.1/ClaudeDeck-0.6.1.dmg" sparkle:edSignature="9favhWo+8BtDjVMhEiCj23t60V20JoNbBUK5CeiuSZFSYkYtabYfqgyD15jdLX1TU3bz4PdrZk0GkL+07kR9BA==" length="30178216" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>ClaudeDeck 0.6.0</title>
       <pubDate>Wed, 18 Nov 2026 03:12:19 GMT</pubDate>
       <sparkle:version>37</sparkle:version>
