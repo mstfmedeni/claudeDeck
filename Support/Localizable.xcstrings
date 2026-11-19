@@ -17991,6 +17991,46 @@
         }
       }
     },
+    "Sessions may close sessions they started": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar başlattıkları oturumları kapatabilir"
+          }
+        }
+      }
+    },
+    "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck close: bir oturum kendini ve başlattığı oturumları (ve onların başlattıklarını) sonlandırabilir, sizinkileri asla. Her kapatma etkinlik günlüğüne yazılır; oturum kenar çubuğunda kalır ve sürdürülebilir."
+          }
+        }
+      }
+    },
+    "%@, a session this one started, closed itself.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumun başlattığı %@ kendini kapattı."
+          }
+        }
+      }
+    },
+    "%@ closed %@, a session this one started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, bu oturumun başlattığı %2$@ oturumunu kapattı."
+          }
+        }
+      }
+    },
     "Sessions may use ServerPlan": {
       "localizations": {
         "tr": {
@@ -18727,6 +18767,346 @@
           "stringUnit": {
             "state": "translated",
             "value": "claudedeck decision get için saklandı"
+          }
+        }
+      }
+    },
+    "Reserved by %@ (claudedeck sim acquire); no other session gets it until it's released": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tarafından ayrıldı (claudedeck sim acquire); serbest bırakılana kadar başka oturum alamaz"
+          }
+        }
+      }
+    },
+    "Reserved by %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tarafından ayrıldı"
+          }
+        }
+      }
+    },
+    "Sessions may reserve simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar simülatör ayırabilir"
+          }
+        }
+      }
+    },
+    "Shut down simulators ClaudeDeck created when they're released": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck'in oluşturduğu simülatörleri serbest bırakılınca kapat"
+          }
+        }
+      }
+    },
+    "claudedeck sim acquire gives a session simulators of its own (at most 4): a free one ClaudeDeck created earlier, or a new one it creates and boots. Your own simulators are never used. They're released with claudedeck sim release, or when the session ends or is closed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck sim acquire bir oturuma kendine ait simülatörler verir (en fazla 4): ClaudeDeck'in daha önce oluşturduğu boşta bir simülatör ya da oluşturup başlattığı yeni bir tane. Sizin simülatörleriniz asla kullanılmaz. claudedeck sim release ile ya da oturum bitince veya kapatılınca serbest kalırlar."
+          }
+        }
+      }
+    },
+    "Usage by project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projelere göre kullanım"
+          }
+        }
+      }
+    },
+    "Window": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pencere"
+          }
+        }
+      }
+    },
+    "Reading the transcripts…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma kayıtları okunuyor…"
+          }
+        }
+      }
+    },
+    "Nothing in this 5-hour window": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu 5 saatlik pencerede kullanım yok"
+          }
+        }
+      }
+    },
+    "Nothing this week": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hafta kullanım yok"
+          }
+        }
+      }
+    },
+    "Shares of the estimated cost in the transcripts of the deck's projects (API prices). The plan's usage isn't available.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projelerin konuşma kayıtlarındaki tahmini maliyet payları (API fiyatlarıyla). Planın kullanımı alınamıyor."
+          }
+        }
+      }
+    },
+    "Each project's share of the estimated cost in its transcripts (API prices), applied to the plan's percent. Sessions outside the deck's projects aren't counted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her projenin konuşma kayıtlarındaki tahmini maliyet payı (API fiyatlarıyla), planın yüzdesine uygulanır. Projeler dışındaki oturumlar sayılmaz."
+          }
+        }
+      }
+    },
+    "%@ tokens · %@ output · ≈ %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ token · %2$@ çıktı · ≈ %3$@"
+          }
+        }
+      }
+    },
+    "Input %lld, output %lld, cache writes %lld, cache reads %lld tokens in %lld replies": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%5$lld yanıtta girdi %1$lld, çıktı %2$lld, önbellek yazma %3$lld, önbellek okuma %4$lld token"
+          }
+        }
+      }
+    },
+    "A project's share of the estimated cost in its transcripts, applied to the plan's percent.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir projenin konuşma kayıtlarındaki tahmini maliyet payı, planın yüzdesine uygulanır."
+          }
+        }
+      }
+    },
+    "Watch sessions other sessions started for stalls": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer oturumların başlattığı oturumlarda takılmayı izle"
+          }
+        }
+      }
+    },
+    "Stalled after %lld minutes without progress while working": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışırken %lld dakika ilerleme olmazsa takılmış sayılır"
+          }
+        }
+      }
+    },
+    "The same error 3 times in a row counts as a stall": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Art arda 3 kez aynı hata da takılma sayılır"
+          }
+        }
+      }
+    },
+    "When a session stalls": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturum takılınca"
+          }
+        }
+      }
+    },
+    "Nudge message": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dürtme mesajı"
+          }
+        }
+      }
+    },
+    "Leave a note beside the session that started it": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onu başlatan oturumun yanına not bırak"
+          }
+        }
+      }
+    },
+    "Only Claude sessions started with claudedeck new. Progress is a hook event or a new transcript line, so a long build that prints nothing to Claude can look stalled: pick enough minutes. Nudges and restarts: at most 3 per session an hour, then notifications only. Everything is in the activity log.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca claudedeck new ile başlatılan Claude oturumları. İlerleme bir hook olayı ya da konuşma kaydına eklenen yeni bir satırdır; Claude'a hiçbir şey yazmayan uzun bir derleme takılmış görünebilir, yeterli dakika seçin. Dürtme ve yeniden başlatma: oturum başına saatte en fazla 3, sonrasında yalnızca bildirim. Her şey etkinlik günlüğündedir."
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devam et"
+          }
+        }
+      }
+    },
+    "Looks stuck: %@. %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takılmış görünüyor: %1$@. %2$@"
+          }
+        }
+      }
+    },
+    "no progress for %lld minutes while working": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "çalışırken %lld dakikadır ilerleme yok"
+          }
+        }
+      }
+    },
+    "the same error %lld times in a row": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "art arda %lld kez aynı hata"
+          }
+        }
+      }
+    },
+    "ClaudeDeck stall watch": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck takılma izleyicisi"
+          }
+        }
+      }
+    },
+    "%@ (which this session started) looks stuck: %@. %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ (bu oturumun başlattığı) takılmış görünüyor: %2$@. %3$@"
+          }
+        }
+      }
+    },
+    "Have a look.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir göz atın."
+          }
+        }
+      }
+    },
+    "ClaudeDeck nudged it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck onu dürttü."
+          }
+        }
+      }
+    },
+    "ClaudeDeck restarts it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck onu yeniden başlatıyor."
+          }
+        }
+      }
+    },
+    "Notify only": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca bildir"
+          }
+        }
+      }
+    },
+    "Nudge it (type the message)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dürt (mesajı yaz)"
+          }
+        }
+      }
+    },
+    "Restart it (resume), then nudge": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden başlat (devam ettir), sonra dürt"
           }
         }
       }

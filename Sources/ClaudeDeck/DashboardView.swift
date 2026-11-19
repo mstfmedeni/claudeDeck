@@ -25,6 +25,7 @@ struct DashboardView: View {
                     WaitingCard()
                     UsageBurnCard()
                 }
+                ProjectUsageCard()
                 columns {
                     EditsCard()
                     ToolsCard()

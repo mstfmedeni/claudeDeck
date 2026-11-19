@@ -158,6 +158,7 @@ claudedeck send ID TEXT [--enter] [--json]
 claudedeck capture ID [--lines N] [--trim] [--json]
 claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
+claudedeck close ID|self [--force] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--json]
@@ -165,6 +166,8 @@ claudedeck decision get ID [--json]
 claudedeck decisions [--pending] [--json]
 claudedeck account list|current [--json]
 claudedeck account switch [--to NAME] [--json]
+claudedeck status [ID] [--json]
+claudedeck usage [--project ID|NAME|PATH] [--json]
 claudedeck skill setup [--user|--project] [--force]
 ```
 
@@ -207,6 +210,8 @@ claudedeck skill setup [--user|--project] [--force]
   given when several did). Timeout: 124. One line per id (`--json`: `{mode, result, first,
   sessions: [{ref, id, queue_id, result, exit_code, state, detail}]}`). Every id is checked
   first: an unknown one is exit 5, `self` exit 2.
+- **close:** ends a session the way End Session does, and closes its pane; see
+  [Closing sessions](#closing-sessions) below.
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -214,6 +219,9 @@ claudedeck skill setup [--user|--project] [--force]
   [Decisions](#decisions-for-the-owner) below.
 - **account list|current|switch:** the Claude accounts; see
   [Claude accounts](#claude-accounts-and-usage-limits) below.
+- **status:** one session's state and detail, its project, who started it (`startedBy`), the
+  stall watch's view of it (below) and the simulators it holds. Without `ID`: the caller.
+- **usage:** each project's part of the plan's usage; see [Usage per project](#usage-per-project).
 - **skill setup:** writes a Claude Code skill (`SKILL.md`) explaining the command to
   `~/.claude/skills/claudedeck/` (`--user`, the default; `$CLAUDE_CONFIG_DIR` if set) or the
   repository's `.claude/skills/claudedeck/` (`--project`). The last line holds a hash of what
@@ -230,19 +238,20 @@ claudedeck skill setup [--user|--project] [--force]
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
 | 5 | Unknown id, project, server, container, deployment, skill, queue id, decision or account |
 | 6 | `wait`: the Claude session stopped on its plan's usage limit and waits for the reset (a session being moved to another account isn't this: it counts as running) |
-| 124 | `wait` timed out; still running |
+| 124 | `wait` timed out; still running; `close`: Claude was still there 15 s after `/exit` |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | account |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | |
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
-`start` (project add, new) and `server` also need their settings (below).
+`start` (project add, new), `server`, `simulators` (sim) and `close` also need their settings (below).
+`status` is under `list`.
 
 `send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
 session gets the text **as a note** unless **May type into Claude: sessions may send text to other
@@ -283,6 +292,12 @@ Off, they answer `404 not_found`.
 | GET | `/v1/cli/decisions/{id}` | | decide |
 | GET | `/v1/cli/accounts` · `/v1/cli/accounts/current` | | list |
 | POST | `/v1/cli/accounts/switch` | `to` (empty or `auto`: the first account with room) | account |
+| GET | `/v1/cli/sessions/{ref}/status` | | list |
+| GET | `/v1/cli/usage` | `project` | usage |
+| GET | `/v1/cli/sim` | | simulators |
+| POST | `/v1/cli/sim/acquire` | `device, duo=1` | simulators |
+| POST | `/v1/cli/sim/release` | `udid` (empty: all of the caller's) | simulators |
+| POST | `/v1/cli/sessions/{ref}/close` | `force=1`; `{ref}` may be a started queue id | close |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -293,7 +308,9 @@ Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` /
 also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad_skill` /
 `bad_mode`, `403 bypass_off`, `404 unknown_skill` / `unknown_queue_id`, `409 queued` /
 `not_queued` / `queue_cancelled` / `queue_failed`, `429 too_many_queued`; for decisions `400 bad_recommend` / `too_many_options`,
-`404 unknown_decision`, `429 too_many_pending`; for accounts `400 not_claude`, `404 unknown_account`,
+`404 unknown_decision`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
+`429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
+`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`. The routes for agents above (`/v1/projects`,
 `/v1/sessions/{id}/prompt`, …) are unchanged.
 
@@ -330,6 +347,10 @@ owner's MCP servers, onboarding answers and each folder's trust are copied into 
   when remote mode is on). **Notify me** instead offers the move in a notification with a
   **Switch Account** button. Pinned sessions (their menu › Account › Keep on This Account) and
   sessions in a pinned project never move.
+- **With `close` and the stall watch:** a session at its limit (`limit_reached`) or being moved
+  (`switching_account`) never counts as stalled (no nudge, no restart; the watch starts over once
+  it works again). `close` on a session being moved is refused (`409 switching_account`; try
+  again); `close self` waits until the move is done.
 - **What a session should do:** nothing special. Keep durable state in files (`docs/AGENDA.md`
   for what's done and next, `HANDOFF.md` for anything mid-flight) so a resumed session can pick
   up from them.
@@ -537,6 +558,10 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   Every action is in the agent Activity Log, and the owner gets a notification "started Y in Z"
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).
+
+`404 unknown_decision`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
+`429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
+`409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed`. The routes for agents above (`/v1/projects`,
 
 ### ServerPlan (`claudedeck server …`)
 

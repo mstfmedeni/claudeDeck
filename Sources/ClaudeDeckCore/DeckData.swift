@@ -246,6 +246,16 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var sessionsMayBypassPermissions = false
     /// `claudedeck server …`: sessions use ServerPlan through the app (never its token). Off by default.
     public var sessionsMayUseServerPlan = false
+    /// `claudedeck sim acquire`: sessions reserve simulators of their own (ClaudeDeck creates and
+    /// boots them; never the user's own devices). Off by default.
+    public var sessionsMayUseSimulators = false
+    /// Released (or their session ended): shut down the simulators ClaudeDeck created.
+    public var simulatorsShutDownOnRelease = true
+    /// Stall detection for sessions other sessions started (StallWatch). Off by default.
+    public var stallWatch = StallSettings()
+    /// `claudedeck close`: a session may end itself and the sessions it started (never the
+    /// owner's). Off by default.
+    public var sessionsMayCloseSessions = false
     /// Agents that signed themselves up through the local API (AgentRegistry): pending ones wait
     /// for the user; approved ones are in `agents` too.
     public var agentRegistrations: [AgentRegistration] = []
@@ -325,6 +335,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayStartSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayStartSessions) ?? d.sessionsMayStartSessions
         sessionsMayBypassPermissions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayBypassPermissions) ?? d.sessionsMayBypassPermissions
         sessionsMayUseServerPlan = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseServerPlan) ?? d.sessionsMayUseServerPlan
+        sessionsMayUseSimulators = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseSimulators) ?? d.sessionsMayUseSimulators
+        simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
+        stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
+        sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
         terminalProgramStatus = try c.decodeIfPresent(Bool.self, forKey: .terminalProgramStatus) ?? d.terminalProgramStatus
         simulators = try c.decodeIfPresent(Bool.self, forKey: .simulators) ?? d.simulators

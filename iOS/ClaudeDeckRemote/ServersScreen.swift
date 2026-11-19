@@ -288,6 +288,11 @@ struct SimulatorsScreen: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(simulator.name).font(.body.weight(.medium))
                     Text(simulator.runtime).font(.caption).foregroundStyle(.secondary)
+                    if let holder = simulator.heldBy {
+                        Label(store.snapshot?.session(holder)?.name ?? String(localized: "Closed session"), systemImage: "lock.fill")
+                            .font(.caption2).foregroundStyle(.tint).lineLimit(1)
+                            .accessibilityLabel(Text("Reserved by \(store.snapshot?.session(holder)?.name ?? "")"))
+                    }
                 }
                 Spacer(minLength: 6)
                 VStack(alignment: .trailing, spacing: 2) {

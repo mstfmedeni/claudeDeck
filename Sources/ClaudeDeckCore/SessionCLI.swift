@@ -78,12 +78,19 @@ public enum SessionCLI {
         case decide
         /// Moving itself to another Claude account (`claudedeck account switch`).
         case account
+        /// Reserving simulators of its own (`claudedeck sim`; also needs "Sessions may reserve simulators").
+        case simulators
+        /// Token and cost usage per project (`claudedeck usage`; read-only).
+        case usage
+        /// Ending itself or a session it started (also needs Settings › "Sessions may close
+        /// sessions they started").
+        case close
     }
 
     /// Claude sessions and the user's own terminals.
     public static let fullScopes: Set<Scope> = Set(Scope.allCases)
     /// A terminal a session opened runs what that session wrote: it may look and tell, not act.
-    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify]
+    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify, .usage]
 
     public static func scopes(openedBy: UUID?) -> Set<Scope> { openedBy == nil ? fullScopes : openedScopes }
 
@@ -126,6 +133,18 @@ public enum SessionCLI {
         case currentAccount
         /// `POST /v1/cli/accounts/switch`: the caller moves itself to another account.
         case switchAccount
+        /// `GET /v1/cli/sim`: the simulators sessions hold.
+        case simList
+        /// `POST /v1/cli/sim/acquire`.
+        case simAcquire
+        /// `POST /v1/cli/sim/release`.
+        case simRelease
+        /// `GET /v1/cli/usage`.
+        case usage
+        /// `GET /v1/cli/sessions/{ref}/status`: state, who started it, stall watch, simulators.
+        case status(String)
+        /// `POST /v1/cli/sessions/{ref}/close`.
+        case close(String)
 
         public var scope: Scope {
             switch self {
@@ -143,6 +162,10 @@ public enum SessionCLI {
             case .decide, .decisions, .decision: .decide
             case .accounts, .currentAccount: .list
             case .switchAccount: .account
+            case .simList, .simAcquire, .simRelease: .simulators
+            case .usage: .usage
+            case .status: .list
+            case .close: .close
             }
         }
     }
@@ -184,12 +207,18 @@ public enum SessionCLI {
         case 1 where rest[0] == "accounts": return expect("GET", .accounts)
         case 2 where rest[0] == "accounts" && rest[1] == "current": return expect("GET", .currentAccount)
         case 2 where rest[0] == "accounts" && rest[1] == "switch": return expect("POST", .switchAccount)
+        case 1 where rest[0] == "sim": return expect("GET", .simList)
+        case 2 where rest[0] == "sim" && rest[1] == "acquire": return expect("POST", .simAcquire)
+        case 2 where rest[0] == "sim" && rest[1] == "release": return expect("POST", .simRelease)
+        case 1 where rest[0] == "usage": return expect("GET", .usage)
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {
             case "send": return expect("POST", .send(ref))
             case "screen": return expect("GET", .capture(ref))
             case "wait": return expect("GET", .wait(ref))
+            case "status": return expect("GET", .status(ref))
+            case "close": return expect("POST", .close(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -254,6 +283,30 @@ public enum SessionCLI {
             return mayTypeIntoClaude || targetStartedBy == caller ? .type : .note
         }
     }
+
+    // MARK: Closing
+
+    /// `close`: the caller itself, or a session it started (directly or through sessions it
+    /// started: `startedBy` all the way up). Never one the owner started (no `startedBy`), nor a
+    /// terminal another session opened. `startedBy` gives each session's starter.
+    public static func mayClose(caller: UUID, target: UUID, startedBy: [UUID: UUID]) -> Bool {
+        if target == caller { return true }
+        var current = target
+        // Bounded: a broken deck with a loop can't hang the API.
+        for _ in 0..<64 {
+            guard let parent = startedBy[current] else { return false }
+            if parent == caller { return true }
+            current = parent
+        }
+        return false
+    }
+
+    /// How long `close` waits for Claude to leave after `/exit` before it gives up (or, with
+    /// `--force`, ends the process).
+    public static let closeGrace: TimeInterval = 15
+    /// `close self` without `--force`: `/exit` waits in the prompt queue until the current turn
+    /// is over; after this long the close is given up (logged).
+    public static let selfCloseLimit: TimeInterval = 30 * 60
 
     // MARK: Waiting
 
@@ -663,6 +716,32 @@ public struct SessionCLIWaited: Encodable, Sendable, Equatable {
         try c.encode(state, forKey: .state)
         try c.encode(detail, forKey: .detail)
         if resetsAt != nil { try c.encode(resetsAt, forKey: .resetsAt) }
+    }
+}
+
+/// `POST /v1/cli/sessions/{ref}/close`. `closed`: it has ended (false while `close self` waits for
+/// the turn to end: `pending`); `forced`: its process was ended with a signal instead of `/exit`.
+public struct SessionCLIClosed: Encodable, Sendable, Equatable {
+    public var closed: Bool
+    public var id: UUID
+    public var forced: Bool
+    public var pending: Bool
+    public init(closed: Bool, id: UUID, forced: Bool, pending: Bool = false) {
+        self.closed = closed
+        self.id = id
+        self.forced = forced
+        self.pending = pending
+    }
+
+    private enum CodingKeys: String, CodingKey { case closed, id, forced, pending }
+
+    /// `pending` only for `close self` (`{"closed":true,"id":…,"forced":false}` otherwise).
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(closed, forKey: .closed)
+        try c.encode(id, forKey: .id)
+        try c.encode(forced, forKey: .forced)
+        if pending { try c.encode(pending, forKey: .pending) }
     }
 }
 

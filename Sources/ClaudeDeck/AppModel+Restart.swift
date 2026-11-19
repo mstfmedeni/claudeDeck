@@ -137,22 +137,27 @@ extension AppModel {
         }
     }
 
+    /// Asks an idle Claude to leave (restart, `claudedeck close`): Ctrl+C first clears a draft in
+    /// the prompt, otherwise "/exit" would be appended to it and sent to Claude as a message.
+    /// Returns once the process is gone or `grace` has passed; true if it's gone.
+    @discardableResult
+    func typeExit(_ id: UUID, grace: Duration) async -> Bool {
+        terminals.type("\u{3}", into: id)
+        try? await Task.sleep(for: .milliseconds(200))
+        if terminals.isRunning(id) { terminals.type("/exit\r", into: id) }
+        let deadline = ContinuousClock.now + grace
+        while terminals.isRunning(id), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return !terminals.isRunning(id)
+    }
+
     /// Stops the process without it counting as "ended": an idle Claude is asked to `/exit`
     /// (up to 3 s), anything else — or a timeout — gets SIGTERM (SIGKILL after 5 s, see
     /// `TerminalRegistry.reap`). Returns once the old process is gone, so its late hook events
     /// can't be mistaken for the new process's.
     func stopForRestart(_ id: UUID, graceful: Bool) async {
-        if graceful {
-            // Ctrl+C first clears a draft in the prompt; otherwise "/exit" would be appended to it
-            // and sent to Claude as a message.
-            terminals.type("\u{3}", into: id)
-            try? await Task.sleep(for: .milliseconds(200))
-            if terminals.isRunning(id) { terminals.type("/exit\r", into: id) }
-            let deadline = ContinuousClock.now + .seconds(3)
-            while terminals.isRunning(id), ContinuousClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-        }
+        if graceful { await typeExit(id, grace: .seconds(3)) }
         guard terminals.isRunning(id) else { return }
         let pid = terminals.pid(for: id)
         terminals.terminate(id)
