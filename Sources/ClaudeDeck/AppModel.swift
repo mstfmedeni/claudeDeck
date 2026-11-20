@@ -315,6 +315,12 @@ final class AppModel {
     /// Called on quit: remember which sessions were open so they come back next launch.
     func prepareForQuit() {
         isQuitting = true
+        // A terminal with a command whose "start automatically" is off doesn't stay in the session
+        // helper: it would come back running at launch, which is what that switch says not to do.
+        for session in deck.sessions where session.kind == .shell && session.startupCommand != nil && !session.autoStart
+            && terminals.isInHelper(session.id) {
+            terminals.terminate(session.id)
+        }
         for session in deck.sessions {
             let open = terminals.isRunning(session.id)
             if launchDeferred, !open { continue } // not started yet: keep what the last quit saved
