@@ -366,6 +366,7 @@ extension SessionCLI {
         if [ "$http" = 000 ]; then
           p_misses=$((p_misses + 1))
           [ "$p_misses" -gt 60 ] && die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1
+          if [ "$p_limit" -gt 0 ] && [ $((p_limit - ($(date +%s) - p_start))) -le 0 ]; then code=75; return 0; fi
           sleep 10
           continue
         fi
