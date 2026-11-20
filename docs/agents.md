@@ -386,10 +386,10 @@ claudedeck slot release build [SLOT_ID]
   and after the longest hold (Settings, 60 minutes). They live in memory: a restart of the app
   frees them. Terminals a session opened (`claudedeck open`) may take slots too (scope `slots`).
 - `claudedeck status ID` lists the slots a session holds; `load --json` has `level`,
-  `throttled`, `throttle`, `load1`, `load5`, `cores`, `loadPerCore`, `memoryPressure`,
-  `memoryUsedPercent`, `swapUsedMB`, `simulators`, `maxSimulators`, `compilers`, `maxCompilers`,
-  `processes`, `sessions`, `buildSlots`, `slotsAvailable`, `slotsWaiting`, `slots`
-  (`id`, `session`, `sessionName`, `label`, `since`), `sampledAt`, `contributors`.
+  `throttled`, `throttle`, `load1`, `load5`, `cores`, `load_per_core`, `memory_pressure`,
+  `memory_used_percent`, `swap_used_mb`, `simulators`, `max_simulators`, `compilers`, `max_compilers`,
+  `processes`, `sessions`, `build_slots`, `slots_available`, `slots_waiting`, `slots`
+  (`id`, `session`, `session_name`, `label`, `since`), `sampled_at`, `contributors`.
 - On screen: a row in the sidebar footer while busy or overloaded (or always, by a setting), a
   "Mac Load" card on the Dashboard with the last 30 minutes, and on the phone's dashboard
   (snapshot field `load`, hosts with the `load` feature; older phones ignore it).
