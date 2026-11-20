@@ -92,6 +92,19 @@ import Testing
         #expect(RemoteHostConnection.publishedOrder(custom: typed, found: found) == typed + ["192.168.38.120"])
     }
 
+    /// The phone drops the Mac's old LAN address once the Mac lists a current one, but never its
+    /// only way in from away because the Mac's Tailscale wasn't up when it last connected.
+    @Test func learnedAddressesDropOnlyWhatTheMacReplaced() {
+        let bonjour = RemoteBonjour.addressPrefix + "Mac"
+        let stored = [bonjour, "192.168.38.50", "100.81.1.1", "mac.tail1234.ts.net", "home.example.com"]
+        // The Mac lists its new LAN address and its tailnet ones: the old LAN one goes.
+        #expect(RemoteRoutePlan.learnedAddresses(stored: stored, published: ["192.168.38.120", "100.81.1.1", "mac.tail1234.ts.net"], ordered: true)
+                == ["192.168.38.120", "100.81.1.1", "mac.tail1234.ts.net", bonjour, "home.example.com"])
+        // Tailscale not up on the Mac (LAN only listed): the tailnet ones stay.
+        #expect(RemoteRoutePlan.learnedAddresses(stored: stored, published: ["192.168.38.120"], ordered: false)
+                == [bonjour, "192.168.38.120", "100.81.1.1", "mac.tail1234.ts.net", "home.example.com"])
+    }
+
     @Test func currentInterfacesHaveTheirNetmasks() {
         let lo = NetworkInterface.current().first { $0.address == "127.0.0.1" }
         #expect(lo?.prefixLength == 8)
@@ -216,14 +229,15 @@ final class ScriptedDialer: RemoteDialer, @unchecked Sendable {
         queue.sync { client.start() }
         defer { queue.sync { client.close() } }
         try await waitUntil { isConnected(client, queue) }
-        #expect(Date().timeIntervalSince(started) < 2)
+        // Well before the silent address's 10 s handshake timeout (generous for a loaded machine).
+        #expect(Date().timeIntervalSince(started) < 5)
         #expect(queue.sync { client.connectedRoute } == .inApp)
         let entries = queue.sync { log.value }
         #expect(entries.first { $0.outcome == .connected }?.address == "100.81.1.1")
         // The others: "not needed", logged when called off (not after their timeouts).
         let cancelled = entries.filter { $0.outcome == .cancelled }
         #expect(Set(cancelled.map(\.address)) == ["192.168.8.50", "100.81.1.1"])
-        #expect(cancelled.allSatisfy { $0.duration < 2 })
+        #expect(cancelled.allSatisfy { $0.duration < 5 })
     }
 
     /// The way that worked last starts at once; the rest wait their turn in the stagger.
@@ -339,6 +353,27 @@ final class ScriptedDialer: RemoteDialer, @unchecked Sendable {
         try await Task.sleep(for: .milliseconds(200))
         #expect(queue.sync { server.peerNames } == ["Phone"])
         #expect(queue.sync { log.value.filter { $0.outcome == .connected } }.count == 1)
+    }
+
+    /// A wrong key on one route of an address: its other route is called off (it would only
+    /// count as another wrong password on the Mac) and the race ends refused at once.
+    @Test func aRefusalCallsOffTheSameAddressesOtherRoute() async throws {
+        let queue = DispatchQueue(label: "race-refused")
+        let (server, port) = try await host(queue, key: RemotePairing.makeKey())
+        defer { queue.sync { server.stop() } }
+        let log = Box<[Logged]>([])
+        let client = client(["100.81.1.1"], port: port, key: RemotePairing.makeKey(), queue: queue, log: log)
+        client.systemDialer = ScriptedDialer(["100.81.1.1": .connect(port: port, after: 0)])
+        client.inAppDialer = ScriptedDialer([:])
+        // The node's way first, still dialling when the system's gets refused.
+        client.preferred = RemoteCandidate(address: "100.81.1.1", route: .inApp)
+        let started = Date()
+        queue.sync { client.start() }
+        defer { queue.sync { client.close() } }
+        try await waitUntil { queue.sync { if case .refused = client.state { true } else { false } } }
+        #expect(Date().timeIntervalSince(started) < 5)
+        let entries = queue.sync { log.value }
+        #expect(entries.contains { $0.route == .inApp && $0.outcome == .cancelled })
     }
 
     /// The race gives up after `overallTimeout`, whatever is still trying.

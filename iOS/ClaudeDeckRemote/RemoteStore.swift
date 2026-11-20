@@ -280,24 +280,14 @@ final class RemoteStore {
         if let id = snapshot.hostID { stored.id = id }
         stored.hostName = snapshot.hostName
         if let remote = snapshot.addresses, !remote.isEmpty {
-            let bonjour = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) != nil }
-            // Addresses the Mac no longer lists: its own kinds went stale (dropped), others stay.
-            let typed = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) == nil && !remote.contains($0) && !Self.isMacListed($0) }
-            // Ordered on the Mac: its list as is, the rest after it.
-            stored.addresses = snapshot.addressesOrdered == true ? remote + bonjour + typed : bonjour + remote + typed
+            stored.addresses = RemoteRoutePlan.learnedAddresses(stored: stored.addresses, published: remote,
+                                                                 ordered: snapshot.addressesOrdered == true)
         }
         if macOrdered != (snapshot.addressesOrdered == true) { macOrdered = snapshot.addressesOrdered == true }
         guard stored != before else { return }
         stored.updatedAt = Date()
         PairingKeychain.save(stored)
         pairing = stored
-    }
-
-    /// The kinds of address the Mac lists itself (its local-network IPs, its Tailscale IPs and
-    /// name): one it no longer lists is stale (a new DHCP lease), not worth trying. Names typed
-    /// here (a public name, a `.local` name) stay.
-    static func isMacListed(_ address: String) -> Bool {
-        Tailscale.isPrivateLAN(address) || InAppTailscale.isTailnetAddress(address)
     }
 
     // MARK: The way in

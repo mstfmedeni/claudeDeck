@@ -1107,8 +1107,18 @@ public final class RemoteHostConnection: @unchecked Sendable {
             let why = attempt.failure ?? reason ?? String(localized: "Couldn't reach the Mac")
             self.lastError = why
             self.report(attempt, attempt.refused ? .refused(why) : .failed(why))
-            // That address answered and said no: its other route won't do better.
-            if attempt.refused { self.pending.removeAll { $0.address == attempt.candidate.address } }
+            // That address answered and said no: its other route won't do better (and would
+            // count as one more wrong password on the Mac). Called off, waiting or in flight.
+            if attempt.refused {
+                self.pending.removeAll { $0.address == attempt.candidate.address }
+                let siblings = self.attempts.filter { $0.candidate.address == attempt.candidate.address && !$0.authSent }
+                self.attempts.removeAll { other in siblings.contains { $0 === other } }
+                for other in siblings {
+                    other.timer?.cancel()
+                    self.report(other, .cancelled)
+                    other.channel.close()
+                }
+            }
             if attempt === self.authenticating {
                 self.authenticating = nil
                 self.authenticateNext()

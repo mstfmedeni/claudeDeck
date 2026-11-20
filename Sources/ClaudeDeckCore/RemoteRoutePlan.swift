@@ -129,6 +129,24 @@ public enum RemoteRoutePlan {
         return Plan(candidates: kept, skipped: skipped)
     }
 
+    /// The addresses to keep after the Mac published `published`: its list, the Bonjour names
+    /// (first, unless the Mac set its own order) and the stored ones it doesn't list. Of those, a
+    /// local-network IP or a tailnet address is stale (an old DHCP lease) once the Mac lists one
+    /// of the same kind; with none of that kind listed (Tailscale not up yet on the Mac) it stays,
+    /// or the phone would lose its only way in from away.
+    public static func learnedAddresses(stored: [String], published: [String], ordered: Bool) -> [String] {
+        let bonjour = stored.filter { RemoteBonjour.serviceName(of: $0) != nil }
+        let listsLAN = published.contains { Tailscale.isPrivateLAN($0) }
+        let listsTailnet = published.contains { InAppTailscale.isTailnetAddress($0) }
+        let others = stored.filter { address in
+            guard RemoteBonjour.serviceName(of: address) == nil, !published.contains(address) else { return false }
+            if Tailscale.isPrivateLAN(address) { return !listsLAN }
+            if InAppTailscale.isTailnetAddress(address) { return !listsTailnet }
+            return true
+        }
+        return ordered ? published + bonjour + others : bonjour + published + others
+    }
+
     static func skipReason(_ candidate: RemoteCandidate, interfaces: [NetworkInterface]?, advertised: Set<String>?) -> SkipReason? {
         let address = candidate.address
         if RemoteBonjour.serviceName(of: address) != nil {
