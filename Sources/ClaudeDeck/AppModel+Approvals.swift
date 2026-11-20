@@ -181,13 +181,15 @@ extension AppModel {
 
     /// `GET /v1/cli/approvals/{id}/wait?timeout=S` (at most 25 s a round): the gated call's own
     /// answer once it's done (its status, body and exit code), else 202 with exit 75.
-    func cliApprovalWait(_ id: String, form: [String: String], json: Bool) async -> AgentHTTPResponse {
+    func cliApprovalWait(_ caller: UUID, id: String, form: [String: String], json: Bool) async -> AgentHTTPResponse {
         guard OwnerApproval.isValidID(id), approvals.book.status(id) != nil else {
             return SessionCLI.failure(404, "unknown_approval", exit: .unknown)
         }
+        // Only the asking session's own wait stands in for the queued message.
+        let asker = (approvals.book.approval(id) ?? approvals.book.resolved(id)?.approval)?.sessionID
         func done() -> AgentHTTPResponse? {
             if let result = approvals.book.results[id] {
-                approvalCalls.delivered.insert(id)
+                if asker == caller { approvalCalls.delivered.insert(id) }
                 return result.response
             }
             // Ended with nothing that will run (a phone's own approval from before a relaunch).

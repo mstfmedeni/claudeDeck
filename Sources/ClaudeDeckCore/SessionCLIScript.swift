@@ -349,8 +349,8 @@ extension SessionCLI {
     }
 
     # approval_poll ID TIMEOUT: long-polls until the call behind the approval answered (its own
-    # status, body and exit code), or TIMEOUT seconds passed (0: no limit; then exit 75). Rides
-    # out ClaudeDeck restarting (approvals are kept) for up to 10 minutes.
+    # status, body and exit code), or TIMEOUT seconds passed (0: no limit; then exit 75). Retries
+    # ClaudeDeck not answering for up to 10 minutes; a 401 after a restart ends it with exit 75.
     approval_poll() {
       p_id=$1; p_limit=$2; p_start=$(date +%s); p_misses=0
       while :; do

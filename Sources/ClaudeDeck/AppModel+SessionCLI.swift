@@ -85,7 +85,7 @@ extension AppModel {
         case .approval(let id):
             return cliApprovalStatus(id, json: json)
         case .waitApproval(let id):
-            return await cliApprovalWait(id, form: form, json: json)
+            return await cliApprovalWait(caller, id: id, form: form, json: json)
         case .cancelApproval(let id):
             return cliApprovalCancel(caller, id: id, json: json)
         case .presets:

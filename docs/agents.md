@@ -1108,7 +1108,9 @@ cancelled ones). Purchases are approved on the Mac only; nothing is ever approve
   script then prints `claudedeck: waiting for the owner to approve a_… in ClaudeDeck` on stderr and
   long-polls `GET /v1/cli/approvals/a_…/wait?timeout=25` (25 s rounds, like `claudedeck wait`)
   until the command has answered; it ends with that command's own output and exit code (0, or 4
-  `owner_refused` / `approval_expired`). It rides out ClaudeDeck restarting for up to 10 minutes.
+  `owner_refused` / `approval_expired`). ClaudeDeck not answering is retried for up to 10
+  minutes; if a restart made the terminal's token invalid (401), the wait ends with exit 75 and a
+  notice: the approval stays pending and its result is queued for the session.
 - **`--no-wait`** (any `server` command): prints `pending approval a_…` (with `--json`: the
   status object) and exits **75** at once.
 - **The command runs in ClaudeDeck, not in the script.** When the owner approves, ClaudeDeck sends
