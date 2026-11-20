@@ -177,6 +177,15 @@ final class RemoteController {
             self?.publishSnapshot()
             if let added { self?.pushDecision(added) }
         }
+        // An approval asked or answered: the phones' list.
+        // A new one is also pushed (phones that aren't looking): it has to be answered in 2 minutes.
+        model.approvals.observe { [weak self] change in
+            self?.publishSnapshot()
+            if case .added(let approval) = change {
+                self?.pushNotice(title: approval.isPurchase ? String(localized: "Purchase waiting for your approval") : String(localized: "Approval needed"),
+                                 body: approval.title, collapseID: "approval-\(approval.id)", threadID: "approvals")
+            }
+        }
         let previousAgenda = AgendaController.shared.onChange
         AgendaController.shared.onChange = { [weak self] in
             previousAgenda?()
@@ -340,6 +349,9 @@ final class RemoteController {
             }
             server.onDismissDecision = { [weak self] id in
                 MainActor.assumeIsolated { self?.model?.dismissDecision(id, from: "phone") }
+            }
+            server.onAnswerApproval = { [weak self] id, approve in
+                MainActor.assumeIsolated { _ = self?.model?.answerApproval(id, approve: approve, from: "phone") }
             }
             server.onChangeDecisionAnswer = { [weak self] id, answer in
                 MainActor.assumeIsolated { self?.model?.changeDecisionAnswer(id, answer: answer, from: "phone") }
@@ -748,6 +760,7 @@ final class RemoteController {
         snapshot.homePath = FileManager.default.homeDirectoryForCurrentUser.path
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
         snapshot.decisions = model.decisions.forRemote()
+        snapshot.approvals = model.approvals.pending
         snapshot.agendas = AgendaController.shared.remoteAgendas
         snapshot.agentsRunning = model.cliRunningStarted
         snapshot.agentsCap = model.deck.settings.maxStartedSessions

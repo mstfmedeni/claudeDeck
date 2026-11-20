@@ -30,6 +30,7 @@ struct ClaudeDeckApp: App {
                 Button("Dashboard") { delegate.model.showDashboard() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Your Decisions") { delegate.model.showDecisions() }
+                Button("Approvals") { delegate.model.showApprovals() }
             }
             CommandGroup(after: .newItem) {
                 Divider()

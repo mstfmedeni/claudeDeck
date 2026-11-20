@@ -21033,6 +21033,196 @@
           }
         }
       }
+    },
+    "Approvals": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylar"
+          }
+        }
+      }
+    },
+    "Actions your sessions wait for you to approve": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlarının onayını beklediği işlemler"
+          }
+        }
+      }
+    },
+    "A session waits for each of these. Without an answer in 2 minutes it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her biri için bir oturum bekliyor. 2 dakika içinde cevap verilmezse reddedilir."
+          }
+        }
+      }
+    },
+    "Nothing to approve": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylanacak bir şey yok"
+          }
+        }
+      }
+    },
+    "Nothing to Approve": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylanacak Bir Şey Yok"
+          }
+        }
+      }
+    },
+    "ServerPlan actions and domain purchases a session asks for with claudedeck server show up here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturumun claudedeck server ile istediği ServerPlan işlemleri ve alan adı satın almaları burada görünür."
+          }
+        }
+      }
+    },
+    "ServerPlan actions and domain purchases a session on the Mac asks for show up here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'teki bir oturumun istediği ServerPlan işlemleri ve alan adı satın almaları burada görünür."
+          }
+        }
+      }
+    },
+    "Refused in %lld:%@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld:%2$@ sonra reddedilir"
+          }
+        }
+      }
+    },
+    "Recent": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son Cevaplananlar"
+          }
+        }
+      }
+    },
+    "Approved on the phone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefonda onaylandı"
+          }
+        }
+      }
+    },
+    "Refused on the phone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefonda reddedildi"
+          }
+        }
+      }
+    },
+    "No answer, refused": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cevap yok, reddedildi"
+          }
+        }
+      }
+    },
+    "The session stopped waiting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum beklemeyi bıraktı"
+          }
+        }
+      }
+    },
+    "Waiting: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekleyen: %@"
+          }
+        }
+      }
+    },
+    "Purchase waiting for your approval": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satın alma onayını bekliyor"
+          }
+        }
+      }
+    },
+    "Approval needed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onay gerekiyor"
+          }
+        }
+      }
+    },
+    "Buy it from the card in ClaudeDeck. Without an answer in 2 minutes it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Satın almak için ClaudeDeck'teki kartı kullan. 2 dakika içinde cevap verilmezse reddedilir."
+          }
+        }
+      }
+    },
+    "Without an answer in 2 minutes it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2 dakika içinde cevap verilmezse reddedilir."
+          }
+        }
+      }
+    },
+    "Approve on the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te onayla"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

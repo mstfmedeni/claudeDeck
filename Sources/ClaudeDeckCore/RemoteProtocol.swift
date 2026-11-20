@@ -230,6 +230,10 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     /// Remote → host: the owner changes an answer already given (hosts with
     /// `Feature.changeDecisionAnswer`). The asking session gets the new answer as a message.
     case changeDecisionAnswer(id: String, answer: String)
+    /// Remote → host: the owner's answer to a pending approval (`approvals` in the snapshot;
+    /// hosts with `Feature.approvals`). The host only takes what the approval allows from a
+    /// phone (`phoneMayApprove` / `phoneMayRefuse`); the next snapshot drops it.
+    case answerApproval(id: String, approve: Bool)
     /// Phone → host: send push notifications to this device (APNs.swift).
     case registerPush(token: Data, topic: String, environment: String, deviceName: String)
     case ping
@@ -360,6 +364,9 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     public var agentsRunning: Int?
     public var agentsCap: Int?
     public var agentsQueued: Int?
+    /// Approvals a session waits on (ServerPlan gates, domain purchases), the one expiring first
+    /// on top (hosts with `Feature.approvals`).
+    public var approvals: [OwnerApproval]?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -422,12 +429,14 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         /// `RemoteSession.kind`; stopped terminals come with the closed sessions, and
         /// `resumeSession` / `sessionAction(.startFresh)` start them again (same folder, same command).
         public static let closedTerminals = "closedTerminals"
+        /// `approvals` in the snapshot, `answerApproval`.
+        public static let approvals = "approvals"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
-                                              closedTerminals]
+                                              closedTerminals, approvals]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -1073,3 +1082,67 @@ public enum RemotePairingFolder {
     }
 }
 #endif
+
+/// An approval a session asks the owner for and waits on (Approvals.swift on the Mac): a ServerPlan
+/// action the panel wants confirmed, or a domain purchase. Sent to phones in the snapshot.
+public struct OwnerApproval: Codable, Sendable, Equatable, Identifiable {
+    public enum Kind: String, Codable, Sendable {
+        /// A gated `claudedeck server` action (the panel's 428).
+        case serverPlan
+        /// `claudedeck server domain buy`: real money from the Namecheap balance.
+        case domainPurchase
+        case other
+
+        /// Kinds a newer Mac sends that this side doesn't know read as `other`.
+        public init(from decoder: Decoder) throws {
+            self = Kind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .other
+        }
+    }
+
+    public var id: String
+    public var kind: Kind
+    /// One line: who wants what ("api-dev wants to run “container stop” on web").
+    public var title: String
+    /// The panel's own summary (what the action does; for a purchase the price and the balance).
+    public var summary: String
+    /// The command and its target as the session sent them.
+    public var command: String
+    public var target: String
+    public var sessionID: UUID?
+    public var session: String
+    public var project: String
+    public var createdAt: Date
+    /// No answer by then: refused.
+    public var expiresAt: Date
+    /// Whether a phone may approve it. False for purchases (they're approved on the Mac only)
+    /// and, for now, for every ServerPlan gate (those were only ever approved on the Mac).
+    public var phoneMayApprove: Bool
+    /// Whether a phone may refuse it (refusing never changes anything; purchases stay read-only
+    /// on the phone all the same).
+    public var phoneMayRefuse: Bool
+
+    public init(id: String, kind: Kind, title: String, summary: String, command: String, target: String,
+                sessionID: UUID?, session: String, project: String, createdAt: Date, expiresAt: Date,
+                phoneMayApprove: Bool = false, phoneMayRefuse: Bool? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.summary = summary
+        self.command = command
+        self.target = target
+        self.sessionID = sessionID
+        self.session = session
+        self.project = project
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.phoneMayApprove = kind == .domainPurchase ? false : phoneMayApprove
+        self.phoneMayRefuse = kind == .domainPurchase ? false : (phoneMayRefuse ?? true)
+    }
+
+    public var isPurchase: Bool { kind == .domainPurchase }
+
+    /// An id as the Mac makes it: `a_` and letters or digits (checked before a phone's answer is used).
+    public static func isValidID(_ id: String) -> Bool {
+        id.hasPrefix("a_") && id.count > 2 && id.count <= 40 && id.dropFirst(2).allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+}

@@ -11,6 +11,10 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let agentCategory = "agentRegistration"
     nonisolated static let accountCategory = "accountSwitch"
     nonisolated static let switchAccountAction = "switchAccount"
+    /// A ServerPlan gate a session waits on: Approve / Refuse right from the banner.
+    nonisolated static let approvalCategory = "ownerApproval"
+    /// A domain purchase: only Refuse from the banner; buying takes the card in the app.
+    nonisolated static let purchaseCategory = "ownerApprovalPurchase"
     private let model: AppModel
     private var center: UNUserNotificationCenter? {
         // UNUserNotificationCenter crashes outside an app bundle (e.g. `swift run`).
@@ -40,6 +44,19 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                 intentIdentifiers: []
             ),
             UNNotificationCategory(
+                identifier: Self.approvalCategory,
+                actions: [
+                    UNNotificationAction(identifier: Self.approveAction, title: String(localized: "Approve"), options: [.authenticationRequired]),
+                    UNNotificationAction(identifier: Self.denyAction, title: String(localized: "Refuse"), options: [.destructive]),
+                ],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: Self.purchaseCategory,
+                actions: [UNNotificationAction(identifier: Self.denyAction, title: String(localized: "Refuse"), options: [.destructive])],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
                 identifier: Self.accountCategory,
                 actions: [UNNotificationAction(identifier: Self.switchAccountAction, title: String(localized: "Switch Account"), options: [])],
                 intentIdentifiers: []
@@ -64,6 +81,12 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             if let self, added == nil {
                 let done = self.model.decisions.decisions.filter { !$0.isPending }.map { "decision-\($0.id)" }
                 if !done.isEmpty { self.center?.removeDeliveredNotifications(withIdentifiers: done) }
+            }
+        }
+        model.approvals.observe { [weak self] change in
+            switch change {
+            case .added(let approval): self?.approvalAsked(approval)
+            case .resolved(let resolved): self?.center?.removeDeliveredNotifications(withIdentifiers: ["approval-\(resolved.id)"])
             }
         }
         ServerPlanController.shared.onNotice = { [weak self, weak model] notice in
@@ -122,6 +145,24 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["decision": decision.id]
         content.threadIdentifier = "decisions"
         center.add(UNNotificationRequest(identifier: "decision-\(decision.id)", content: content, trigger: nil))
+    }
+
+    /// A session waits for an approval: shown whatever the notification setting (nothing else
+    /// asks; the owner has 2 minutes). Clicking opens the Approvals tab.
+    private func approvalAsked(_ approval: OwnerApproval) {
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = approval.isPurchase ? String(localized: "Purchase waiting for your approval") : String(localized: "Approval needed")
+        content.subtitle = approval.title
+        content.body = (approval.summary.isEmpty ? "" : approval.summary + "\n")
+            + (approval.isPurchase ? String(localized: "Buy it from the card in ClaudeDeck. Without an answer in 2 minutes it's refused.")
+                                   : String(localized: "Without an answer in 2 minutes it's refused."))
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+        content.categoryIdentifier = approval.isPurchase ? Self.purchaseCategory : Self.approvalCategory
+        content.userInfo = ["approval": approval.id]
+        content.threadIdentifier = "approvals"
+        center.add(UNNotificationRequest(identifier: "approval-\(approval.id)", content: content, trigger: nil))
     }
 
     /// A ServerPlan deploy failed or a server went away (clicking shows the deploy log).
@@ -231,6 +272,18 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                     NSApp.activate()
                     self.model.agentSheet = .approve(id)
                 }
+            }
+            return
+        }
+        if let id = userInfo["approval"] as? String {
+            let action = response.actionIdentifier
+            await MainActor.run {
+                // Approve from the banner only for what allows it (never a purchase: answerApproval checks).
+                if action == Self.approveAction || action == Self.denyAction,
+                   self.model.answerApproval(id, approve: action == Self.approveAction, from: "notification") { return }
+                self.model.openMainWindow?()
+                NSApp.activate()
+                self.model.showApprovals()
             }
             return
         }

@@ -196,25 +196,61 @@ extension AppModel {
     }
 }
 
+@MainActor
+enum SheetHost {
+    /// The window a sheet may go on: the key (or main) window when it's a real, visible, normal
+    /// window with no sheet of its own and no modal session running. A sheet queued behind
+    /// another one (or on a hidden, minimized or closing window) leaves the window dimmed
+    /// ("half transparent") with nothing on screen to answer, while `NSApp.runModal` blocks
+    /// every other window: the app looks broken until that hidden sheet is found.
+    static func window() -> NSWindow? {
+        guard NSApp.modalWindow == nil else { return nil }
+        let candidates = [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }
+        return candidates.first { window in
+            window.isVisible && !window.isMiniaturized && window.attachedSheet == nil && window.sheetParent == nil
+                && window.canBecomeMain && window.occlusionState.contains(.visible)
+        }
+    }
+}
+
 extension NSAlert {
     /// Shows the alert as a sheet on the app's window (not a free-floating panel in the middle of
-    /// the screen) while keeping the synchronous call style.
+    /// the screen) while keeping the synchronous call style. One at a time: when no window can
+    /// take a sheet right now (see `SheetHost`), it's an ordinary app-modal alert instead, which
+    /// is always on screen and always answerable.
     @MainActor @discardableResult
     func runAsSheet() -> NSApplication.ModalResponse {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
+        guard let window = SheetHost.window() else {
+            NSApp.activate()
             return runModal()
         }
-        beginSheetModal(for: window) { NSApp.stopModal(withCode: $0) }
+        let sheet = self.window
+        beginSheetModal(for: window) { if NSApp.modalWindow === sheet { NSApp.stopModal(withCode: $0) } }
+        // AppKit queues a sheet it can't show yet; never run a modal session for a window that
+        // isn't on screen.
+        guard window.attachedSheet === self.window else {
+            window.endSheet(self.window, returnCode: .abort)
+            NSApp.activate()
+            return runModal()
+        }
         return NSApp.runModal(for: self.window)
     }
 }
 
 extension NSOpenPanel {
-    /// Folder picker as a sheet on the app's window.
+    /// Folder picker as a sheet on the app's window (a free panel when no window can take one).
     @MainActor
     func runAsSheet() -> NSApplication.ModalResponse {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return runModal() }
-        beginSheetModal(for: window) { NSApp.stopModal(withCode: $0) }
+        guard let window = SheetHost.window() else {
+            NSApp.activate()
+            return runModal()
+        }
+        beginSheetModal(for: window) { [unowned self] in if NSApp.modalWindow === self { NSApp.stopModal(withCode: $0) } }
+        guard window.attachedSheet === self else {
+            window.endSheet(self, returnCode: .abort)
+            NSApp.activate()
+            return runModal()
+        }
         return NSApp.runModal(for: self)
     }
 }

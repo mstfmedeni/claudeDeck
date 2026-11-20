@@ -65,7 +65,7 @@ struct WorkspaceView: View {
         case .automations: ""
         case .repository(let repo, _): (repo as NSString).abbreviatingWithTildeInPath
         case .inbox: ""
-        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions, .agentsOverview: ""
+        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions, .agentsOverview, .approvals: ""
         case .agenda(let id): (model.deck.project(id)?.path).map { ($0 as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }
@@ -108,6 +108,8 @@ private struct TabContent: View {
             if isSelected { SimulatorsView() }   // samples processes only while shown
         case .decisions:
             DecisionsView()
+        case .approvals:
+            ApprovalsView()   // countdowns tick only while a window is visible
         case .agenda(let id):
             if isSelected { AgendaBoardView(projectID: id) }
         case .agentsOverview:
@@ -270,6 +272,7 @@ private struct TabItem: View {
         case .remoteTerminal: Image(systemName: "desktopcomputer")
         case .simulators: Image(systemName: "iphone.gen3")
         case .decisions: Image(systemName: "signpost.right.and.left")
+        case .approvals: Image(systemName: "checkmark.shield")
         case .agenda: Image(systemName: "rectangle.split.3x1")
         case .agentsOverview: Image(systemName: "point.3.connected.trianglepath.dotted")
         }
@@ -526,6 +529,7 @@ extension WorkspaceTab {
         case .remoteTerminal(let id): "remote:\(id.uuidString)"
         case .simulators: "simulators"
         case .decisions: "decisions"
+        case .approvals: "approvals"
         case .agenda(let id): "agenda:\(id.uuidString)"
         case .agentsOverview: "agentsOverview"
         }
@@ -548,6 +552,7 @@ extension WorkspaceTab {
             MainActor.assumeIsolated { RemoteController.tabTitle(id) }
         case .simulators: String(localized: "Simulators")
         case .decisions: String(localized: "Your Decisions")
+        case .approvals: String(localized: "Approvals")
         case .agenda(let id):
             MainActor.assumeIsolated { AgendaController.tabTitle(id) }
         case .agentsOverview: String(localized: "Agents")
@@ -574,6 +579,7 @@ extension WorkspaceTab {
         case .simulators: String(localized: "Simulators")
         case .dashboard: String(localized: "Live dashboard (⇧⌘B)")
         case .decisions: String(localized: "Decisions your sessions left for you")
+        case .approvals: String(localized: "Actions your sessions wait for you to approve")
         case .agenda: String(localized: "The project's docs/AGENDA.md as a board")
         case .agentsOverview: String(localized: "Sessions started by sessions, by project")
         default: url.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""

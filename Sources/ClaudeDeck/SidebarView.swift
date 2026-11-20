@@ -46,6 +46,11 @@ struct SidebarView: View {
             // Waiting tray above the footer, outside the list: it only shortens the list, never
             // pushes its rows around.
             VStack(spacing: 0) {
+                if model.approvals.pendingCount > 0 {
+                    PendingApprovalsTray()
+                        .sidebarStyle(scale: textScale, density: density)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if model.decisions.pendingCount > 0 {
                     PendingDecisionsTray()
                         .sidebarStyle(scale: textScale, density: density)
@@ -72,6 +77,7 @@ struct SidebarView: View {
             .animation(.snappy(duration: 0.3), value: waiting.isEmpty)
             .animation(.snappy(duration: 0.3), value: model.pendingAgents.isEmpty)
             .animation(.snappy(duration: 0.3), value: model.decisions.pendingCount == 0)
+            .animation(.snappy(duration: 0.3), value: model.approvals.pendingCount == 0)
             .animation(.snappy(duration: 0.3), value: agentGroups.isEmpty)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sidebarHeight = $0 }

@@ -383,6 +383,8 @@ public final class RemoteServer: @unchecked Sendable {
     public var onAnswerDecision: ((_ id: String, _ answer: String) -> Void)?
     /// `dismissDecision`.
     public var onDismissDecision: ((_ id: String) -> Void)?
+    /// `answerApproval` (ids checked; the host decides what a phone may do with it).
+    public var onAnswerApproval: ((_ id: String, _ approve: Bool) -> Void)?
     /// `dismissServerIssues` (ids capped at 200).
     public var onDismissServerIssues: ((_ deploymentIDs: [Int], _ all: Bool) -> Void)?
     /// `changeDecisionAnswer` (the answer cut to `Decisions.maxAnswer`).
@@ -680,6 +682,8 @@ public final class RemoteServer: @unchecked Sendable {
                 onAnswerDecision?(decisionID, String(answer.prefix(Decisions.maxAnswer)))
             case .dismissDecision(let decisionID) where Decisions.isValidID(decisionID):
                 onDismissDecision?(decisionID)
+            case .answerApproval(let approvalID, let approve) where OwnerApproval.isValidID(approvalID):
+                onAnswerApproval?(approvalID, approve)
             case .dismissServerIssues(let ids, let all):
                 onDismissServerIssues?(Array(ids.prefix(200)), all)
             case .changeDecisionAnswer(let decisionID, let answer) where Decisions.isValidID(decisionID):
