@@ -93,6 +93,29 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             model.answerDecision(String(file.dropLast(7)), answer: answer, from: "mac")
         }
+        // `<approval-id>.approve` / `<approval-id>.refuse`: the Approvals card's buttons;
+        // `<approval-id>.phone-approve` / `.phone-refuse`: as a phone's answer would come in.
+        // The pending ones are written to `approvals.json` (ids, kinds, titles) every tick.
+        for file in files where file.hasPrefix("a_") {
+            let path = (dir as NSString).appendingPathComponent(file)
+            try? FileManager.default.removeItem(atPath: path)
+            let parts = file.split(separator: ".", maxSplits: 1).map(String.init)
+            guard parts.count == 2, Approvals.isValidID(parts[0]) else { continue }
+            switch parts[1] {
+            case "approve": model.answerApproval(parts[0], approve: true, from: "mac")
+            case "refuse": model.answerApproval(parts[0], approve: false, from: "mac")
+            case "phone-approve": model.answerApproval(parts[0], approve: true, from: "phone")
+            case "phone-refuse": model.answerApproval(parts[0], approve: false, from: "phone")
+            default: break
+            }
+        }
+        if files.contains("approvals.show") {
+            try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent("approvals.show"))
+            model.showApprovals()
+        }
+        if let data = try? JSONEncoder().encode(model.approvals.pending) {
+            try? data.write(to: URL(fileURLWithPath: (dir as NSString).appendingPathComponent("approvals.json")))
+        }
         // `<decision-id>.dismiss`: Remove (no answer); `<decision-id>.change`: changes its answer to
         // the file's text; `decisions.size`: the Decisions tab's text size in points.
         for file in files where file.hasSuffix(".dismiss") || file.hasSuffix(".change") || file == "decisions.size" {

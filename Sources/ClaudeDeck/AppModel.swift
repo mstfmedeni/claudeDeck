@@ -110,6 +110,8 @@ final class AppModel {
     var decisions = DecisionBook()
     /// A decision was added or answered (remotes get the snapshot, phones a push for a new one).
     @ObservationIgnored var onDecisionsChanged: ((_ added: OwnerDecision?) -> Void)?
+    /// Approvals sessions wait on (ServerPlan gates, domain purchases; AppModel+Approvals.swift).
+    let approvals = ApprovalQueue()
     /// An agent signed itself up through the local API and waits for approval (a notification).
     @ObservationIgnored var onAgentRegistered: ((AgentRegistration) -> Void)?
     /// Last time the user looked at a session while it was idle (clears the yellow "unseen" badge).

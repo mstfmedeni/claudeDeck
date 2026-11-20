@@ -253,71 +253,23 @@ extension AppModel {
         return outcome.response(json: json)
     }
 
-    /// The owner's dialog for a gated ServerPlan action: a sheet on the window (and a
-    /// notification); no answer in 2 minutes is a no.
+    /// The owner's approval for a gated ServerPlan action: a card in the Approvals tab (and a
+    /// notification), never a modal dialog; no answer in 2 minutes is a no.
     func ownerApproves(_ caller: UUID, command: String, target: String, summary: String?) async -> Bool {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
-            return false
-        }
-        onSessionNotice?(caller, String(localized: "Asks to run “\(command)” on \(target) in ServerPlan. Answer in ClaudeDeck."))
-        NSApp.requestUserAttention(.criticalRequest)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "\(callerName) wants to run “\(command)” on \(target)")
-        alert.informativeText = (summary.map { $0 + "\n\n" } ?? "")
-            + String(localized: "A session asks through claudedeck server. Without an answer in 2 minutes it's refused.")
-        alert.addButton(withTitle: String(localized: "Allow"))
-        alert.addButton(withTitle: String(localized: "Refuse"))
-        alert.buttons.first?.hasDestructiveAction = true
-        let timeout = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(120))
-            if !Task.isCancelled, alert.window.isVisible { window.endSheet(alert.window, returnCode: .abort) }
-        }
-        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
-            alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
-        }
-        timeout.cancel()
-        return answer == .alertFirstButtonReturn
+        let approval = makeApproval(caller, kind: .serverPlan, command: command, target: target, summary: summary,
+                                    title: String(localized: "\(callerName) wants to run “\(command)” on \(target)"))
+        return await awaitApproval(approval)
     }
 
-    /// The owner's dialog for `server domain buy`: the panel's price summary and a plain "this is
-    /// a real purchase". Cancel is the default (Return) and Escape; only "Buy" says yes; no
-    /// answer in 2 minutes is a no.
+    /// The owner's approval for `server domain buy`: a card with the panel's price summary and a
+    /// plain "this is a real purchase". Only the card's Buy button on the Mac says yes (not the
+    /// notification, not a phone); no answer in 2 minutes is a no.
     func ownerApprovesPurchase(_ caller: UUID, domain: String, summary: String?) async -> Bool {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
-            return false
-        }
-        onSessionNotice?(caller, String(localized: "Asks to buy the domain \(domain) in ServerPlan. Answer in ClaudeDeck."))
-        NSApp.requestUserAttention(.criticalRequest)
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = String(localized: "\(callerName) wants to buy the domain \(domain)")
-        alert.informativeText = (summary.map { $0 + "\n\n" } ?? "")
-            + String(localized: "This is a real purchase: it's charged to the Namecheap balance and can't be undone.")
-            + "\n\n" + String(localized: "A session asks through claudedeck server. Without an answer in 2 minutes it's refused.")
-        let cancel = alert.addButton(withTitle: String(localized: "Cancel"))
-        let buy = alert.addButton(withTitle: String(localized: "Buy"))
-        cancel.keyEquivalent = "\r"
-        buy.keyEquivalent = ""
-        buy.hasDestructiveAction = true
-        // Escape is Cancel too.
-        let escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.keyCode == 53, event.window === alert.window else { return event }
-            window.endSheet(alert.window, returnCode: .alertFirstButtonReturn)
-            return nil
-        }
-        let timeout = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(120))
-            if !Task.isCancelled, alert.window.isVisible { window.endSheet(alert.window, returnCode: .abort) }
-        }
-        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
-            alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
-        }
-        timeout.cancel()
-        if let escape { NSEvent.removeMonitor(escape) }
-        return answer == .alertSecondButtonReturn
+        let approval = makeApproval(caller, kind: .domainPurchase, command: "domain-buy", target: domain, summary: summary,
+                                    title: String(localized: "\(callerName) wants to buy the domain \(domain)"))
+        return await awaitApproval(approval)
     }
 
     /// A Mac (and phone) notification once a session bought a domain.

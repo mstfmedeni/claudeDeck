@@ -31,6 +31,9 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     /// Every agent tree (`claudedeck new`) by project. Not restored at launch: older versions
     /// can't decode it.
     case agentsOverview
+    /// Approvals sessions wait on (ServerPlan gates, domain purchases). Not restored at launch:
+    /// older versions can't decode it.
+    case approvals
 
     public var fileURL: URL? {
         if case .file(let url) = self { url } else { nil }
@@ -133,7 +136,7 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
         copy.tabs = tabs.filter {
             switch $0 {
             case .sessions, .file, .automations, .inbox, .search, .skills, .dashboard: true
-            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda, .agentsOverview: false
+            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda, .agentsOverview, .approvals: false
             }
         }
         if !copy.tabs.contains(selected) { copy.selected = .sessions }
