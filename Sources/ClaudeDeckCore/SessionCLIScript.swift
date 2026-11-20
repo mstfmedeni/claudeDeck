@@ -815,7 +815,12 @@ extension SessionCLI {
       soft=0
       case "$http" in
         2??) heavy_slot=$body; heavy_ticket="" ;;
-        400|405) heavy_release; finish ;;
+        400|405)
+          # The acquire's answer is what's reported, not the release's.
+          a_http=$http; a_body=$body; a_code=$code
+          heavy_release
+          http=$a_http; body=$a_body; code=$a_code; json=0
+          finish ;;
         *)
           if [ "$code" = 124 ]; then
             heavy_release

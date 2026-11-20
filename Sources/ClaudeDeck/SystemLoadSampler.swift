@@ -22,9 +22,10 @@ enum SystemLoadSampler {
 
     /// Every process's short name (`proc_name`, at most 16 characters).
     nonisolated static func processNames() -> [String] {
+        // proc_listallpids answers in bytes with a nil buffer on some releases and in pids on others:
+        // room for either, plus processes started between the two calls (zeros are skipped).
         let estimate = proc_listallpids(nil, 0)
         guard estimate > 0 else { return [] }
-        // Room for processes started between the two calls.
         var pids = [pid_t](repeating: 0, count: Int(estimate) + 256)
         let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
         guard count > 0 else { return [] }
