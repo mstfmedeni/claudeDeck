@@ -458,8 +458,9 @@ unresponsive, never as "no sessions". A session that may still run there is neve
 ### Simulators (`claudedeck sim …`)
 
 ```sh
-claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--json]
-claudedeck sim release [UDID] [--json]
+claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--keep|--keep-cat CATS] [--full-slim|--plain]
+                       [--stock] [--keep-state] [--project P] [--json]
+claudedeck sim release [UDID] [--unslim] [--json]
 claudedeck sim list [--json]
 ```
 
@@ -484,10 +485,50 @@ drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; nev
   restart) or is closed; a session closed while ClaudeDeck wasn't running loses its holds at the
   next launch. With **Shut down simulators ClaudeDeck created when they're released** (on by
   default) released devices are shut down; they stay in ClaudeDeck's pool for the next acquire.
-- **list:** the held devices (state, holder, whether ClaudeDeck created them) and ClaudeDeck's free ones.
+- **Holder's name:** while held, a device is renamed `ClaudeDeck · <project> · <type> · <n>` (the
+  caller's project, `simctl rename`) so Simulator.app and Activity Monitor show whose it is; on
+  release it gets its plain pool name back. Pool matching goes by UDID (the holds file), never by
+  the shown name.
+- **simslim (slim by default):** with [simslim](https://github.com/MobAI-App/simslim) installed
+  (`brew install mobai-app/tap/simslim`) and **Settings › Simulators › Ajanların simülatörlerini
+  hafiflet (simslim)** on (the default), acquire runs `simslim on <udid> --except <categories>`
+  before handing a device out. simslim disables the background launchd services a simulator
+  doesn't need; a slim iPhone uses roughly a quarter of the memory (measured on iOS 27.2: 6.9 GB
+  with `store,icloud,widgets,siri` kept, 2.6 GB with none kept).
+  - **Categories kept:** `store` (StoreKit sandbox, push) and `icloud` (Keychain, which the
+    device-id login needs) by default. **Apps with widgets/Live Activities or App Intents must list
+    them in `simslim.json`** at the repo root, e.g.
+    `{"name":"wakeroo","except":["store","icloud","widgets","siri","family"]}` (`family` for
+    Screen Time; an optional `"keep"` lists single launchd labels). The file is read from the
+    caller's project folder, or `--project P`'s. Unknown categories are dropped and invalid JSON
+    falls back to the default, both with a warning on stderr. `--keep family,health` (alias
+    `--keep-cat`) adds categories for this acquire; `--full-slim` (alias `--plain`) keeps none,
+    for pure screen and pixel checks; `--stock` skips simslim. `--stock` wins over `--full-slim`,
+    which wins over `--keep` and the profile.
+  - **Boot:** a shut-down device gets simslim's slim boot (simslim boots it). A booted device
+    that `simslim verify` finds already slim with this profile only gets `simslim on --no-reboot`.
+    Otherwise it's rebooted slim: stopping services without a reboot leaves most of the memory
+    in use. `--keep-state` uses `--no-reboot` instead, for a device whose running state matters.
+  - **Fallback:** if simslim is missing or fails (timeout 5 min), the device boots stock as before,
+    stderr gets a warning and `--json` says `"slim":"unavailable"`; simslim never fails the acquire.
+    `--json` adds `slim` (`on`, `off`, `unavailable`), `slim_profile` (`default`, the simslim.json's
+    `name`, `full`) and `memory_bytes` (`simslim measure`). Every simslim command is in the
+    activity log.
+  - **Release:** the overrides stay on the device (harmless; the next acquire of it is fast, and
+    the pool stays slim). `sim release --unslim` runs `simslim off` (with `--preserve-boot-state`
+    when the device is shut down on release).
+  - Only devices ClaudeDeck holds are slimmed or restored; the user's simulators never are.
+  - `simslim watch` isn't used: it has no per-device filter and would slim every simulator on
+    the Mac, the user's and other tools' too.
+  - With slimming on and simslim installed the default cap on booted simulators (Settings ›
+    Resources) is half again as high (4 → 6 on a 20-core Mac); a cap the owner set stays.
+- **list:** the held devices (state, holder, whether ClaudeDeck created them, simslim's
+  `slim 109/173` daemons-disabled count and memory from `simslim list --json`) and ClaudeDeck's free ones.
 - Holds are kept in Application Support/ClaudeDeck/simulator-holds.json. Every acquire and release
   is in the activity log. The Simulators tab shows the holder (a lock with the session's name),
-  as does the phone's simulator list.
+  as does the phone's simulator list. The Simulators tab and the load tab's booted-simulator list
+  show each device's memory and its simslim state (`simslim list --json`, read every 15 s only
+  while one of them, or the phone, is looking).
 
 ### Usage per project
 

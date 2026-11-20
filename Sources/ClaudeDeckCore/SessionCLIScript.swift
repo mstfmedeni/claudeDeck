@@ -84,8 +84,14 @@ extension SessionCLI {
       claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--json]
           Simulators of this session's own, booted: prints "UDID  NAME" per device. --duo alone is
           an iPhone Duo; with --device it adds an iPhone Duo to that device. No other session gets them until they're released.
-      claudedeck sim release [UDID] [--json]
-          Releases one (or, without UDID, all of this session's). Also when the session ends.
+          Slimmed with simslim when installed (Settings > Simulators): only store,icloud stay on, plus the
+          project's simslim.json "except" list. [--keep|--keep-cat family,health] keeps more categories,
+          [--full-slim|--plain] keeps none (pixel checks), [--stock] skips simslim, [--keep-state] never
+          reboots a booted device to slim it, [--project P] reads P's simslim.json. --json adds slim
+          ("on", "off", "unavailable"), slim_profile and memory_bytes.
+      claudedeck sim release [UDID] [--unslim] [--json]
+          Releases one (or, without UDID, all of this session's). Also when the session ends. The slim
+          overrides stay (the next acquire is fast); --unslim restores the device to stock.
       claudedeck sim list [--json]
           The held simulators (and their holders) and ClaudeDeck's free ones.
           While the Mac is overloaded, or with too many simulators booted (Settings > Resources),
@@ -678,12 +684,20 @@ extension SessionCLI {
 
     cmd_sim() {
       sub=${1:-}; [ $# -gt 0 ] && shift
-      device=""; duo=0; udid=""
+      device=""; duo=0; udid=""; keep=""; full=0; stock=0; keep_state=0; unslim=0; project=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --device) [ $# -ge 2 ] || die "sim: --device needs a device type (\"iPhone 17 Pro\")"; device=$2; shift ;;
           --device=*) device=${1#*=} ;;
           --duo) duo=1 ;;
+          --keep|--keep-cat) [ $# -ge 2 ] || die "sim: $1 needs simslim categories (family,health)"; keep="${keep:+$keep,}$2"; shift ;;
+          --keep=*|--keep-cat=*) keep="${keep:+$keep,}${1#*=}" ;;
+          --full-slim|--plain) full=1 ;;
+          --stock) stock=1 ;;
+          --keep-state) keep_state=1 ;;
+          --unslim) unslim=1 ;;
+          --project) [ $# -ge 2 ] || die "sim: --project needs a project"; project=$2; shift ;;
+          --project=*) project=${1#*=} ;;
           --json) json=1 ;;
           -*) die "sim: unknown option $1" ;;
           *) [ -z "$udid" ] || die "sim: one UDID only"; udid=$1 ;;
@@ -692,15 +706,32 @@ extension SessionCLI {
       done
       case "$sub" in
         acquire)
-          [ -z "$udid" ] || die "sim acquire: no arguments besides --device and --duo"
+          [ -z "$udid" ] || die "sim acquire: no UDID argument (options: --device, --duo, --keep, --full-slim, --stock, --keep-state, --project)"
           need_session
-          # Creating and booting a simulator can take minutes.
-          max_time=600
-          call /sim/acquire --data-urlencode "device=$device" --data-urlencode "duo=$duo" --data-urlencode "format=$(fmt)" ;;
+          # Creating, slimming and booting a simulator can take minutes (two with --device X --duo).
+          max_time=1500
+          case "$project" in ./*|../*) project=$(abs_path "$project") ;; esac
+          call /sim/acquire --data-urlencode "device=$device" --data-urlencode "duo=$duo" --data-urlencode "keep=$keep" \
+            --data-urlencode "full=$full" --data-urlencode "stock=$stock" --data-urlencode "keep_state=$keep_state" \
+            --data-urlencode "project=$project" --data-urlencode "format=$(fmt)"
+          # simslim warnings (X-ClaudeDeck-Note); the acquire itself went through.
+          case "$http" in
+            2??)
+              old_ifs=$IFS; IFS=,
+              for w in $note; do
+                case "$w" in
+                  slim_unavailable) printf '%s\n' "sim acquire: simslim isn't installed; the simulator runs stock (brew install mobai-app/tap/simslim)" >&2 ;;
+                  slim_failed) printf '%s\n' "sim acquire: simslim failed; the simulator runs stock" >&2 ;;
+                  slim_profile_invalid) printf '%s\n' "sim acquire: simslim.json isn't valid JSON; the default profile (store,icloud) is used" >&2 ;;
+                  slim_unknown_category:*) printf '%s\n' "sim acquire: unknown simslim category ignored: ${w#slim_unknown_category:} (see simslim profiles)" >&2 ;;
+                esac
+              done
+              IFS=$old_ifs ;;
+          esac ;;
         release)
           case "$udid" in *[!A-Fa-f0-9-]*) die "sim release: not a UDID: $udid" ;; esac
           need_session
-          call /sim/release --data-urlencode "udid=$udid" --data-urlencode "format=$(fmt)" ;;
+          call /sim/release --data-urlencode "udid=$udid" --data-urlencode "unslim=$unslim" --data-urlencode "format=$(fmt)" ;;
         list)
           need_session
           call /sim -G --data-urlencode "format=$(fmt)" ;;
@@ -1638,9 +1669,18 @@ extension SessionCLI {
 
     - ClaudeDeck creates its own devices ("ClaudeDeck · iPhone 17 Pro · 1") and reuses free ones;
       the user's simulators are never handed out. At most 4 per session (exit 4 `too_many_simulators`).
-    - Acquiring can take a minute or two (create + boot). `--json` gives `udid`, `name`, `runtime`.
+    - Acquiring can take a minute or two (create + boot). `--json` gives `udid`, `name`, `runtime`,
+      `slim`, `slim_profile`, `memory_bytes`. The name carries your project while you hold it
+      ("ClaudeDeck · Wakeroo · iPhone Duo · 4"); always use the UDID.
+    - Simulators are slimmed with simslim (about a quarter of the memory): only `store` (StoreKit,
+      push) and `icloud` (Keychain) stay on. Apps with widgets/Live Activities or App Intents must
+      list them in `simslim.json` at the repo root: `{"name":"wakeroo","except":["store","icloud","widgets","siri","family"]}`
+      (`family` for Screen Time). `--keep family,health` adds categories for one acquire,
+      `--plain` (`--full-slim`) keeps none for pixel checks, `--stock` skips simslim. If simslim is
+      missing or fails, the device boots stock with a warning (`"slim":"unavailable"`).
+    - `sim release` leaves the device slim; `--unslim` restores it to stock.
     - While the Mac is overloaded (`claudedeck load`), or once too many simulators are booted
-      (4 by default, Settings > Resources), `acquire` is refused with exit 4 (`overloaded`,
+      (4 by default, 6 when simslim slims them; Settings > Resources), `acquire` is refused with exit 4 (`overloaded`,
       `too_many_booted`). Reaching the cap doesn't make the Mac busy or overloaded; it only
       refuses more simulators. Release simulators as soon as you're done with them.
 

@@ -38,7 +38,9 @@ final class LoadController {
 
     var settings: LoadSettings { model?.deck.settings.load ?? LoadSettings() }
     var cores: Int { monitor.latest?.cores ?? ProcessInfo.processInfo.activeProcessorCount }
-    var thresholds: LoadThresholds { LoadThresholds.resolve(settings, cores: cores) }
+    var thresholds: LoadThresholds { LoadThresholds.resolve(settings, cores: cores, slim: slimSimulators) }
+    /// sim acquire slims its simulators (setting on, simslim installed): a higher default cap.
+    var slimSimulators: Bool { model?.deck.settings.simulatorsSlim == true && SimulatorsController.simslimInstalled }
     var level: LoadLevel { monitor.level }
     var latest: LoadSample? { monitor.latest }
     /// New starts wait right now (overloaded, or busy with "hold new starts"), with throttling on.
@@ -73,7 +75,7 @@ final class LoadController {
         guard let model else { return }
         var sample = sample
         sample.sessions = model.deck.sessions.filter { $0.kind == .claude && model.terminals.isRunning($0.id) }.count
-        let events = monitor.add(sample, thresholds: LoadThresholds.resolve(settings, cores: sample.cores))
+        let events = monitor.add(sample, thresholds: LoadThresholds.resolve(settings, cores: sample.cores, slim: slimSimulators))
         pruneSlots()
         if !events.isEmpty { model.loadChanged(events, sample: sample) }
     }
@@ -208,6 +210,8 @@ final class LoadController {
         var memoryBytes: UInt64?
         /// When its `launchd_sim` started (from the per-process table).
         var bootedAt: Date?
+        /// "slim 109/173" or "stock" (simslim list; nil without simslim).
+        var slim: String?
         var id: String { udid }
     }
 
@@ -221,8 +225,9 @@ final class LoadController {
             let holder = model.simHolds.holder(of: device.udid)
             list.append(BootedSimulator(udid: device.udid, name: device.name, runtime: device.runtime.displayName, holder: holder,
                                         holderName: holder.flatMap { model.deck.session($0)?.name },
-                                        memoryBytes: sims.memory[device.udid]?.bytes,
-                                        bootedAt: sims.launchdPIDs[device.udid].flatMap { usage?.started(of: $0) }))
+                                        memoryBytes: sims.memory[device.udid]?.bytes ?? sims.slimStatus[device.udid]?.memoryBytes,
+                                        bootedAt: sims.launchdPIDs[device.udid].flatMap { usage?.started(of: $0) },
+                                        slim: sims.slimStatus[device.udid]?.text))
             seen.insert(device.udid)
         }
         for hold in model.simHolds.holds where !seen.contains(hold.udid) && sims.loaded == false {

@@ -24223,6 +24223,46 @@
           }
         }
       }
+    },
+    "Slim agents' simulators (simslim)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanların simülatörlerini hafiflet (simslim)"
+          }
+        }
+      }
+    },
+    "claudedeck sim acquire turns off the background services a simulator doesn't need, so it uses about a quarter of the memory. StoreKit and iCloud Keychain stay on; an app lists what else it needs in simslim.json. Only simulators ClaudeDeck holds are changed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck sim acquire, simülatörün ihtiyaç duymadığı arka plan servislerini kapatır; simülatör belleğin yaklaşık dörtte birini kullanır. StoreKit ve iCloud Anahtar Zinciri açık kalır; bir uygulama başka neye ihtiyacı varsa simslim.json dosyasında belirtir. Yalnızca ClaudeDeck'in ayırdığı simülatörler değiştirilir."
+          }
+        }
+      }
+    },
+    "Install simslim (brew install mobai-app/tap/simslim) and agents' simulators use about a quarter of the memory.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "simslim'i kurun (brew install mobai-app/tap/simslim); ajanların simülatörleri belleğin yaklaşık dörtte birini kullanır."
+          }
+        }
+      }
+    },
+    "simslim: background services turned off of those it manages": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "simslim: yönettiği servislerden kapatılanlar"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

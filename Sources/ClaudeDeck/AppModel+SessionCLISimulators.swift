@@ -15,6 +15,12 @@ extension AppModel {
         // Holds of sessions that are gone (closed while the app wasn't running).
         let gone = simHolds.prune(sessions: Set(deck.sessions.map(\.id)), devices: nil)
         for hold in gone { logAgent("ClaudeDeck", inbound: false, "claudedeck sim: released \(hold.name) (its session is gone)") }
+        // Their plain pool names back.
+        if !gone.isEmpty {
+            Task.detached(priority: .utility) {
+                for hold in gone { _ = SimulatorsController.xcrun(["simctl", "rename", hold.udid, hold.name], timeout: 30) }
+            }
+        }
         if !gone.isEmpty { saveSimulatorHolds() }
     }
 
@@ -25,8 +31,10 @@ extension AppModel {
         try? data.write(to: simHoldsURL, options: .atomic)
     }
 
-    /// What a session holds is free again; devices ClaudeDeck created are shut down (setting).
-    func releaseSimulators(of session: UUID, udid: String? = nil, reason: String) {
+    /// What a session holds is free again: each gets its plain pool name back, devices ClaudeDeck
+    /// created are shut down (setting). The simslim overrides stay (harmless, and the next acquire
+    /// is fast); `unslim` (`sim release --unslim`) restores them to stock with `simslim off`.
+    func releaseSimulators(of session: UUID, udid: String? = nil, reason: String, unslim: Bool = false) {
         guard !simHolds.held(by: session).isEmpty else { return }
         let released = simHolds.release(session: session, udid: udid)
         guard !released.isEmpty else { return }
@@ -35,14 +43,27 @@ extension AppModel {
         let shutDown = deck.settings.simulatorsShutDownOnRelease ? released.filter(\.created) : []
         for hold in released {
             logAgent(name, inbound: true, "claudedeck sim: released \(hold.name) (\(reason))"
-                + (shutDown.contains(hold) ? ", shutting it down" : ""))
+                + (unslim ? ", restoring it to stock" : "") + (shutDown.contains(hold) ? ", shutting it down" : ""))
         }
-        guard !shutDown.isEmpty else { return }
+        let runner = unslim ? SimulatorsController.simslimRunner() : nil
         Task {
-            for hold in shutDown {
+            for hold in released {
                 // Only if nobody took it in the meantime.
                 guard simHolds.holder(of: hold.udid) == nil else { continue }
-                _ = await Task.detached { SimulatorsController.xcrun(["simctl", "shutdown", hold.udid], timeout: 60) }.value
+                let off = shutDown.contains(hold)
+                let logLine = await Task.detached { () -> String? in
+                    // The plain pool name again ("ClaudeDeck · iPhone Duo · 4").
+                    _ = SimulatorsController.xcrun(["simctl", "rename", hold.udid, hold.name], timeout: 30)
+                    var line: String?
+                    if off { _ = SimulatorsController.xcrun(["simctl", "shutdown", hold.udid], timeout: 60) }
+                    if let runner {
+                        let args = SimSlim.offArguments(udid: hold.udid, preserveBootState: off)
+                        let result = runner(args, SimSlim.onTimeout)
+                        line = "simslim \(args.joined(separator: " "))" + (result.status == 0 ? "" : " failed: \(result.message.prefix(200))")
+                    }
+                    return line
+                }.value
+                if let logLine { logAgent(name, inbound: true, "claudedeck sim release · " + logLine) }
             }
             await SimulatorsController.shared.reloadList()
         }
@@ -101,7 +122,7 @@ extension AppModel {
     }
 
     private func simInfo(_ hold: SimulatorHold, device: Simulator?, caller: UUID, new: Bool? = nil) -> SessionCLISimulator {
-        SessionCLISimulator(udid: hold.udid, name: hold.name, runtime: device?.runtime.displayName, state: device?.state ?? "unknown",
+        SessionCLISimulator(udid: hold.udid, name: device?.name ?? hold.name, runtime: device?.runtime.displayName, state: device?.state ?? "unknown",
                             holder: hold.session, holderName: deck.session(hold.session)?.name, mine: hold.session == caller,
                             created: hold.created, new: new)
     }
@@ -119,6 +140,13 @@ extension AppModel {
             items.append(SessionCLISimulator(udid: device.udid, name: device.name, runtime: device.runtime.displayName, state: device.state,
                                              holder: nil, holderName: nil, mine: false, created: true))
         }
+        // simslim's view of ClaudeDeck's devices only (read, never changed here).
+        let slim = await SimulatorsController.readSlimStatus()
+        for index in items.indices {
+            guard let status = slim[items[index].udid] else { continue }
+            items[index].slimStatus = status.text
+            items[index].memoryBytes = status.memoryBytes
+        }
         return SessionCLI.answer(200, items, text: SimulatorAllocation.listText(items), exit: .ok, json: json)
     }
 
@@ -129,7 +157,7 @@ extension AppModel {
             guard holder == caller else { return SessionCLI.failure(403, "not_yours", exit: .refused) }
         }
         let names = simHolds.held(by: caller).filter { udid.isEmpty || $0.udid == udid }.map(\.udid)
-        releaseSimulators(of: caller, udid: udid.isEmpty ? nil : udid, reason: "claudedeck sim release")
+        releaseSimulators(of: caller, udid: udid.isEmpty ? nil : udid, reason: "claudedeck sim release", unslim: form["unslim"] == "1")
         let text = names.isEmpty ? "nothing to release" : "released " + names.joined(separator: ", ")
         return SessionCLI.answer(200, ["released": names], text: text, exit: .ok, json: json)
     }
@@ -184,7 +212,28 @@ extension AppModel {
             }
         }
 
-        var names = catalog.devices.map(\.name)
+        // simslim (SimSlim.swift): the project's simslim.json or the default, plus --keep;
+        // --full-slim, --stock and the setting change it. Never fails the acquire.
+        // The caller's project (or `--project P`): its simslim.json and the holder name. A session
+        // without a project still acquires (default profile, plain name); only a given P must exist.
+        var callerProject: Project?
+        let projectRef = (form["project"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        switch SessionCLI.project(projectRef, callerProject: deck.session(caller)?.projectID, projects: deck.projects) {
+        case .found(let id): callerProject = deck.project(id)
+        case .unknown: if !projectRef.isEmpty { return SessionCLI.failure(404, "unknown_project", exit: .unknown) }
+        case .ambiguous: return SessionCLI.failure(400, "ambiguous", exit: .usage)
+        }
+        var slimOptions = SimSlim.Options(form: form)
+        if !deck.settings.simulatorsSlim { slimOptions.mode = .stock }
+        let folder = callerProject?.path
+        let slimPlan = slimOptions.mode == .slim
+            ? await Task.detached { SimSlim.plan(slimOptions, profile: SimSlim.profile(folder: folder)) }.value
+            : SimSlim.plan(slimOptions, profile: .builtIn)
+        let slimRunner = slimPlan == nil ? nil : SimulatorsController.simslimRunner()
+        var notes: [String] = []
+
+        // Plain pool names, including those of held devices that carry their holder's project.
+        var names = catalog.devices.map(\.name) + simHolds.holds.map(\.name)
         var acquired: [SessionCLISimulator] = []
         var failure: String?
         for step in plan {
@@ -193,7 +242,8 @@ extension AppModel {
             let isNew = step.reuse == nil
             if let device = step.reuse {
                 udid = device.udid
-                name = device.name
+                // A name left with a project in it (the app quit before it could rename it back).
+                name = SimulatorAllocation.poolName(device.name, type: step.type.name) ?? device.name
             } else {
                 name = SimulatorAllocation.newName(for: step.type, existing: names)
                 names.append(name)
@@ -207,22 +257,49 @@ extension AppModel {
             simHolds.hold(SimulatorHold(udid: udid, name: name, session: caller, created: true))
             saveSimulatorHolds()
             let device = udid
+            let wasBooted = step.reuse.map { $0.state != "Shutdown" } ?? false
+            // Its holder's project in its name, so Simulator.app and Activity Monitor show whose it is.
+            var shownName = name
+            if let held = SimulatorAllocation.heldName(name, project: callerProject?.name) {
+                let renamed = await Task.detached { SimulatorsController.xcrun(["simctl", "rename", device, held], timeout: 30) }.value
+                if renamed.status == 0 { shownName = held }
+            }
+            // Slim first: a slim boot (shut down) or reboot (booted, profile differs) by simslim itself.
+            let keepState = slimOptions.keepState
+            let slim = await Task.detached {
+                SimSlim.apply(udid: device, booted: wasBooted, plan: slimPlan, keepState: keepState, run: slimRunner)
+            }.value
+            if slimPlan != nil { logAgent(callerName, inbound: true, "claudedeck sim acquire · \(name): " + slim.log, ok: slim.state == .on) }
+            for note in slim.warnings where !notes.contains(note) { notes.append(note) }
             let booted = await Task.detached { () -> SimulatorsController.CommandResult in
-                let boot = SimulatorsController.xcrun(["simctl", "boot", device], timeout: 120)
-                // "Unable to boot device in current state: Booted" is fine.
-                if boot.status != 0, !boot.message.contains("current state: Booted") { return boot }
+                if !slim.booted {
+                    let boot = SimulatorsController.xcrun(["simctl", "boot", device], timeout: 120)
+                    // "Unable to boot device in current state: Booted" is fine.
+                    if boot.status != 0, !boot.message.contains("current state: Booted") { return boot }
+                }
                 return SimulatorsController.xcrun(["simctl", "bootstatus", device, "-b"], timeout: 240)
             }.value
             guard booted.status == 0 else {
                 failure = booted.message
                 simHolds.release(session: caller, udid: udid)
                 saveSimulatorHolds()
+                if shownName != name {
+                    let plain = name
+                    _ = await Task.detached { SimulatorsController.xcrun(["simctl", "rename", device, plain], timeout: 30) }.value
+                }
                 break
             }
-            logAgent(callerName, inbound: true, "claudedeck sim acquire · \(name) (\(udid))" + (isNew ? ", created" : ", reused"))
+            // From `simslim measure` whenever simslim is installed (stock devices too).
+            let memory = await Task.detached { SimSlim.measure(udid: device, run: slimRunner ?? SimulatorsController.simslimRunner()) }.value
+            logAgent(callerName, inbound: true, "claudedeck sim acquire · \(shownName) (\(udid))" + (isNew ? ", created" : ", reused")
+                + ", slim \(slim.state.rawValue)" + (memory.map { String(format: ", %.1f GB", Double($0) / 1_073_741_824) } ?? ""))
             let runtime = step.reuse?.runtime.displayName ?? step.runtime?.runtime.displayName
-            acquired.append(SessionCLISimulator(udid: udid, name: name, runtime: runtime, state: "Booted", holder: caller,
-                                                holderName: callerName, mine: true, created: true, new: isNew))
+            var item = SessionCLISimulator(udid: udid, name: shownName, runtime: runtime, state: "Booted", holder: caller,
+                                           holderName: callerName, mine: true, created: true, new: isNew)
+            item.slim = slim.state.rawValue
+            item.slimProfile = slim.profile
+            item.memoryBytes = memory
+            acquired.append(item)
         }
         await SimulatorsController.shared.reloadList()
         if let failure {
@@ -233,7 +310,9 @@ extension AppModel {
             response.headers[SessionCLI.exitHeader] = String(SessionCLI.Exit.failed.rawValue)
             return response
         }
-        let text = acquired.map { "\($0.udid)  \($0.name)" }.joined(separator: "\n")
-        return SessionCLI.answer(200, acquired, text: text, exit: .ok, json: json)
+        var response = SessionCLI.answer(200, acquired, text: SimulatorAllocation.acquireText(acquired), exit: .ok, json: json)
+        // Warnings for stderr (codes without spaces; the script prints them).
+        if !notes.isEmpty { response.headers[Decisions.noteHeader] = notes.joined(separator: ",") }
+        return response
     }
 }

@@ -177,8 +177,32 @@ public enum SimulatorAllocation {
 
     public static func listText(_ items: [SessionCLISimulator]) -> String {
         guard !items.isEmpty else { return "no simulators are held" }
-        let rows = items.map { [$0.udid, $0.state, $0.holderName ?? "-", $0.created ? "yes" : "no", $0.name] }
-        return SessionCLI.table([["UDID", "STATE", "HOLDER", "CREATED", "NAME"]] + rows)
+        let rows = items.map { [$0.udid, $0.state, $0.holderName ?? "-", $0.created ? "yes" : "no", $0.slimStatus ?? "-",
+                                $0.memoryBytes.map(gigabytes) ?? "-", $0.name] }
+        return SessionCLI.table([["UDID", "STATE", "HOLDER", "CREATED", "SLIM", "MEMORY", "NAME"]] + rows)
+    }
+
+    /// `acquire`'s text: "UDID  NAME" per device, then its slim state and memory.
+    public static func acquireText(_ items: [SessionCLISimulator]) -> String {
+        items.map { item in
+            var line = "\(item.udid)  \(item.name)"
+            if let slim = item.slim { line += "  slim=\(slim)" + (item.slimProfile.map { "(\($0))" } ?? "") }
+            if let bytes = item.memoryBytes { line += "  " + gigabytes(bytes) }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    static func gigabytes(_ bytes: UInt64) -> String { String(format: "%.1f GB", Double(bytes) / 1_073_741_824) }
+
+    /// The pool name of a device ClaudeDeck holds: its name with the holder's project taken out
+    /// again when it is "ClaudeDeck · <project> · <type> · <n>" for `type`.
+    public static func poolName(_ name: String, type: String) -> String? {
+        guard name.hasPrefix(namePrefix) else { return nil }
+        let marker = " · \(type) · "
+        guard let range = name.range(of: marker, options: .backwards) else { return nil }
+        let number = name[range.upperBound...]
+        guard !number.isEmpty, number.allSatisfy(\.isNumber) else { return nil }
+        return "\(namePrefix)\(type) · \(number)"
     }
 }
 
@@ -195,6 +219,14 @@ public struct SessionCLISimulator: Encodable, Sendable, Equatable {
     public var created: Bool
     /// `acquire`: a device it created just now (not reused).
     public var new: Bool?
+    /// `acquire`: "on", "off" or "unavailable" (SimSlim.State).
+    public var slim: String?
+    /// `acquire`: the simslim profile applied ("default", the simslim.json's name, "full").
+    public var slimProfile: String?
+    /// `acquire`: its memory footprint from `simslim measure`; `list`: from `simslim list`.
+    public var memoryBytes: UInt64?
+    /// `list`: "slim 109/173" (daemons disabled of those simslim manages) or "stock".
+    public var slimStatus: String?
 
     public init(udid: String, name: String, runtime: String?, state: String, holder: UUID?, holderName: String?,
                 mine: Bool, created: Bool, new: Bool? = nil) {

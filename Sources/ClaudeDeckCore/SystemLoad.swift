@@ -293,10 +293,16 @@ public struct LoadThresholds: Sendable, Equatable {
     public static let busyCalm: TimeInterval = 30
 
     public static func defaultCompilers(cores: Int) -> Int { max(4, Int((Double(cores) * 0.6).rounded())) }
-    public static func defaultSimulators(cores: Int) -> Int { min(10, max(2, cores / 5)) }
+    /// Slim simulators (simslim, SimSlim.swift) use a fraction of the memory: half again as many (4 → 6).
+    public static func defaultSimulators(cores: Int, slim: Bool = false) -> Int {
+        let base = min(10, max(2, cores / 5))
+        return slim ? base + base / 2 : base
+    }
     public static func defaultBuildSlots(cores: Int) -> Int { min(8, max(1, cores / 6)) }
 
-    public static func resolve(_ settings: LoadSettings, cores: Int) -> LoadThresholds {
+    /// `slim`: sim acquire slims its simulators (setting on, simslim installed). It raises only the
+    /// default simulator cap; a cap the owner set stays.
+    public static func resolve(_ settings: LoadSettings, cores: Int, slim: Bool = false) -> LoadThresholds {
         let cores = max(1, cores)
         let compilers = settings.maxCompilers ?? defaultCompilers(cores: cores)
         let slots = settings.buildSlots ?? defaultBuildSlots(cores: cores)
@@ -313,7 +319,7 @@ public struct LoadThresholds: Sendable, Equatable {
                               busySustain: 60,
                               busyCompilers: max(1, compilers / 2),
                               busyAction: settings.busyAction,
-                              maxSimulators: settings.maxSimulators ?? defaultSimulators(cores: cores),
+                              maxSimulators: settings.maxSimulators ?? defaultSimulators(cores: cores, slim: slim),
                               buildSlots: slots,
                               overloadedBuildSlots: min(settings.overloadedBuildSlots, slots),
                               maxSlotHold: TimeInterval(settings.maxSlotHoldMinutes * 60))
@@ -800,7 +806,39 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
                 lines.append("top projects:")
                 for entry in topProjects.prefix(10) { lines.append("  " + entry.line) }
             }
+            if let bootedSimulators, !bootedSimulators.isEmpty {
+                lines.append("booted simulators (memory, simslim):")
+                for sim in bootedSimulators { lines.append("  " + sim.line) }
+            }
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// `--detail` / `--json`: each booted simulator with its memory and simslim state; nil when
+    /// not read. Set after init (keeps the initializer other code calls unchanged).
+    public var bootedSimulators: [LoadSimulator]?
+}
+
+/// A booted simulator in `claudedeck load --detail`.
+public struct LoadSimulator: Encodable, Sendable, Equatable {
+    public var udid: String
+    public var name: String
+    /// The holding session's name; nil: not held by ClaudeDeck.
+    public var holder: String?
+    public var memoryBytes: UInt64?
+    /// "slim 109/173", "stock"; nil without simslim.
+    public var slim: String?
+
+    public init(udid: String, name: String, holder: String?, memoryBytes: UInt64?, slim: String?) {
+        self.udid = udid
+        self.name = name
+        self.holder = holder
+        self.memoryBytes = memoryBytes
+        self.slim = slim
+    }
+
+    public var line: String {
+        let memory = memoryBytes.map { String(format: "%.1f GB", Double($0) / 1_073_741_824) } ?? "-"
+        return "\(udid)  \(memory)  \(slim ?? "-")  \(holder.map { "held by \($0)" } ?? "user")  \(name)"
     }
 }

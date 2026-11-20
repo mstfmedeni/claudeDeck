@@ -262,6 +262,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var sessionsMayUseSimulators = false
     /// Released (or their session ended): shut down the simulators ClaudeDeck created.
     public var simulatorsShutDownOnRelease = true
+    /// `sim acquire` slims the simulators it hands out with simslim (SimSlim.swift), when installed.
+    public var simulatorsSlim = true
     /// Stall detection for sessions other sessions started (StallWatch). Off by default.
     public var stallWatch = StallSettings()
     /// `claudedeck close`: a session may end itself and the sessions it started (never the
@@ -370,6 +372,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayUseServerPlan = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseServerPlan) ?? d.sessionsMayUseServerPlan
         sessionsMayUseSimulators = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseSimulators) ?? d.sessionsMayUseSimulators
         simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
+        simulatorsSlim = try c.decodeIfPresent(Bool.self, forKey: .simulatorsSlim) ?? d.simulatorsSlim
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
         removeClosedSessions = try c.decodeIfPresent(Bool.self, forKey: .removeClosedSessions) ?? d.removeClosedSessions
