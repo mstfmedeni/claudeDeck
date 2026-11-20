@@ -364,12 +364,12 @@ final class RemoteController {
             }
             server.onServerPlanContainers = { serverID, logsOf, reply in
                 MainActor.assumeIsolated {
-                    Task { @MainActor in reply(await ServerPlanController.shared.phoneContainers(serverID: serverID, logsOf: logsOf)) }
+                    _ = Task { @MainActor in reply(await ServerPlanController.shared.phoneContainers(serverID: serverID, logsOf: logsOf)) }
                 }
             }
             server.onServerPlanContainerAction = { serverID, container, verb, reply in
                 MainActor.assumeIsolated {
-                    Task { @MainActor in reply(await ServerPlanController.shared.phoneContainerAction(serverID: serverID, container: container, verb: verb)) }
+                    _ = Task { @MainActor in reply(await ServerPlanController.shared.phoneContainerAction(serverID: serverID, container: container, verb: verb)) }
                 }
             }
             server.onPermission = { [weak self] id, stamp, approve in
