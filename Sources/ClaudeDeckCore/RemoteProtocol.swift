@@ -158,7 +158,8 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     case uploadAck(projectID: UUID, folder: String, name: String, received: Int, path: String?, error: String?)
     /// Remote → host: press Esc in a working session (interrupts Claude).
     case interrupt(sessionID: UUID)
-    /// Remote → host: end a running session / resume a closed one.
+    /// Remote → host: end a running session / resume a closed one (a closed terminal starts again
+    /// on hosts with `Feature.closedTerminals`).
     case stopSession(sessionID: UUID)
     case resumeSession(sessionID: UUID)
     /// Remote → host: the user looked at this session (clears "your turn").
@@ -418,11 +419,15 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let dismissServerIssues = "dismissServerIssues"
         /// `RemoteServerPlan.registrarBalance` (the Namecheap balance, ServerPlan 1.4).
         public static let registrarBalance = "registrarBalance"
+        /// `RemoteSession.kind`; stopped terminals come with the closed sessions, and
+        /// `resumeSession` / `sessionAction(.startFresh)` start them again (same folder, same command).
+        public static let closedTerminals = "closedTerminals"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
-                                              changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance]
+                                              changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
+                                              closedTerminals]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -611,6 +616,13 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     /// Claude sessions in an agent tree (`claudedeck new`): who started it, its launch options,
     /// what it holds (hosts with `Feature.agentTree`). Older remotes ignore it.
     public var agent: RemoteAgentInfo?
+    /// "claude" or "terminal" (hosts with `Feature.closedTerminals`; nil from older hosts). A
+    /// string, so a newer host's kinds don't break decoding. A stopped terminal stays
+    /// `.notStarted` on the wire, so older remotes list it with the closed sessions.
+    public var kind: String?
+
+    public static let terminalKind = "terminal"
+    public static let claudeKind = "claude"
 
     public init(
         id: UUID, name: String, project: String, state: State, detail: String? = nil,
@@ -625,6 +637,9 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
         self.unseen = unseen
         self.permissionStamp = permissionStamp
     }
+
+    /// A plain terminal: running (`.shell`), or stopped on a host that says so.
+    public var isTerminal: Bool { state == .shell || kind == Self.terminalKind }
 
     public var needsAttention: Bool {
         if state == .shell, let program { return program.isBlocked || (program.isOutcome && unseen) }

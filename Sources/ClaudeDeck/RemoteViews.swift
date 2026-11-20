@@ -461,8 +461,11 @@ struct RemoteClosedSessionRow: View {
                 }
             }
             Spacer(minLength: 4)
-            Button("Resume") { model.remote.resumeHostSession(session.id) }
-                .controlSize(.small)
+            // A stopped terminal starts again (its folder, its command) on a Mac that says it can.
+            if !session.isTerminal || model.remote.snapshot?.supports(RemoteSnapshot.Feature.closedTerminals) == true {
+                Button { model.remote.resumeHostSession(session.id) } label: { Text(session.isTerminal ? "Restart" : "Resume") }
+                    .controlSize(.small)
+            }
         }
         .sidebarRowPadding(1)
     }

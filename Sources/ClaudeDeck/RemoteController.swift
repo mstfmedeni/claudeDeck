@@ -459,8 +459,9 @@ final class RemoteController {
             }
             server.onResumeSession = { [weak self] id in
                 MainActor.assumeIsolated {
-                    guard let model = self?.model, model.deck.session(id)?.kind == .claude, !model.terminals.isRunning(id) else { return }
-                    model.launch(id, resume: model.canResume(id))
+                    guard let model = self?.model, let session = model.deck.session(id), !model.terminals.isRunning(id) else { return }
+                    // A stopped terminal starts again like the Mac's Reopen: its folder, its command.
+                    model.launch(id, resume: session.kind == .claude && model.canResume(id))
                     self?.publishSnapshot()
                 }
             }
@@ -756,8 +757,9 @@ final class RemoteController {
         let sessions: [RemoteSession] = model.deck.sessions.compactMap { session in
             let status = model.status(of: session.id)
             guard let state = RemoteSession.State(status.display) else { return nil }
-            // Closed sessions only when they can be resumed (the phone lists them under "Closed").
-            if state == .notStarted, session.kind != .claude || !model.canResume(session.id) { return nil }
+            // Closed Claude sessions only when they can be resumed; stopped terminals always (the
+            // remote lists both under "Closed" and starts a terminal again with its command).
+            if state == .notStarted, session.kind == .claude, !model.canResume(session.id) { return nil }
             var remote = RemoteSession(
                 id: session.id,
                 name: session.name,
@@ -768,6 +770,7 @@ final class RemoteController {
                 unseen: model.isUnseenIdle(session.id),
                 permissionStamp: model.pendingPermissionStamp(session.id)?.timeIntervalSince1970
             )
+            remote.kind = session.kind == .shell ? RemoteSession.terminalKind : RemoteSession.claudeKind
             remote.queue = session.queue.isEmpty ? nil : session.queue
             remote.notesRevision = model.agentNotesRevision[session.id]
             if session.kind == .claude, session.startedBy != nil || starters.contains(session.id) {
