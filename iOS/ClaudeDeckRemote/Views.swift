@@ -439,7 +439,11 @@ struct SessionListView: View {
                 Section {
                     DisclosureGroup {
                         ForEach(closed) { session in
+                            let terminal = session.isTerminal
                             HStack {
+                                if terminal {
+                                    Image(systemName: "apple.terminal").listFont(.caption).foregroundStyle(.secondary)
+                                }
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(session.name).listFont(.body).lineLimit(1)
                                     if !session.project.isEmpty, !session.name.hasPrefix(session.project) {
@@ -447,17 +451,25 @@ struct SessionListView: View {
                                     }
                                 }
                                 Spacer()
-                                Button { store.resumeSession(session.id, from: sceneID) } label: { Text("Resume").listFont(.subheadline) }
+                                if canStart(session) {
+                                    Button { store.resumeSession(session.id, from: sceneID) } label: {
+                                        Text(terminal ? "Restart" : "Resume").listFont(.subheadline)
+                                    }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
+                                }
                             }
                             .contextMenu {
-                                Button { store.resumeSession(session.id, from: sceneID) } label: {
-                                    Label("Resume", systemImage: "play")
+                                if canStart(session) {
+                                    Button { store.resumeSession(session.id, from: sceneID) } label: {
+                                        if terminal { Label("Restart", systemImage: "arrow.clockwise") } else { Label("Resume", systemImage: "play") }
+                                    }
                                 }
                                 if store.snapshot?.supports(RemoteSnapshot.Feature.sessionActions) == true {
-                                    Button { store.sessionAction(session.id, .startFresh) } label: {
-                                        Label("Start Fresh", systemImage: "sparkles")
+                                    if !terminal {
+                                        Button { store.sessionAction(session.id, .startFresh) } label: {
+                                            Label("Start Fresh", systemImage: "sparkles")
+                                        }
                                     }
                                     Button(role: .destructive) { store.sessionAction(session.id, .remove) } label: {
                                         Label("Remove", systemImage: "trash")
@@ -477,7 +489,7 @@ struct SessionListView: View {
             if !inactive.isEmpty {
                 Section(isExpanded: $inactiveExpanded) {
                     ForEach(inactive) { project in
-                        let resumable = closed.filter { $0.project == project.name }
+                        let resumable = closed.filter { $0.project == project.name && canStart($0) }
                         ProjectRow(name: project.name, pinned: false, count: 0, resumable: resumable, compact: true) { AnyView(newItems(project.id)) }
                         .modifier(ListRowDensity(minimum: 1))
                         .contextMenu {
@@ -620,9 +632,15 @@ extension SessionListView {
     func resumeButtons(_ closed: [RemoteSession]) -> some View {
         ForEach(closed) { session in
             Button { store.resumeSession(session.id, from: sceneID) } label: {
-                Label(session.name, systemImage: "play")
+                Label(session.name, systemImage: session.isTerminal ? "apple.terminal" : "play")
             }
         }
+    }
+
+    /// A closed Claude session resumes on any Mac; a stopped terminal starts again only on a Mac
+    /// that says it can (older ones don't send them, and ignore `resumeSession` for terminals).
+    func canStart(_ session: RemoteSession) -> Bool {
+        !session.isTerminal || store.snapshot?.supports(RemoteSnapshot.Feature.closedTerminals) == true
     }
 
     /// Starting something in a project (the project's "+" and its menu), like the Mac.
@@ -715,7 +733,9 @@ struct ProjectRow: View {
                 Menu {
                     Section("Resume") {
                         ForEach(resumable) { session in
-                            Button { store.resumeSession(session.id, from: sceneID) } label: { Text(session.name) }
+                            Button { store.resumeSession(session.id, from: sceneID) } label: {
+                                if session.isTerminal { Label(session.name, systemImage: "apple.terminal") } else { Text(session.name) }
+                            }
                         }
                     }
                 } label: {

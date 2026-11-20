@@ -352,7 +352,7 @@ struct SimulatorsScreen: View {
                     HStack(spacing: 6) {
                         ForEach(sessions) { session in
                             Button { store.open(session.id, in: sceneID) } label: {
-                                Label(session.name, systemImage: session.state == .shell ? "apple.terminal" : "bubble.left")
+                                Label(session.name, systemImage: session.isTerminal ? "apple.terminal" : "bubble.left")
                                     .font(.caption)
                                     .lineLimit(1)
                             }

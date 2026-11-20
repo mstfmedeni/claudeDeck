@@ -558,6 +558,14 @@ final class RemoteStore {
         }
         // A terminal on screen whose command finished: seen, like the Mac's selected terminal.
         for id in sinks.keys { markTerminalSeen(id) }
+        // A terminal on screen that just started again (a stopped terminal restarted from here, or
+        // the Mac): its start may have come after the Mac answered "not running", so watch again.
+        for id in sinks.keys where terminalStates[id] == .ended {
+            let stopped: (RemoteSession.State?) -> Bool = { $0 == nil || $0 == .notStarted || $0 == .ended }
+            guard stopped(old?.session(id)?.state), !stopped(new.session(id)?.state) else { continue }
+            terminalStates[id] = .waiting
+            hostConnection?.openTerminal(id)
+        }
         answering = answering.filter { new.session($0)?.permissionStamp != nil || new.session($0)?.state == .needsAnswer }
         for session in fresh { LocalAlerts.post(session, hostName: new.hostName) }
     }

@@ -631,7 +631,7 @@ struct SessionDetailView: View {
                 .background(.bar)
             }
             // A plain terminal has no conversation.
-            let isShell = session?.state == .shell
+            let isShell = session?.isTerminal == true
             if !isShell {
                 Picker("View", selection: $mode) {
                     Text("Conversation").tag(Mode.conversation)
@@ -653,7 +653,7 @@ struct SessionDetailView: View {
         .navigationTitle(session?.name ?? String(localized: "Session"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if mode == .terminal || session?.state == .shell {
+            if mode == .terminal || session?.isTerminal == true {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { fitToScreen.toggle() } label: {
                         Image(systemName: fitToScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
