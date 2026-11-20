@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Security
 import Testing
 @testable import ClaudeDeckCore
 
@@ -136,6 +137,84 @@ import Testing
         let newer = PtydFileIdentity(device: 1, inode: 12, size: 130, modified: 3)
         #expect(!see(newer, 21))
         #expect(see(newer, 24))
+    }
+}
+
+// MARK: - Code identity after an update (harness, opt-in)
+
+/// What privacy (TCC) checks about a process, approximately: its running code, validated
+/// against the file at its path on disk (and, with a requirement, against that too). After an
+/// update replaced the file, the old image fails this; that is the owner's "Operation not
+/// permitted" in every session of a helper that outlived an update.
+private func runningCodeStatus(pid: pid_t, requirement: String? = nil) -> OSStatus {
+    var code: SecCode?
+    let attributes = [kSecGuestAttributePid: NSNumber(value: pid)] as CFDictionary
+    let found = SecCodeCopyGuestWithAttributes(nil, attributes, [], &code)
+    guard found == errSecSuccess, let code else { return found }
+    var parsed: SecRequirement?
+    if let requirement { SecRequirementCreateWithString(requirement as CFString, [], &parsed) }
+    return SecCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), parsed)
+}
+
+private func run(_ tool: String, _ args: [String]) -> Int32 {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: tool)
+    process.arguments = args
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return -1 }
+    process.waitUntilExit()
+    return process.terminationStatus
+}
+
+/// Opt-in (`CLAUDEDECK_PTYD_SIGN_IDENTITY=<codesigning identity hash>`): the real helper, signed
+/// with a real identity like a release, is replaced on disk by a newer signature of itself
+/// while it serves a session. Its running code then no longer validates against its file (what
+/// breaks TCC); after the in-place upgrade it validates again, same pid, same child.
+@Suite(.serialized, .enabled(if: helperBinary != nil && ProcessInfo.processInfo.environment["CLAUDEDECK_PTYD_SIGN_IDENTITY"] != nil,
+                             "set CLAUDEDECK_PTYD_SIGN_IDENTITY to run"))
+struct PtydCodeIdentityHarness {
+    @Test func upgradeMakesTheRunningCodeMatchItsFileAgain() throws {
+        let identity = try #require(ProcessInfo.processInfo.environment["CLAUDEDECK_PTYD_SIGN_IDENTITY"])
+        let original = try #require(helperBinary)
+        let work = URL(fileURLWithPath: "/tmp/cdptyd-tcc-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        // Two signatures of the same code by the same developer: different cdhash, same
+        // designated requirement (identifier + team), like two releases.
+        let old = work.appending(path: "old"), new = work.appending(path: "new")
+        try FileManager.default.copyItem(at: original, to: old)
+        try FileManager.default.copyItem(at: original, to: new)
+        let id = "co.codemagnet.ClaudeDeck.ptyd-harness"
+        #expect(run("/usr/bin/codesign", ["--force", "--timestamp=none", "--sign", identity, "--identifier", id, old.path]) == 0)
+        #expect(run("/usr/bin/codesign", ["--force", "--timestamp=none", "--options", "runtime", "--sign", identity,
+                                          "--identifier", id, new.path]) == 0)
+        let installed = work.appending(path: "claudedeck-ptyd")
+        try FileManager.default.copyItem(at: old, to: installed)
+
+        let helper = try HelperProcess(binary: installed, extra: ["--upgrade-allow-same-build", "--watch-interval", "0"],
+                                       logging: true)
+        #expect(helper.waitUntilListening())
+        let pid = helper.process.processIdentifier
+        let client = try helper.connect(Collector())
+        let spawn = shellSpawn(tickLoop)
+        let info = try sync { client.spawn(spawn, $0) }
+        #expect(runningCodeStatus(pid: pid) == errSecSuccess)
+
+        // The update lands (rename over the old file, like Sparkle's bundle swap).
+        #expect(rename(new.path, installed.path) == 0)
+        let stale = runningCodeStatus(pid: pid)
+        #expect(stale != errSecSuccess, "the old image should no longer match its file")
+
+        #expect(try upgrade(client).message.op == .ok)
+        #expect(waitFor(10) { helper.log.contains("resumed from build") })
+        #expect(helper.process.processIdentifier == pid)
+        #expect(runningCodeStatus(pid: pid) == errSecSuccess, "\(helper.log)")
+        let again = try reconnect(helper, Collector())
+        #expect(try sync { again.list($0) }.first { $0.id == spawn.id }?.pid == info.pid)
+        #expect(kill(info.pid, 0) == 0)
+        print("code identity harness: stale image status \(stale), after re-exec \(runningCodeStatus(pid: pid))")
+        helper.kill()
     }
 }
 

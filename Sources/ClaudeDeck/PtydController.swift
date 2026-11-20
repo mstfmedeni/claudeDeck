@@ -17,9 +17,14 @@ import ServiceManagement
 /// CLAUDEDECK_DATA_DIR set, or when the build has no plist, it runs as a detached child process
 /// instead (no launchd).
 ///
-/// Upgrades: a helper of another build with no live session is replaced at once (`adopt`); one
-/// that still serves sessions keeps doing so, Settings offers the restart, and once its last
-/// session ends it is replaced too (`upgradeIfIdle`).
+/// Upgrades: a helper of another build with no live session is replaced at once (`adopt`). One
+/// that serves sessions and speaks protocol 3 is asked to `upgrade`: it re-execs itself into the
+/// binary now on disk (same pid, same instance, every session kept; PtydHandover), so its code
+/// matches its file again and privacy (TCC) grants keep applying. It also does that by itself
+/// when it sees its binary replaced. The dropped connection is then carried over to the same
+/// helper without stopping anything (`carryOver`). An older helper can't: it is restarted once
+/// its sessions are quiet (`scheduleQuietRestart`, on by default), or from the banner; and once
+/// its last session ends it is replaced too (`upgradeIfIdle`).
 @MainActor
 @Observable
 final class PtydController {
@@ -228,6 +233,7 @@ final class PtydController {
         connected.onOutput = { [weak self] id, bytes in
             MainActor.assumeIsolated {
                 guard let id = UUID(uuidString: id) else { return }
+                self?.lastHelperOutput = .now
                 self?.model?.terminals.helperOutput(id, bytes)
             }
         }
@@ -260,6 +266,122 @@ final class PtydController {
         // A new helper process (connect, restart, upgrade): its grants may differ from the last one's.
         helperAccess = nil
         checkAccessIfRelevant()
+        upgradeOutdatedHelper()
+    }
+
+    // MARK: Upgrading in place
+
+    /// Helper builds already asked to upgrade (instance + build): asked once, not in a loop if
+    /// it refuses (e.g. this app is the older one).
+    @ObservationIgnored private var upgradeAsked: Set<String> = []
+
+    /// The connected helper is another build: one that can swap its code in place is asked to;
+    /// one that can't is restarted at a quiet moment (or the banner offers it).
+    private func upgradeOutdatedHelper() {
+        guard let client, client.isFull, client.welcome.build != Self.appBuild else { return }
+        guard client.supportsUpgrade else {
+            scheduleQuietRestart()
+            return
+        }
+        let key = client.welcome.instance + "/" + client.welcome.build
+        guard !upgradeAsked.contains(key) else { return }
+        upgradeAsked.insert(key)
+        ptydLog.info("asking helper build \(client.welcome.build, privacy: .public) to upgrade in place to \(Self.appBuild, privacy: .public)")
+        client.upgrade { result in
+            switch result {
+            case .success:
+                // The connection drops in a moment; `connectionLost` carries the sessions over.
+                ptydLog.info("the helper is upgrading in place")
+            case .failure(let error):
+                ptydLog.error("the helper didn't upgrade: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    /// The same helper process answered again after the connection dropped (it re-exec'd into an
+    /// update, or only the connection broke): its sessions still run, so they move to the new
+    /// connection without stopping (replaying their scrollback). Those it no longer has alive
+    /// ended meanwhile and take the usual path. False if it didn't list its sessions.
+    private func carryOver(from lost: PtydClient, to fresh: PtydClient) async -> Bool {
+        guard let sessions = try? await fresh.list(timeout: 15) else {
+            fresh.close()
+            return false
+        }
+        guard client == nil else {
+            // Something else connected meanwhile (a restart): it decides.
+            fresh.close()
+            return false
+        }
+        install(fresh, sessions: sessions)
+        let alive = Dictionary(sessions.filter(\.alive).map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        var carried = 0
+        for id in model?.terminals.helperSessionIDs ?? [] {
+            guard let info = alive[id.uuidString] else { continue }
+            model?.terminals.attachHelper(id, client: fresh, readOnly: !fresh.isFull, known: info)
+            carried += 1
+        }
+        let rest = model?.terminals.helperLost(lost) ?? []
+        ptydLog.info("reattached \(carried) sessions to helper build \(fresh.welcome.build, privacy: .public) (same process); \(rest.count) ended meanwhile")
+        if !rest.isEmpty { await model?.recoverHelperSessions(rest) }
+        return true
+    }
+
+    // MARK: Restarting a helper that can't upgrade in place
+
+    /// Settings › Sessions: restart an outdated helper by itself once its sessions are quiet
+    /// (default on). Per Mac user, like the banner's dismissal.
+    nonisolated static let autoRestartKey = "ptyd.autoRestartOutdatedHelper"
+    static var autoRestartOutdated: Bool {
+        UserDefaults.standard.object(forKey: autoRestartKey) as? Bool ?? true
+    }
+
+    @ObservationIgnored private var lastHelperOutput = ContinuousClock.now
+    @ObservationIgnored private var quietRestartTask: Task<Void, Never>?
+    /// Waiting for a quiet moment to restart an outdated helper.
+    private(set) var awaitingQuietRestart = false
+
+    /// A helper from before in-place upgrades (protocol < 3) runs another build's code and
+    /// serves sessions: only a restart (which ends and resumes them) brings this build's helper.
+    /// Happens once; every helper from then on upgrades in place.
+    var needsRestartToUpgrade: Bool {
+        // `state` and `helperBuild` first: they are what views observe (`client` isn't).
+        guard case .live(_, _, let sessions) = state, let build = helperBuild, build != Self.appBuild,
+              let client, client.isFull, !client.supportsUpgrade else { return false }
+        return sessions.values.contains(where: \.alive)
+    }
+
+    /// Restarts the outdated helper once nothing happens in it: no output from any of its
+    /// sessions and no typing for 30 s, no Claude session working, three checks in a row.
+    func scheduleQuietRestart() {
+        guard quietRestartTask == nil, needsRestartToUpgrade, Self.autoRestartOutdated,
+              model?.deck.settings.keepSessionsRunning == true else { return }
+        ptydLog.info("helper build \(self.helperBuild ?? "?", privacy: .public) can't upgrade in place; restarting it when its sessions are quiet")
+        awaitingQuietRestart = true
+        quietRestartTask = Task { @MainActor [weak self] in
+            var quietChecks = 0
+            while let self, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard self.needsRestartToUpgrade, Self.autoRestartOutdated,
+                      self.model?.deck.settings.keepSessionsRunning == true else { break }
+                quietChecks = self.isQuiet ? quietChecks + 1 : 0
+                if quietChecks >= 3 {
+                    ptydLog.info("restarting the outdated helper build \(self.helperBuild ?? "?", privacy: .public) at a quiet moment")
+                    await self.restartHelper()
+                    break
+                }
+            }
+            self?.quietRestartTask = nil
+            self?.awaitingQuietRestart = false
+        }
+    }
+
+    private var isQuiet: Bool {
+        guard !restarting, held.isEmpty, let model, let client else { return false }
+        let quietFor: Duration = .seconds(30)
+        guard ContinuousClock.now - lastHelperOutput > quietFor else { return false }
+        if let typed = client.lastInputAt, Date().timeIntervalSince(typed) < 30 { return false }
+        // Claude waiting on a long tool call can be silent: its status still says it's working.
+        return !model.terminals.helperSessionIDs.contains { model.status(of: $0).display.isRunning }
     }
 
     private func setState(_ new: PtydHelperState) {
@@ -452,8 +574,10 @@ final class PtydController {
 
     // MARK: Helper gone
 
-    /// The connection dropped: the helper quit, crashed or was restarted. Its sessions get
-    /// SIGHUP and end; once they're gone, AppModel resumes them (never twice: see PtydLaunchPlan).
+    /// The connection dropped: the helper re-exec'd into an update, quit, crashed or was
+    /// restarted. The same helper answering again keeps every session (`carryOver`). Otherwise
+    /// its sessions got SIGHUP and end; once they're gone, AppModel resumes them (never twice:
+    /// see PtydLaunchPlan).
     private func connectionLost(_ lostClient: PtydClient) {
         guard client === lostClient else { return }
         ptydLog.error("lost the helper connection")
@@ -462,17 +586,23 @@ final class PtydController {
         helperAccess = nil
         liveSessions = [:]
         state = .unknown
-        let lost = model?.terminals.helperLost(lostClient) ?? []
         Task { @MainActor in
-            // A helper that's still alive (only the connection broke) is reconnected; a dead one
-            // releases its lock within moments.
+            // A helper that's still alive (it re-exec'd, or only the connection broke) is
+            // reconnected; a dead one has released its lock already. Meanwhile its sessions stay
+            // as they are on screen: nothing is marked stopped for a reconnect.
             let deadline = ContinuousClock.now + .seconds(6)
             var reconnected: PtydClient?
             while ContinuousClock.now < deadline, paths.helperHoldsLock() {
                 if let again = await tryConnect(for: .milliseconds(500)) { reconnected = again; break }
             }
-            if let reconnected {
-                await adopt(reconnected, startIfNeeded: false)
+            var reusable = reconnected
+            if let reconnected, !restarting, reconnected.welcome.instance == lostClient.welcome.instance {
+                if await carryOver(from: lostClient, to: reconnected) { return }
+                reusable = nil // closed by carryOver
+            }
+            let lost = model?.terminals.helperLost(lostClient) ?? []
+            if let reusable {
+                await adopt(reusable, startIfNeeded: false)
             } else {
                 await connect(startIfNeeded: model?.deck.settings.keepSessionsRunning == true)
             }

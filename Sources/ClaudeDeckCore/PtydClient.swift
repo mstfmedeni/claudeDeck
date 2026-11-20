@@ -191,8 +191,14 @@ public final class PtydClient: @unchecked Sendable {
 
     public func write(_ id: String, _ bytes: [UInt8]) {
         guard !bytes.isEmpty else { return }
+        activityLock.withLock { lastInput = Date() }
         post(PtydMessage(op: .write, session: id), payload: bytes)
     }
+
+    /// When input was last sent to any session over this connection (nil: never).
+    public var lastInputAt: Date? { activityLock.withLock { lastInput } }
+    private let activityLock = NSLock()
+    private var lastInput: Date?
 
     public func resize(_ id: String, cols: Int, rows: Int) {
         var message = PtydMessage(op: .resize, session: id)

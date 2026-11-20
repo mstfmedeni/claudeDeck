@@ -37,6 +37,7 @@ struct PtydSettingsRows: View {
             if model.deck.settings.keepSessionsRunning {
                 PtydAccessRows()
             }
+            PtydAutoRestartToggle()
         }
         if let problem = ptyd.problem {
             Text(problem).font(.caption).foregroundStyle(.red)
@@ -107,6 +108,22 @@ struct PtydAccessRows: View {
     }
 }
 
+/// Settings › Sessions: whether a helper too old to upgrade in place is restarted by itself once
+/// its sessions are quiet (on by default).
+struct PtydAutoRestartToggle: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(PtydController.autoRestartKey) private var autoRestart = true
+
+    var body: some View {
+        Toggle("Restart an outdated helper when its sessions are quiet", isOn: $autoRestart)
+            .onChange(of: autoRestart) { _, on in
+                if on { model.ptyd.scheduleQuietRestart() }
+            }
+        Text("The session helper updates itself with ClaudeDeck without interrupting its sessions. A helper from an older version can't: it needs one restart, which resumes its sessions. With this on, ClaudeDeck does it when nothing is happening in them.")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+}
+
 /// "Restart Helper (Restarts Sessions)…", disabled while a restart runs.
 struct PtydRestartButton: View {
     @Environment(AppModel.self) private var model
@@ -147,6 +164,29 @@ struct PtydBanner: View {
                 }
                 .buttonStyle(.borderless)
                 .help(Text("Don't show again"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.orange.opacity(0.12))
+        }
+        if readOnly == 0, held == 0, ptyd.needsRestartToUpgrade, model.deck.settings.keepSessionsRunning {
+            // A helper from before in-place upgrades: it needs one restart (happens once).
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
+                if ptyd.awaitingQuietRestart {
+                    Text("The session helper is from an older version and can't update itself. ClaudeDeck restarts it once its sessions are quiet; they resume.")
+                        .font(.callout)
+                } else {
+                    Text("The session helper is from an older version and can't update itself. Restart it once to update it; its sessions resume.")
+                        .font(.callout)
+                }
+                Spacer()
+                Button {
+                    model.confirmRestartHelper()
+                } label: {
+                    ptyd.restarting ? Text("Restarting…") : Text("Restart Helper (Restarts Sessions)…")
+                }
+                .disabled(ptyd.restarting)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
