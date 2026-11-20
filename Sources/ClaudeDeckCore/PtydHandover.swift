@@ -402,3 +402,58 @@ public struct PtydBinaryWatch: Sendable, Equatable {
         seen = nil
     }
 }
+
+// MARK: - Restarting a helper that can't upgrade in place
+
+/// When the app restarts a helper from before in-place upgrades (protocol < 3) that runs an
+/// older build: a one-time migration that ends and resumes its sessions. Pure, so it's testable.
+///
+/// After an update replaced its binary, such a helper's sessions have usually already lost
+/// privacy grants (Desktop, Full Disk Access): then it is restarted right away, giving working
+/// Claude sessions at most a minute to finish their turn. If its access is intact, it waits for
+/// a quiet moment, but never longer than 30 minutes.
+public enum PtydMigrationPlan {
+    public enum Access: Sendable, Equatable {
+        /// The helper can't open something the app can: its sessions are already failing.
+        case lost
+        case intact
+        /// Not probed yet (or no answer): treated as intact.
+        case unknown
+    }
+
+    public enum Reason: Sendable, Equatable {
+        case accessLost
+        case quiet
+        case timeLimit
+    }
+
+    public enum Decision: Sendable, Equatable {
+        /// The setting is off: only the banner offers the restart.
+        case banner
+        case wait
+        case restart(Reason)
+    }
+
+    /// How long working Claude sessions may finish their turn once access is lost.
+    public static let accessLostGrace: TimeInterval = 60
+    /// The longest the quiet-moment rule waits.
+    public static let quietCap: TimeInterval = 30 * 60
+    /// Quiet checks in a row that make a quiet moment.
+    public static let quietChecksNeeded = 3
+
+    /// - Parameters:
+    ///   - waited: seconds since the migration was scheduled.
+    ///   - accessLostFor: seconds since the lost access was noticed (nil while it isn't lost).
+    ///   - claudeWorking: a Claude session in the helper is working on a turn.
+    ///   - quietChecks: consecutive checks that found the helper quiet.
+    public static func decide(autoRestart: Bool, access: Access, waited: TimeInterval, accessLostFor: TimeInterval?,
+                              claudeWorking: Bool, quietChecks: Int) -> Decision {
+        guard autoRestart else { return .banner }
+        if access == .lost {
+            return !claudeWorking || (accessLostFor ?? 0) >= accessLostGrace ? .restart(.accessLost) : .wait
+        }
+        if quietChecks >= quietChecksNeeded { return .restart(.quiet) }
+        if waited >= quietCap { return .restart(.timeLimit) }
+        return .wait
+    }
+}

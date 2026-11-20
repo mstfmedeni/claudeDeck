@@ -408,3 +408,39 @@ struct PtydUpgradeIntegrationTests {
         helper.kill()
     }
 }
+
+// MARK: - One-time restart of a helper that can't upgrade in place (unit)
+
+@Suite struct PtydMigrationPlanTests {
+    private func decide(auto: Bool = true, _ access: PtydMigrationPlan.Access, waited: TimeInterval = 0,
+                        lostFor: TimeInterval? = nil, working: Bool = false, quiet: Int = 0) -> PtydMigrationPlan.Decision {
+        PtydMigrationPlan.decide(autoRestart: auto, access: access, waited: waited, accessLostFor: lostFor,
+                                 claudeWorking: working, quietChecks: quiet)
+    }
+
+    /// Its sessions already get EPERM: restart now, at most a minute for working Claude turns.
+    @Test func lostAccessRestartsRightAway() {
+        #expect(decide(.lost, lostFor: 0) == .restart(.accessLost))
+        #expect(decide(.lost, lostFor: 0, working: true) == .wait)
+        #expect(decide(.lost, lostFor: 59, working: true) == .wait)
+        #expect(decide(.lost, lostFor: 60, working: true) == .restart(.accessLost))
+        // Not waiting for quiet: busy output doesn't matter.
+        #expect(decide(.lost, waited: 5, lostFor: 5, quiet: 0) == .restart(.accessLost))
+    }
+
+    /// Access intact (or not known): a quiet moment, 30 minutes at most.
+    @Test func intactAccessWaitsForQuietOrTheCap() {
+        for access in [PtydMigrationPlan.Access.intact, .unknown] {
+            #expect(decide(access, waited: 10, quiet: 2) == .wait)
+            #expect(decide(access, waited: 10, quiet: 3) == .restart(.quiet))
+            #expect(decide(access, waited: 29 * 60, working: true) == .wait)
+            #expect(decide(access, waited: 30 * 60, working: true) == .restart(.timeLimit))
+        }
+    }
+
+    /// Setting off: never restarted automatically, only the banner.
+    @Test func settingOffLeavesItToTheBanner() {
+        #expect(decide(auto: false, .lost, lostFor: 600) == .banner)
+        #expect(decide(auto: false, .intact, waited: 3600, quiet: 10) == .banner)
+    }
+}

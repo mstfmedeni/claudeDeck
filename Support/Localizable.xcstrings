@@ -21743,6 +21743,16 @@
           }
         }
       }
+    },
+    "ClaudeDeck was updated; the session helper was restarted (%lld sessions resume where they left off).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck güncellendi; oturum yardımcısı yeniden başlatıldı (%lld oturum kaldığı yerden devam ediyor)."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

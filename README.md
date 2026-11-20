@@ -328,7 +328,9 @@ processes, so quitting, a crash or an update of ClaudeDeck no longer ends them.
   logs why in `ptyd.log`.
   - A helper from before this (0.6.12 and older) can't: it needs one restart, which resumes its
     sessions. Settings › Sessions › "Restart an outdated helper when its sessions are quiet" (on by
-    default) does it once nothing happens in them for a while; otherwise a banner offers **Restart
+    default) does it right away if the old helper already lost disk access after the update (working
+    Claude sessions get up to a minute to finish their turn), else once nothing happens in them for a
+    while (30 minutes at most), and posts a notification; otherwise a banner offers **Restart
     Helper (Restarts Sessions)**. With no session in it, it is replaced at once.
   - With an incompatible helper, its sessions are shown read-only with a banner. **Restart Helper
     (Restarts Sessions)** is always in Settings › Sessions while the helper runs.

@@ -3,6 +3,7 @@ import ClaudeDeckCore
 import Foundation
 import Observation
 import ServiceManagement
+import UserNotifications
 
 /// The app's side of the session helper (`claudedeck-ptyd`, Settings › Sessions › "Keep sessions
 /// running when ClaudeDeck quits"): finds or starts the helper, keeps the connection, and tells
@@ -354,38 +355,74 @@ final class PtydController {
         return sessions.values.contains(where: \.alive)
     }
 
-    /// Restarts the outdated helper once nothing happens in it: no output from any of its
-    /// sessions and no typing for 30 s, no Claude session working, three checks in a row.
+    /// The one-time restart of an outdated helper (PtydMigrationPlan). Its access is probed
+    /// first: lost (the update replaced its binary under it, so its sessions already get
+    /// "Operation not permitted") means a restart right away, after at most a minute for working
+    /// Claude sessions to finish their turn. Otherwise it waits for a quiet moment (no output from
+    /// its sessions and no typing for 30 s, no Claude session working, three checks in a row),
+    /// 30 minutes at most. Checked every 5 s.
     func scheduleQuietRestart() {
         guard quietRestartTask == nil, needsRestartToUpgrade, Self.autoRestartOutdated,
               model?.deck.settings.keepSessionsRunning == true else { return }
-        ptydLog.info("helper build \(self.helperBuild ?? "?", privacy: .public) can't upgrade in place; restarting it when its sessions are quiet")
+        ptydLog.info("helper build \(self.helperBuild ?? "?", privacy: .public) can't upgrade in place; checking its access before restarting it")
         awaitingQuietRestart = true
         quietRestartTask = Task { @MainActor [weak self] in
+            let started = Date()
+            var accessLostAt: Date?
             var quietChecks = 0
+            if let self, self.helperAccess == nil { await self.checkAccess() }
             while let self, !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard self.needsRestartToUpgrade, Self.autoRestartOutdated,
-                      self.model?.deck.settings.keepSessionsRunning == true else { break }
+                guard self.needsRestartToUpgrade, self.model?.deck.settings.keepSessionsRunning == true else { break }
+                let access: PtydMigrationPlan.Access = self.helperLacksAccess ? .lost
+                    : self.helperAccess == nil || self.helperAccess?.level == .unknown ? .unknown : .intact
+                if access == .lost, accessLostAt == nil {
+                    accessLostAt = Date()
+                    ptydLog.error("the outdated helper lost disk access after the update; restarting it now")
+                }
                 quietChecks = self.isQuiet ? quietChecks + 1 : 0
-                if quietChecks >= 3 {
-                    ptydLog.info("restarting the outdated helper build \(self.helperBuild ?? "?", privacy: .public) at a quiet moment")
+                let decision = PtydMigrationPlan.decide(
+                    autoRestart: Self.autoRestartOutdated, access: access,
+                    waited: Date().timeIntervalSince(started),
+                    accessLostFor: accessLostAt.map { Date().timeIntervalSince($0) },
+                    claudeWorking: self.claudeWorkingInHelper, quietChecks: quietChecks)
+                if case .restart(let reason) = decision {
+                    let count = (self.model?.terminals.helperSessionIDs.count ?? 0) + self.held.count
+                    ptydLog.info("restarting the outdated helper build \(self.helperBuild ?? "?", privacy: .public) (\(String(describing: reason), privacy: .public))")
                     await self.restartHelper()
+                    Self.notifyHelperRestarted(sessions: count)
                     break
                 }
+                if decision == .banner { break }
+                try? await Task.sleep(for: .seconds(5))
             }
             self?.quietRestartTask = nil
             self?.awaitingQuietRestart = false
         }
     }
 
+    private var claudeWorkingInHelper: Bool {
+        guard let model else { return false }
+        return model.terminals.helperSessionIDs.contains { model.status(of: $0).display.isRunning }
+    }
+
+    /// "ClaudeDeck updated; the session helper was restarted (N sessions resume)", once, after
+    /// the automatic migration restart.
+    private static func notifyHelperRestarted(sessions: Int) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "ClaudeDeck"
+        content.body = String(localized: "ClaudeDeck was updated; the session helper was restarted (\(sessions) sessions resume where they left off).")
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "ptyd-migration-restart", content: content, trigger: nil))
+    }
+
     private var isQuiet: Bool {
-        guard !restarting, held.isEmpty, let model, let client else { return false }
+        guard !restarting, held.isEmpty, model != nil, let client else { return false }
         let quietFor: Duration = .seconds(30)
         guard ContinuousClock.now - lastHelperOutput > quietFor else { return false }
         if let typed = client.lastInputAt, Date().timeIntervalSince(typed) < 30 { return false }
         // Claude waiting on a long tool call can be silent: its status still says it's working.
-        return !model.terminals.helperSessionIDs.contains { model.status(of: $0).display.isRunning }
+        return !claudeWorkingInHelper
     }
 
     private func setState(_ new: PtydHelperState) {
