@@ -201,6 +201,84 @@ public struct RemoteLoad: Codable, Sendable, Equatable {
     public var bootedSimulators: [BootedSimulator]?
     /// The overload triggers firing now (`compilers`, `load`, …; hosts with `Feature.loadDetail`).
     public var fired: [String]?
+    /// The last hour, one point per minute, oldest first, at most `maxHistory` (hosts with
+    /// `Feature.loadHistory`). Only finished minutes, so it changes once a minute.
+    public var history: [Sample]?
+    /// The heaviest projects (hosts with `Feature.loadHistory`, while measured).
+    public var topProjects: [ProjectUse]?
+    /// Who holds the build slots now (hosts with `Feature.loadHistory`).
+    public var slotHolders: [SlotHolder]?
+    /// Compiler and linker processes running now, the busiest first (hosts with `Feature.loadHistory`, while measured).
+    public var runningBuilds: [Build]?
+
+    public static let maxHistory = 60
+    public static let maxBuilds = 8
+
+    /// One minute of the Mac's load (averages; simulators and builds at their highest).
+    public struct Sample: Codable, Sendable, Equatable, Identifiable {
+        public var at: Date
+        /// The 1-minute load per core, to two decimals.
+        public var loadPerCore: Double
+        public var memoryPercent: Int
+        public var simulators: Int
+        public var builds: Int
+        public var id: Date { at }
+        public init(at: Date, loadPerCore: Double, memoryPercent: Int, simulators: Int, builds: Int) {
+            self.at = at
+            self.loadPerCore = (loadPerCore * 100).rounded() / 100
+            self.memoryPercent = memoryPercent
+            self.simulators = simulators
+            self.builds = builds
+        }
+    }
+
+    /// A project with its sessions' use together.
+    public struct ProjectUse: Codable, Sendable, Equatable, Identifiable {
+        public var name: String
+        public var cpuPercent: Int
+        public var memoryMB: Int
+        public var id: String { name }
+        public init(name: String, cpuPercent: Int, memoryMB: Int) {
+            self.name = name
+            self.cpuPercent = cpuPercent
+            self.memoryMB = memoryMB
+        }
+    }
+
+    /// A build slot (`claudedeck slot` / `heavy`) and the session holding it.
+    public struct SlotHolder: Codable, Sendable, Equatable, Identifiable {
+        public var id: String
+        public var session: UUID
+        /// The session's name ("" when it's gone).
+        public var name: String
+        /// What it's for (`heavy` passes the command).
+        public var label: String?
+        public var since: Date
+        public init(id: String, session: UUID, name: String, label: String?, since: Date) {
+            self.id = id
+            self.session = session
+            self.name = name
+            self.label = label
+            self.since = since
+        }
+    }
+
+    /// A compiler or linker process.
+    public struct Build: Codable, Sendable, Equatable, Identifiable {
+        public var pid: Int32
+        /// The process name (swift-frontend, clang, ld…).
+        public var name: String
+        /// The session it runs under; nil: outside ClaudeDeck.
+        public var session: String?
+        public var cpuPercent: Int
+        public var id: Int32 { pid }
+        public init(pid: Int32, name: String, session: String?, cpuPercent: Int) {
+            self.pid = pid
+            self.name = name
+            self.session = session
+            self.cpuPercent = cpuPercent
+        }
+    }
 
     /// One session with its child processes.
     public struct Top: Codable, Sendable, Equatable, Identifiable {

@@ -371,6 +371,14 @@ extension SessionCLI {
           continue
         fi
         p_misses=0
+        if [ "$http" = 401 ]; then
+          # ClaudeDeck restarted and this terminal's token went with it: the approval is kept,
+          # and its result is queued for the session once it's answered.
+          printf 'claudedeck: ClaudeDeck restarted; %s stays pending and its result will be queued for this session (claudedeck approval status %s in a new terminal)\n' \
+            "$p_id" "$p_id" >&2
+          http=202; body=""; code=75
+          return 0
+        fi
         [ "$code" = 75 ] || return 0
         if [ "$p_limit" -gt 0 ] && [ $((p_limit - ($(date +%s) - p_start))) -le 0 ]; then return 0; fi
       done

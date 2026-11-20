@@ -804,3 +804,32 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
         return lines.joined(separator: "\n")
     }
 }
+
+// The phone's Mac Load charts (RemoteLoad.history). Here rather than in RemoteDashboard.swift:
+// the iOS app compiles that file but not this one.
+extension RemoteLoad {
+    /// The samples as one point per finished minute (the minute of the latest sample is still
+    /// filling and left out), the last `maxHistory`.
+    public static func history(from samples: [LoadSample]) -> [Sample] {
+        guard let last = samples.last else { return [] }
+        let current = (last.at.timeIntervalSinceReferenceDate / 60).rounded(.down)
+        var buckets: [(minute: Double, items: [LoadSample])] = []
+        for sample in samples {
+            let minute = (sample.at.timeIntervalSinceReferenceDate / 60).rounded(.down)
+            guard minute < current else { continue }
+            if let index = buckets.indices.last, buckets[index].minute == minute {
+                buckets[index].items.append(sample)
+            } else {
+                buckets.append((minute, [sample]))
+            }
+        }
+        return buckets.suffix(maxHistory).map { bucket in
+            let n = Double(bucket.items.count)
+            return Sample(at: Date(timeIntervalSinceReferenceDate: bucket.minute * 60),
+                          loadPerCore: bucket.items.map(\.loadPerCore).reduce(0, +) / n,
+                          memoryPercent: Int((bucket.items.map(\.memoryUsedPercent).reduce(0, +) / n).rounded()),
+                          simulators: bucket.items.map(\.simulators).max() ?? 0,
+                          builds: bucket.items.map(\.compilers).max() ?? 0)
+        }
+    }
+}

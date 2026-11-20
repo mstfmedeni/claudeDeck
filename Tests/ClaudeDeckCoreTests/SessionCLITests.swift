@@ -361,6 +361,8 @@ import Testing
         #expect(status.code == 0 && status.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/approvals/a_1")
         let cancel = try run(["approval", "cancel", "a_1"], answers: [("cancelled a_1", "200 0")])
         #expect(cancel.code == 0 && cancel.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/approvals/a_1/cancel")
+        let restarted = try run(["approval", "wait", "a_1"], answers: [pending, (#"{"error":"unauthorized"}"#, "401 ")])
+        #expect(restarted.code == 75 && restarted.err.contains("stays pending"))
         #expect(try run(["approval", "status", "d_1"]).code == 2)
         #expect(try run(["approval", "wait", "a_1", "--timeout", "x"]).code == 2)
     }

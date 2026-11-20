@@ -374,6 +374,8 @@ struct SessionListView: View {
             // can be found before anything is asked.
             if let approvals = store.approvals { ApprovalsRow(approvals: approvals) }
             if let decisions = store.decisions { DecisionsRow(decisions: decisions) }
+            // The Mac's load: the level in its color, a tap for what is using the Mac.
+            if let load = store.macLoad { MacLoadRow(load: load) }
             if let agendas = store.agendas, !agendas.isEmpty { AgendaRow(agendas: agendas) }
             if let groups = store.agentGroups, !groups.isEmpty { AgentTreeRow(groups: groups) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
@@ -569,6 +571,7 @@ struct SessionListView: View {
             case "agenda": selection = MacScreen.agenda
             case "agents": selection = MacScreen.agents
             case "approvals": selection = MacScreen.approvals
+            case "load": selection = MacScreen.load
             case "newsession": newSessionProject = nil; newSessionKind = .claude; showNewSession = true
             default: debugSheet = DebugSheet(id: screen)
             }

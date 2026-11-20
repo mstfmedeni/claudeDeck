@@ -24153,6 +24153,256 @@
           }
         }
       }
+    },
+    "Approval wait time": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onay bekleme süresi"
+          }
+        }
+      }
+    },
+    "15 min": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15 dk"
+          }
+        }
+      }
+    },
+    "1 hour": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 saat"
+          }
+        }
+      }
+    },
+    "4 hours": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4 saat"
+          }
+        }
+      }
+    },
+    "24 hours": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24 saat"
+          }
+        }
+      }
+    },
+    "How long a ServerPlan action or a domain purchase a session asks for waits for your answer before it's refused. The session doesn't wait on it: it hears the result once you answer, and approvals are kept when ClaudeDeck restarts.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturumun istediği ServerPlan işleminin ya da alan adı satın alımının, reddedilmeden önce cevabını ne kadar bekleyeceği. Oturum bunun için beklemez: cevap verdiğinde sonucu ona iletilir; onaylar ClaudeDeck yeniden başlasa da korunur."
+          }
+        }
+      }
+    },
+    "No time limit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Süre sınırı yok"
+          }
+        }
+      }
+    },
+    "Refused in %lld h %lld min": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld sa %2$lld dk sonra reddedilir"
+          }
+        }
+      }
+    },
+    "A session asked for each of these. Approved, ClaudeDeck runs the action and tells the session; without an answer in time it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bunların her birini bir oturum istedi. Onaylarsan ClaudeDeck işlemi yapar ve oturuma bildirir; zamanında cevap verilmezse reddedilir."
+          }
+        }
+      }
+    },
+    "Buy it from the card in ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck'teki karttan satın al."
+          }
+        }
+      }
+    },
+    "Approve or refuse it in ClaudeDeck.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck'te onayla ya da reddet."
+          }
+        }
+      }
+    },
+    "Busy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yoğun"
+          }
+        }
+      }
+    },
+    "No Load Figures": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yük bilgisi yok"
+          }
+        }
+      }
+    },
+    "Update ClaudeDeck on the Mac to see its load here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'in yükünü burada görmek için Mac'teki ClaudeDeck'i güncelleyin."
+          }
+        }
+      }
+    },
+    "%lld cores": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld çekirdek"
+          }
+        }
+      }
+    },
+    "slots %lld/%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "slot %lld/%lld"
+          }
+        }
+      }
+    },
+    "pressure critical": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "baskı kritik"
+          }
+        }
+      }
+    },
+    "pressure warning": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "baskı uyarı"
+          }
+        }
+      }
+    },
+    "pressure normal": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "baskı normal"
+          }
+        }
+      }
+    },
+    "Every core busy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tüm çekirdekler meşgul"
+          }
+        }
+      }
+    },
+    "Slots in use: %lld of %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılan slot: %lld / %lld"
+          }
+        }
+      }
+    },
+    "A closed session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapanmış bir oturum"
+          }
+        }
+      }
+    },
+    "Compiler processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleyici işlemleri"
+          }
+        }
+      }
+    },
+    "No builds running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan derleme yok"
+          }
+        }
+      }
+    },
+    "None booted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açık simülatör yok"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

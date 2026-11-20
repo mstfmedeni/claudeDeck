@@ -459,6 +459,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let load = "load"
         /// `RemoteLoad.top`, `bootedSimulators` and `fired` (read-only; nil while not measured).
         public static let loadDetail = "loadDetail"
+        /// `RemoteLoad.history`, `topProjects`, `slotHolders` and `runningBuilds` (read-only).
+        public static let loadHistory = "loadHistory"
         /// `serverPlanContainersRequest` / `serverPlanContainerAction` (restart with the Mac's approval).
         public static let serverPlanContainers = "serverPlanContainers"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
@@ -467,7 +469,7 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
                                               closedTerminals, approvals, load, loadDetail, serverPlanContainers,
-                                              approvalHistory, decisionHistory]
+                                              approvalHistory, decisionHistory, loadHistory]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

@@ -183,11 +183,25 @@ final class LoadController {
                               simulators: sample.simulators, builds: sample.compilers, sessions: sample.sessions,
                               slotsUsed: slots.slots.count, slots: slotCapacity)
         load.fired = monitor.fired.map(\.rawValue)
+        // The phone's Mac Load screen: an hour of per-minute points from the samples kept for the charts.
+        load.history = RemoteLoad.history(from: monitor.samples)
+        load.slotHolders = slots.slots.map {
+            RemoteLoad.SlotHolder(id: $0.id, session: $0.session, name: model?.deck.session($0.session)?.name ?? "",
+                                  label: $0.label.map { String($0.prefix(120)) }, since: $0.acquiredAt)
+        }
         if let usage, Date().timeIntervalSince(usage.at) < 90 {
             // Rounded to 5 % and 50 MB so small changes don't resend the snapshot.
-            load.top = topEntries(usage).sessions.prefix(6).map {
+            let entries = topEntries(usage)
+            load.top = entries.sessions.prefix(6).map {
                 RemoteLoad.Top(session: $0.session ?? UUID(), name: $0.name, project: $0.project ?? "",
                                cpuPercent: Int(($0.cpuPercent / 5).rounded()) * 5, memoryMB: ($0.memoryMB / 50) * 50, agent: $0.agent)
+            }
+            load.topProjects = entries.projects.prefix(6).map {
+                RemoteLoad.ProjectUse(name: $0.name, cpuPercent: Int(($0.cpuPercent / 5).rounded()) * 5, memoryMB: ($0.memoryMB / 50) * 50)
+            }
+            load.runningBuilds = usage.builds.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(RemoteLoad.maxBuilds).map {
+                RemoteLoad.Build(pid: $0.pid, name: $0.name, session: $0.session.flatMap { model?.deck.session($0)?.name },
+                                 cpuPercent: Int(($0.cpuPercent / 5).rounded()) * 5)
             }
         }
         load.bootedSimulators = bootedSimulators().map {
