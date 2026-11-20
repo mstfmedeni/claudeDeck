@@ -88,6 +88,22 @@ extension SessionCLI {
           Releases one (or, without UDID, all of this session's). Also when the session ends.
       claudedeck sim list [--json]
           The held simulators (and their holders) and ClaudeDeck's free ones.
+          While the Mac is overloaded, or with too many simulators booted (Settings > Resources),
+          acquire is refused: overloaded / too_many_booted (exit 4). Release what you're done with.
+
+    The Mac's load and build slots (Settings > Resources):
+      claudedeck load [--json]
+          ok, busy or overloaded, with the load, memory, booted simulators, compiler processes,
+          Claude sessions and who holds the build slots. Check it before heavy work.
+      claudedeck heavy [--wait SECONDS] [--label TEXT] -- COMMAND...
+          Waits for a build slot (default up to 3600 s), runs COMMAND, releases the slot and
+          exits with COMMAND's code. Wrap xcodebuild, swift build, gradle, npm run build in it.
+          No slot in time: 124. Outside ClaudeDeck (or with the tool off) it just runs COMMAND.
+      claudedeck slot acquire build [--wait SECONDS] [--label TEXT] [--json]
+          Takes a build slot (prints its id, b_...); --wait waits in line for one (124: none in time).
+      claudedeck slot release build [SLOT_ID] [--json]
+          Gives it back (without SLOT_ID: every slot this session holds). Slots also go back when
+          the session ends, or after the longest hold (Settings > Resources, 60 min).
 
     Projects and sessions (Settings > Agents: "Sessions may add projects and start Claude sessions"):
       claudedeck projects [--json]
@@ -103,7 +119,8 @@ extension SessionCLI {
           MODE: default, acceptEdits, plan, auto, dontAsk, manual, bypassPermissions (needs its
           own setting, as does a rule allowing every shell command: Bash, "Bash(*)"). RULE: a tool rule for claude --allowedTools ("Bash(git *)", Edit).
           LEVEL: low, medium, high, xhigh, max. --skill starts with /NAME (TEXT as its arguments).
-          --queue: over the cap or rate limit, waits in a queue instead; prints a queue id (q_...).
+          --queue: over the cap or rate limit, or while the Mac is overloaded, waits in a queue
+          instead; prints a queue id (q_...). Without it an overloaded Mac refuses: overloaded.
           --account: the Claude account (account list); auto: the first with room. Default: the
           project's pinned account, else the one new sessions use.
       claudedeck preset show [PROJECT] [--json]
@@ -195,11 +212,14 @@ extension SessionCLI {
       set -- $status
       http=${1:-000}; code=${2#e=}; next=${3#n=}; note=${4#m=}
       case "$http" in
-        000) die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1 ;;
+        000)
+          if [ "${soft:-0}" = 1 ]; then code=1; return 0; fi
+          die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1 ;;
       esac
       if [ -z "$code" ]; then
         case "$http" in
-          404) die "the command-line tool is off in ClaudeDeck (Settings > Agents)." 4 ;;
+          404) [ "${soft:-0}" = 1 ] && { code=4; return 0; }
+               die "the command-line tool is off in ClaudeDeck (Settings > Agents)." 4 ;;
           2??) code=0 ;;
           400|405) code=2 ;;
           401|403|429) code=4 ;;
@@ -266,6 +286,14 @@ extension SessionCLI {
               switching) hint=" (already moving)" ;;
               switching_account) hint=" (it is being moved to another account; try again in a moment)" ;;
               too_many_simulators) hint=" (at most 4 per session; release some first)" ;;
+              overloaded) case "$command_name" in
+                  new) hint=" (the Mac is overloaded: try later, or new --queue to start once it is back to ok; see claudedeck load)" ;;
+                  *) hint=" (the Mac is overloaded: try later and release simulators you're done with; see claudedeck load)" ;;
+                esac ;;
+              too_many_booted) hint=" (too many simulators are booted: release yours, or try later; see claudedeck load)" ;;
+              no_slot) hint=" (every build slot is taken; slot acquire --wait SECONDS, or see claudedeck load)" ;;
+              unknown_slot) hint=" (the only kind is build)" ;;
+              unknown_slot_id) hint=" (this session holds no such slot; see claudedeck load)" ;;
               unknown_device) hint=" (no such simulator device type; see xcrun simctl list devicetypes)" ;;
               no_runtime) hint=" (no installed runtime runs that device type)" ;;
               not_held) hint=" (no session holds that simulator)" ;;
@@ -671,6 +699,137 @@ extension SessionCLI {
         *) die "sim: acquire, release or list (claudedeck help)" ;;
       esac
       finish
+    }
+
+    cmd_load() {
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          *) die "load: unknown argument $1" ;;
+        esac
+        shift
+      done
+      need_session
+      call /load -G --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    # slot_try KIND WAIT LABEL [TICKET]: asks for a slot, again and again until WAIT seconds have
+    # passed (each ask waits up to 25 s on the app's side). The answer is in $http/$code/$body.
+    slot_try() {
+      s_kind=$1; s_wait=$2; s_label=$3; s_ticket=${4:-}
+      s_start=$(date +%s)
+      while :; do
+        s_window=0
+        if [ "$s_wait" -gt 0 ]; then
+          s_left=$((s_wait - ($(date +%s) - s_start)))
+          [ "$s_left" -lt 0 ] && s_left=0
+          s_window=$s_left
+          [ "$s_window" -gt 25 ] && s_window=25
+        fi
+        max_time=$((s_window + 15))
+        call "/slot/$s_kind/acquire" --data-urlencode "ticket=$s_ticket" --data-urlencode "timeout=$s_window" \
+          --data-urlencode "label=$s_label" --data-urlencode "format=$(fmt)"
+        if [ "$code" = 124 ] && [ "$s_wait" -gt 0 ] && [ $((s_wait - ($(date +%s) - s_start))) -gt 0 ]; then
+          continue
+        fi
+        return 0
+      done
+    }
+
+    cmd_slot() {
+      sub=${1:-}; [ $# -gt 0 ] && shift
+      kind=""; slot=""; wait=0; label=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --wait) [ $# -ge 2 ] || die "slot: --wait needs seconds"; wait=$2; shift ;;
+          --wait=*) wait=${1#*=} ;;
+          --label) [ $# -ge 2 ] || die "slot: --label needs text"; label=$2; shift ;;
+          --label=*) label=${1#*=} ;;
+          --json) json=1 ;;
+          -*) die "slot: unknown option $1" ;;
+          *)
+            if [ -z "$kind" ]; then kind=$1
+            elif [ -z "$slot" ]; then slot=$1
+            else die "slot: too many arguments"
+            fi ;;
+        esac
+        shift
+      done
+      [ -n "$kind" ] || kind=build
+      check_id "$kind" slot
+      case "$wait" in ""|*[!0-9]*) die "slot: --wait needs whole seconds" ;; esac
+      case "$sub" in
+        acquire)
+          [ -z "$slot" ] || die "slot acquire: no slot id here (slot acquire build [--wait SECONDS])"
+          need_session
+          ticket=""
+          [ "$wait" -gt 0 ] && ticket="t$$-$(date +%s)"
+          slot_try "$kind" "$wait" "$label" "$ticket" ;;
+        release)
+          [ -z "$slot" ] || check_id "$slot" slot
+          need_session
+          call "/slot/$kind/release" --data-urlencode "id=$slot" --data-urlencode "format=$(fmt)" ;;
+        *) die "slot: acquire or release (claudedeck help)" ;;
+      esac
+      finish
+    }
+
+    # heavy: gives the slot (or the place in line) back, whatever ends the command.
+    heavy_release() {
+      if [ -n "${heavy_slot:-}" ]; then
+        soft=1; json=0; max_time=10
+        call /slot/build/release --data-urlencode "id=$heavy_slot" --data-urlencode "format=text"
+      elif [ -n "${heavy_ticket:-}" ]; then
+        soft=1; json=0; max_time=10
+        call /slot/build/release --data-urlencode "ticket=$heavy_ticket" --data-urlencode "format=text"
+      fi
+      heavy_slot=""; heavy_ticket=""
+    }
+
+    cmd_heavy() {
+      wait=3600; label=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --wait) [ $# -ge 2 ] || die "heavy: --wait needs seconds"; wait=$2; shift ;;
+          --wait=*) wait=${1#*=} ;;
+          --label) [ $# -ge 2 ] || die "heavy: --label needs text"; label=$2; shift ;;
+          --label=*) label=${1#*=} ;;
+          --) shift; break ;;
+          -*) die "heavy: unknown option $1 (claudedeck heavy [--wait SECONDS] -- COMMAND...)" ;;
+          *) break ;;
+        esac
+        shift
+      done
+      [ $# -gt 0 ] || die "heavy: which command? claudedeck heavy -- xcodebuild ..."
+      case "$wait" in ""|*[!0-9]*) die "heavy: --wait needs whole seconds" ;; esac
+      # Outside ClaudeDeck: nothing to wait for.
+      if [ -z "${CLAUDEDECK_CLI_TOKEN:-}" ] || [ -z "${CLAUDEDECK_CLI_URL:-}" ]; then "$@"; exit $?; fi
+      [ -n "$label" ] || label="$*"
+      heavy_slot=""; heavy_ticket="t$$-$(date +%s)"
+      trap 'heavy_release; exit 130' INT
+      trap 'heavy_release; exit 143' TERM
+      trap 'heavy_release; exit 129' HUP
+      soft=1; json=0
+      slot_try build "$wait" "$label" "$heavy_ticket"
+      soft=0
+      case "$http" in
+        2??) heavy_slot=$body; heavy_ticket="" ;;
+        400|405) heavy_release; finish ;;
+        *)
+          if [ "$code" = 124 ]; then
+            heavy_release
+            die "heavy: no build slot was free within $wait s; try again later (claudedeck load)" 124
+          fi
+          # ClaudeDeck not answering, the tool or the slots unavailable: run it anyway.
+          printf 'claudedeck heavy: running without a build slot (HTTP %s)\n' "$http" >&2
+          heavy_ticket="" ;;
+      esac
+      "$@"
+      rc=$?
+      heavy_release
+      trap - INT TERM HUP
+      exit "$rc"
     }
 
     # An absolute path for PATH (relative ones are from here; the folder needn't exist).
@@ -1310,6 +1469,9 @@ extension SessionCLI {
       sim) cmd_sim "$@" ;;
       usage) cmd_usage "$@" ;;
       status) cmd_status "$@" ;;
+      load) cmd_load "$@" ;;
+      slot|slots) cmd_slot "$@" ;;
+      heavy) cmd_heavy "$@" ;;
       *) usage >&2; exit 2 ;;
     esac
     """# + "\n"
@@ -1318,7 +1480,7 @@ extension SessionCLI {
     public static let skill = #"""
     ---
     name: claudedeck
-    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user, or leave the owner a decision to make without waiting for it; add projects and start other Claude sessions; list, deploy and watch ServerPlan servers, containers and deployments. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool, or when work needs a new project, a parallel Claude session or a deploy.
+    description: Run and watch processes next to this ClaudeDeck session with the `claudedeck` command - open a terminal beside you for a dev server, a watcher or a long test run, type into it, read its screen, wait for it to finish, and notify or ask the user, or leave the owner a decision to make without waiting for it; add projects and start other Claude sessions; list, deploy and watch ServerPlan servers, containers and deployments; check the Mac's load and run heavy builds (xcodebuild, swift build, gradle, npm run build) through `claudedeck heavy` so they take turns. Use when the environment has CLAUDEDECK_SESSION set (you run inside ClaudeDeck) and a command should keep running or be visible to the user instead of blocking your Bash tool, or when work needs a new project, a parallel Claude session, a deploy or a heavy build.
     ---
 
     # claudedeck
@@ -1416,6 +1578,36 @@ extension SessionCLI {
     - ClaudeDeck creates its own devices ("ClaudeDeck · iPhone 17 Pro · 1") and reuses free ones;
       the user's simulators are never handed out. At most 4 per session (exit 4 `too_many_simulators`).
     - Acquiring can take a minute or two (create + boot). `--json` gives `udid`, `name`, `runtime`.
+    - While the Mac is overloaded (`claudedeck load`), or once too many simulators are booted
+      (4 on a 20-core Mac, Settings > Resources), `acquire` is refused with exit 4 (`overloaded`,
+      `too_many_booted`). Release simulators as soon as you're done with them; try again later.
+
+    ### Heavy work: the Mac's load and build slots
+
+    Many sessions share one Mac. Thirty compiles and a dozen simulators at once make everything
+    (ClaudeDeck too) crawl, so builds take turns:
+
+    ```sh
+    claudedeck load                       # ok | busy | overloaded, load, memory, sims, builds, slot holders
+    claudedeck heavy -- xcodebuild -scheme App -destination "id=$udid" build
+    claudedeck heavy -- swift build -c release
+    claudedeck heavy --wait 600 -- ./gradlew assembleDebug    # give up after 10 minutes (exit 124)
+    slot=$(claudedeck slot acquire build --wait 1800)         # by hand, around several commands
+    claudedeck slot release build "$slot"
+    ```
+
+    - **Wrap every heavy command in `claudedeck heavy --`**: `xcodebuild`, `swift build`,
+      `swift test`, `gradle`/`./gradlew`, `npm run build`, `cargo build`, `docker build`. It waits
+      for one of the build slots (3 on a 20-core Mac; one while the Mac is overloaded), runs the
+      command, gives the slot back and exits with the command's code. Outside ClaudeDeck it just
+      runs the command, so it's always safe to use.
+    - Slots also go back when your session ends, or after 60 minutes (Settings > Resources).
+    - Before starting heavy work, `claudedeck load`: when it says `overloaded`, put off builds and
+      simulators, release simulators you're done with, and don't start new sessions.
+    - While the Mac is overloaded, `claudedeck new` is refused (exit 4, `overloaded`); with
+      `--queue` it waits in the queue and starts once the Mac is back to ok.
+    - A note `[ClaudeDeck] Mac aşırı yüklü: …` beside your session means the same: postpone heavy
+      work (builds, simulators) and release finished simulators.
 
     ### Projects and Claude sessions
 
@@ -1596,7 +1788,7 @@ extension SessionCLI {
     | 4 | Refused: not allowed, the setting is off, a rate limit, or the user said no |
     | 5 | Unknown id, project, server or deployment |
     | 6 | `wait`: the Claude session stopped on its usage limit and waits for the reset |
-    | 124 | `wait` timed out; the process is still running |
+    | 124 | `wait` timed out; the process is still running. `heavy`, `slot acquire --wait`: no build slot in time |
 
     ## Claude accounts and usage limits
 

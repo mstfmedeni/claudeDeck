@@ -120,6 +120,12 @@ extension AppModel {
             return await cliClose(caller, ref: ref, form: form, json: json)
         case .remove(let ref):
             return cliRemove(caller, ref: ref, json: json)
+        case .load:
+            return cliLoad(json: json)
+        case .slotAcquire(let kind):
+            return await cliSlotAcquire(caller, kind: kind, form: form, json: json)
+        case .slotRelease(let kind):
+            return cliSlotRelease(caller, kind: kind, form: form, json: json)
         }
     }
 
@@ -183,7 +189,8 @@ extension AppModel {
         let info = SessionCLIStatus(id: session.id, name: session.name, kind: session.kind == .shell ? "terminal" : "claude",
                                     state: cliState(session), detail: status(of: session.id).detail,
                                     project: deck.project(session.projectID)?.name ?? "", startedBy: session.startedBy,
-                                    stall: stallStatus(session.id), simulators: simHolds.held(by: session.id).map(\.udid))
+                                    stall: stallStatus(session.id), simulators: simHolds.held(by: session.id).map(\.udid),
+                                    slots: systemLoad.slots.held(by: session.id).map(\.id))
         return SessionCLI.answer(200, info, text: info.text, exit: .ok, json: json)
     }
 

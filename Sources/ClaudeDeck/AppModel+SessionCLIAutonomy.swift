@@ -109,6 +109,16 @@ extension AppModel {
                                      name: (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines), prompt: prompt,
                                      worktree: worktree, skill: skill.isEmpty ? nil : skill, options: given)
         request.account = account
+        // An overloaded Mac (Settings › Resources): refused, or queued until it is back to ok.
+        // Before the rate limit, so a refusal doesn't use up one of the caller's starts.
+        switch LoadThrottle.start(throttled: systemLoad.monitor.throttled, enabled: deck.settings.load.throttle, queue: form["queue"] == "1") {
+        case .allow: break
+        case .refuse:
+            logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (the Mac is overloaded)", ok: false)
+            return SessionCLI.failure(429, "overloaded", exit: .refused)
+        case .queue:
+            return cliEnqueue(request, reason: "overloaded", json: json)
+        }
         let running = cliRunningStarted
         if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, cap: deck.settings.maxStartedSessions, book: &cli) {
             guard form["queue"] == "1", refusal.status == 429 else {

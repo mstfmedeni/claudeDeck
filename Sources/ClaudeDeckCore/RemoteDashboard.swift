@@ -174,3 +174,40 @@ public struct RemoteSimulator: Codable, Sendable, Equatable, Identifiable {
         Array(list.sorted { ($0.state == "Shutdown" ? 1 : 0, $0.name, $0.udid) < ($1.state == "Shutdown" ? 1 : 0, $1.name, $1.udid) }.prefix(max))
     }
 }
+
+/// The Mac's load in brief (RemoteSnapshot.load, hosts with `Feature.load`), for the phone's
+/// dashboard. Rounded so a Mac whose load barely moves doesn't resend the snapshot every sample.
+public struct RemoteLoad: Codable, Sendable, Equatable {
+    /// "ok", "busy" or "overloaded" (a string: an unknown one shows as busy).
+    public var level: String
+    /// In an overload episode: new agents, simulators and builds are held back.
+    public var throttled: Bool
+    /// The 1-minute load per core, to one decimal (1.0: every core busy).
+    public var loadPerCore: Double
+    public var cores: Int
+    /// Memory in use, in whole percent; "normal", "warning" or "critical".
+    public var memoryPercent: Int
+    public var memoryPressure: String
+    public var simulators: Int
+    /// Compiler and linker processes.
+    public var builds: Int
+    /// Claude sessions running on the Mac.
+    public var sessions: Int
+    public var slotsUsed: Int
+    public var slots: Int
+
+    public init(level: String, throttled: Bool, loadPerCore: Double, cores: Int, memoryPercent: Int, memoryPressure: String,
+                simulators: Int, builds: Int, sessions: Int, slotsUsed: Int, slots: Int) {
+        self.level = level
+        self.throttled = throttled
+        self.loadPerCore = (loadPerCore * 10).rounded() / 10
+        self.cores = cores
+        self.memoryPercent = memoryPercent
+        self.memoryPressure = memoryPressure
+        self.simulators = simulators
+        self.builds = builds
+        self.sessions = sessions
+        self.slotsUsed = slotsUsed
+        self.slots = slots
+    }
+}

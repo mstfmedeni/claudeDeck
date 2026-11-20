@@ -141,6 +141,21 @@ extension AppModel {
             logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (at most \(SimulatorAllocation.maxPerSession) per session)", ok: false)
             return SessionCLI.failure(429, "too_many_simulators", exit: .refused)
         }
+        // Settings › Resources: not while the Mac is overloaded, nor past the cap on booted
+        // simulators (counted now, not from the last sample: acquires run one after another).
+        if deck.settings.load.throttle {
+            let booted = await Task.detached(priority: .utility) { SystemLoadSampler.bootedSimulators() }.value
+            switch LoadThrottle.simulator(throttled: systemLoad.monitor.throttled, enabled: true, booted: booted, wanted: wanted.count,
+                                          max: systemLoad.thresholds.maxSimulators) {
+            case .allow: break
+            case .overloaded:
+                logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (the Mac is overloaded)", ok: false)
+                return SessionCLI.failure(429, "overloaded", exit: .refused)
+            case .tooManyBooted:
+                logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (\(booted) simulators booted, at most \(systemLoad.thresholds.maxSimulators))", ok: false)
+                return SessionCLI.failure(429, "too_many_booted", exit: .refused)
+            }
+        }
         let catalog: SimCatalog
         switch await Task.detached(operation: { Self.readCatalog() }).value {
         case .failure(let message):

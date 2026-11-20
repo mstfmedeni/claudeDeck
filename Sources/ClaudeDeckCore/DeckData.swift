@@ -304,6 +304,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// An account with a window at or above this percent counts as near its limit: new sessions
     /// and switches avoid it. 0: never.
     public var accountNearLimitPercent: Double = 95
+    /// Settings › Resources: the load monitor's thresholds, throttling and build slots (SystemLoad.swift).
+    public var load = LoadSettings()
 
     /// `accounts` and `default` in priority order.
     public var accountPriority: [String] { ClaudeAccounts.order(saved: accountOrder, accounts: accounts) }
@@ -373,6 +375,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         newSessionAccount = (try? c.decodeIfPresent(String.self, forKey: .newSessionAccount)) ?? d.newSessionAccount
         accountSwitchMode = (try? c.decodeIfPresent(AccountSwitchMode.self, forKey: .accountSwitchMode)) ?? d.accountSwitchMode
         accountNearLimitPercent = (try? c.decodeIfPresent(Double.self, forKey: .accountNearLimitPercent)) ?? d.accountNearLimitPercent
+        load = (try? c.decodeIfPresent(LoadSettings.self, forKey: .load)) ?? d.load
     }
 }
 

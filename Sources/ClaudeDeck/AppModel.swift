@@ -256,6 +256,7 @@ final class AppModel {
         installAskScript()
         installCLIScript() // only while the command-line tool is on
         loadSimulatorHolds()
+        LoadController.shared.start(model: self) // the Mac's load, every 12 s off the main thread
         startStallWatch() // only checks while the setting is on
         loadAgentNotes()
         loadDecisions()
@@ -848,6 +849,7 @@ final class AppModel {
         // So does the stall watch's count of nudges and restarts (the cap must hold across restarts).
         if !restartingSessions.contains(id) {
             releaseSimulators(of: id, reason: "the session ended")
+            releaseSlots(of: id)
             stallTrackers[id] = nil
         }
         deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil }
@@ -991,6 +993,7 @@ final class AppModel {
         pendingContinue.remove(id)
         usageLimitHits[id] = nil
         releaseSimulators(of: id, reason: "the session was closed")
+        releaseSlots(of: id)
         stallTrackers[id] = nil
         cli.forget(id)
         scheduleSave()

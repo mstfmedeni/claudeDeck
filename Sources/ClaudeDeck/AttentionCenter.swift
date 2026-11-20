@@ -11,6 +11,8 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let agentCategory = "agentRegistration"
     nonisolated static let accountCategory = "accountSwitch"
     nonisolated static let switchAccountAction = "switchAccount"
+    nonisolated static let loadCategory = "systemLoad"
+    nonisolated static let showAgentsAction = "showAgents"
     private let model: AppModel
     private var center: UNUserNotificationCenter? {
         // UNUserNotificationCenter crashes outside an app bundle (e.g. `swift run`).
@@ -44,7 +46,13 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                 actions: [UNNotificationAction(identifier: Self.switchAccountAction, title: String(localized: "Switch Account"), options: [])],
                 intentIdentifiers: []
             ),
+            UNNotificationCategory(
+                identifier: Self.loadCategory,
+                actions: [UNNotificationAction(identifier: Self.showAgentsAction, title: String(localized: "Show Agents"), options: [.foreground])],
+                intentIdentifiers: []
+            ),
         ])
+        LoadController.shared.onOverloaded = { [weak self] title, body in self?.loadNotice(title: title, body: body) }
         center?.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
         model.onAttention = { [weak self] event in self?.handle(event) }
         model.remote.onAttention = { [weak self] session, hostName in self?.handleRemote(session, hostName: hostName) }
@@ -109,6 +117,21 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = info
         let key = notice.sessionID?.uuidString ?? UUID().uuidString
         center.add(UNNotificationRequest(identifier: "account-\(key)", content: content, trigger: nil))
+    }
+
+    /// The Mac became overloaded (once per episode; the caller checked the settings). Clicking,
+    /// or "Show Agents", opens the agents overview.
+    private func loadNotice(title: String, body: String) {
+        if model.deck.settings.bounceDock, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = Self.loadCategory
+        content.userInfo = ["systemLoad": true]
+        content.threadIdentifier = "systemLoad"
+        center.add(UNNotificationRequest(identifier: "system-load", content: content, trigger: nil))
     }
 
     /// `claudedeck decide`: a decision waits for the owner (clicking opens Your Decisions).
@@ -231,6 +254,14 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                     NSApp.activate()
                     self.model.agentSheet = .approve(id)
                 }
+            }
+            return
+        }
+        if userInfo["systemLoad"] is Bool {
+            await MainActor.run {
+                self.model.openMainWindow?()
+                NSApp.activate()
+                self.model.showAgentsOverview()
             }
             return
         }

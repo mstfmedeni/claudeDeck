@@ -147,6 +147,8 @@ extension AppModel {
     /// Oldest first: each starts once the running cap has room and its caller's rate limit allows.
     /// A caller over its rate limit doesn't hold up the others.
     func drainCLIQueue() async {
+        // Held while the Mac is overloaded; drains again once it is back to ok.
+        guard LoadThrottle.drains(throttled: systemLoad.monitor.throttled, enabled: deck.settings.load.throttle) else { return }
         for entry in deck.cliQueue where entry.status == .queued {
             guard deck.cliQueue.first(where: { $0.id == entry.id })?.status == .queued else { continue }
             if !deck.settings.sessionsMayStartSessions || !deck.settings.sessionCLIEnabled {

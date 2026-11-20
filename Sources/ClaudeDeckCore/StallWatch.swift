@@ -246,9 +246,11 @@ public struct SessionCLIStatus: Encodable, Sendable, Equatable {
     public var startedBy: UUID?
     public var stall: Stall?
     public var simulators: [String]
+    /// The build slots it holds (`claudedeck slot` / `heavy`).
+    public var slots: [String]
 
     public init(id: UUID, name: String, kind: String, state: String, detail: String?, project: String, startedBy: UUID?,
-                stall: Stall?, simulators: [String]) {
+                stall: Stall?, simulators: [String], slots: [String] = []) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -258,6 +260,7 @@ public struct SessionCLIStatus: Encodable, Sendable, Equatable {
         self.startedBy = startedBy
         self.stall = stall
         self.simulators = simulators
+        self.slots = slots
     }
 
     public var text: String {
@@ -277,6 +280,7 @@ public struct SessionCLIStatus: Encodable, Sendable, Equatable {
             }
         }
         if !simulators.isEmpty { lines.append("simulators: " + simulators.joined(separator: ", ")) }
+        if !slots.isEmpty { lines.append("build slots: " + slots.joined(separator: ", ")) }
         return lines.joined(separator: "\n")
     }
 }
