@@ -60,7 +60,10 @@ import Testing
 
     @Test func requestedDevices() {
         #expect(SimulatorAllocation.requested(device: nil, duo: false) == ["iPhone 17 Pro"])
-        #expect(SimulatorAllocation.requested(device: "  ", duo: true) == ["iPhone 17 Pro", "iPhone Duo"])
+        #expect(SimulatorAllocation.requested(device: "  ", duo: true) == ["iPhone Duo"])
+        #expect(SimulatorAllocation.requested(device: nil, duo: true) == ["iPhone Duo"])
+        #expect(SimulatorAllocation.requested(device: "iPhone Duo", duo: true) == ["iPhone Duo"])
+        #expect(SimulatorAllocation.requested(device: "iPhone 17 Pro", duo: true) == ["iPhone 17 Pro", "iPhone Duo"])
         #expect(SimulatorAllocation.requested(device: "iPad Pro 13-inch (M5)", duo: false) == ["iPad Pro 13-inch (M5)"])
         #expect(SimulatorAllocation.deviceType("iphone duo", in: [iPhone, duo]) == duo)
         #expect(SimulatorAllocation.deviceType(duo.identifier, in: [iPhone, duo]) == duo)

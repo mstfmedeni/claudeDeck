@@ -102,11 +102,13 @@ public enum SimulatorAllocation {
     /// The name prefix of the devices ClaudeDeck creates.
     public static let namePrefix = "ClaudeDeck · "
 
-    /// The device types `acquire` asks for: `--device` (default iPhone 17 Pro), and with `--duo`
-    /// an iPhone Duo next to it (two iPhone Duos when `--device` already is one).
+    /// The device types `acquire` asks for: `--device` (default iPhone 17 Pro). `--duo` alone is
+    /// just an iPhone Duo; with `--device` it's that device and an iPhone Duo next to it.
     public static func requested(device: String?, duo: Bool) -> [String] {
-        let first = device.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } ?? defaultDevice
-        return duo ? [first, duoDevice] : [first]
+        let given = device.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        guard duo else { return [given ?? defaultDevice] }
+        guard let given, given.caseInsensitiveCompare(duoDevice) != .orderedSame else { return [duoDevice] }
+        return [given, duoDevice]
     }
 
     /// The device type named `name` (any case), or with that identifier.

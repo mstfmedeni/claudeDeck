@@ -455,6 +455,99 @@ handshakes each time) until it answers, then attaches them; a helper that is gon
 to the usual path. A helper that answers the handshake but not the session list in 15 s counts as
 unresponsive, never as "no sessions". A session that may still run there is never started twice.
 
+### Simulators (`claudedeck sim …`)
+
+```sh
+claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--json]
+claudedeck sim release [UDID] [--json]
+claudedeck sim list [--json]
+```
+
+They need **Sessions may reserve simulators** (Settings › Agents › Command-line tool; off by
+default, exit 4 `setting_off`). A session gets simulators of its own, so parallel agents never
+drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; never `booted`).
+
+- **acquire:** one device of `--device`'s type (a `simctl list devicetypes` name, any case, or its
+  identifier; default **iPhone 17 Pro**); `--duo` alone is just an **iPhone Duo**;
+  `--device X --duo` is that device plus an iPhone Duo. For each one it reuses a free, shut-down
+  simulator **ClaudeDeck created earlier** of that type, else creates one named
+  `ClaudeDeck · <type> · <n>` on the newest installed runtime that runs that type (the iPhone Duo
+  has its own runtime build, `iOS-27-2-iPhone19-4`), then boots it and waits until it's booted
+  (`simctl bootstatus -b`). Prints `UDID  NAME` per device (`--json`: `udid`, `name`, `runtime`,
+  `state`, `new`). It can take a minute or two. The user's own simulators (and ones other tools
+  made) are never booted, handed out, shut down or erased. One acquire runs at a time, and a
+  device is held before it boots, so two sessions never get the same one. At most 4 per session
+  (`429 too_many_simulators`). If a device can't be created or booted, what the call got is
+  released again (`500 simctl_failed`, exit 1).
+- **release:** one device the caller holds (another session's: `403 not_yours`; not held: `404
+  not_held`), or without `UDID` all of them. Holds also end when the session ends (not on a
+  restart) or is closed; a session closed while ClaudeDeck wasn't running loses its holds at the
+  next launch. With **Shut down simulators ClaudeDeck created when they're released** (on by
+  default) released devices are shut down; they stay in ClaudeDeck's pool for the next acquire.
+- **list:** the held devices (state, holder, whether ClaudeDeck created them) and ClaudeDeck's free ones.
+- Holds are kept in Application Support/ClaudeDeck/simulator-holds.json. Every acquire and release
+  is in the activity log. The Simulators tab shows the holder (a lock with the session's name),
+  as does the phone's simulator list.
+
+### Usage per project
+
+```sh
+claudedeck usage [--project ID|NAME|PATH] [--json]
+```
+
+The plan's meter (Claude Code's `/usage`) only says how full the 5-hour and weekly windows are.
+ClaudeDeck splits that by project from the transcripts: every assistant reply's `message.usage`
+(input, output, cache writes and reads; sub-agents included; a reply Claude Code writes as several
+lines counted once, also across files) in the transcripts of each project's folders under
+`~/.claude/projects` (the project's folder and those below it, such as worktrees) and of the deck's
+sessions. Each reply's cost is estimated at API prices for its model (Opus 5.5 $4/$20 per million
+input/output tokens, Opus 5 and 4.5+ $5/$25, Sonnet 5 $2/$10, other Sonnets $3/$15, Haiku 4.5 $1/$5,
+Fable/Mythos $10/$50, unknown models as Opus 5; cache writes 1.25× input for 5 minutes, 2× for
+an hour, reads 0.1×). A project's **share** is its part of that cost in the window (the 5-hour
+window from its reset minus 5 hours, the week from its reset minus 7 days), and its **percent** is
+that share of the window's percent. It's an estimate: sessions outside the deck's projects, and
+other devices, aren't in the transcripts it reads.
+
+The Dashboard's **Usage by project** card shows it (5 hours / Week), and so does the phone's
+dashboard (`RemoteDashboard.projects`, at most 8; Macs without it send nothing and older phones
+ignore it). Transcripts are read incrementally, only while the Dashboard is on screen, a phone is
+connected or the command asks, at most once a minute (30 s for the command). `--json` answers
+`{five_hour_percent, five_hour_resets_at, week_percent, week_resets_at, projects: [{project_id,
+name, five_hour: {input, output, cache_write, cache_read, cost_micros, messages}, week: {…},
+five_hour_share, week_share, five_hour_percent, week_percent}]}`.
+
+### Stall watch
+
+Settings › Agents › Command-line tool › **Watch sessions other sessions started for stalls** (off
+by default). Only Claude sessions started with `claudedeck new` are watched. A session is stalled
+when:
+
+- it's **working** and nothing shows progress for **N minutes** (default 15; 3–240): progress is a
+  hook event or a line appended to its transcript. A long build or test run that prints nothing
+  to Claude's transcript looks the same, so pick enough minutes; or
+- its tool calls fail with **the same error 3 times in a row** (digits folded, so "line 12" and
+  "line 13" match; any success in between starts over), or Claude Code records the same API error
+  (can be turned off).
+
+Checked every 30 s (an error loop right away). The action (**When a session stalls**):
+
+| Action | Does |
+|---|---|
+| Notify only (default) | A notification |
+| Nudge it | Types the **nudge message** (default "Continue", "Devam et" in Turkish) into the session, and notifies; a permission or question on screen: notification only |
+| Restart it, then nudge | Restarts it into the same conversation (Restart Session, no dialog; it keeps its simulators), types the nudge once Claude is up, and notifies; a permission or question on screen: notification only |
+
+- After an action the watch starts over: the next one comes N minutes later at the earliest.
+- **At most 3 nudges and restarts per session an hour**; after that it only notifies (and logs
+  that the limit was reached).
+- **Leave a note beside the session that started it** (on by default): the starting session
+  gets a note for the user with what happened (a note, not typed into Claude).
+- Every stall and action is in the activity log ("stall watch · NAME: no progress since 14:02 →
+  nudged with “Continue” (1/3 this hour)").
+- `claudedeck status ID` shows `stall`: `watching`, `stalled` (`no_progress` / `error_loop` /
+  null), `last_progress_at`, `minutes_without_progress`, `repeated_errors`, `last_action`,
+  `last_action_at`, `interventions_last_hour` (null for sessions that aren't watched).
+
 ### Closing sessions
 
 `close` and `remove` need **Settings › Agents › Sessions may close sessions they started** (off by

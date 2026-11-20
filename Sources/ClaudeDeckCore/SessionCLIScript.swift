@@ -82,8 +82,8 @@ extension SessionCLI {
           Every decision, newest first.
     Simulators (Settings > Agents: "Sessions may reserve simulators"):
       claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--json]
-          Simulators of this session's own, booted: prints "UDID  NAME" per device. --duo adds an
-          iPhone Duo. No other session gets them until they're released.
+          Simulators of this session's own, booted: prints "UDID  NAME" per device. --duo alone is
+          an iPhone Duo; with --device it adds an iPhone Duo to that device. No other session gets them until they're released.
       claudedeck sim release [UDID] [--json]
           Releases one (or, without UDID, all of this session's). Also when the session ends.
       claudedeck sim list [--json]
@@ -1626,7 +1626,7 @@ extension SessionCLI {
     ```sh
     udid=$(claudedeck sim acquire | head -1 | cut -d ' ' -f 1)   # booted iPhone 17 Pro of your own
     claudedeck sim acquire --device "iPad Pro 13-inch (M5)"      # another device type
-    claudedeck sim acquire --duo          # an iPhone 17 Pro and an iPhone Duo (two lines)
+    claudedeck sim acquire --duo          # just an iPhone Duo (add --device X for both)
     xcodebuild … -destination "id=$udid"                          # always by UDID
     claudedeck sim release [UDID]         # when done (also happens when your session ends)
     claudedeck sim list                   # who holds what
