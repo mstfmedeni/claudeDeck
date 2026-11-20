@@ -25,17 +25,22 @@ extension ServerPlanContract.Feature {
     /// `since` / `until` / `grep` / `timestamps` on container logs (the stream takes only `since`
     /// and `timestamps`; it answers 400 to `until` or `grep`).
     public static let logQuery = "log_query"
-    // Still proposed (docs/serverplan-containers.md §5.6–5.10); not in 1.6.
+    // Also 1.6 (ServerPlan agent_container_ops.go, agent_container_events.go).
     /// `POST /ws-ticket` with `command: "exec"` and `container`.
     public static let containerExec = "container_exec"
-    /// `POST …/containers/:name/recreate` (428).
+    /// `POST …/containers/:name/recreate` (428). Only a ServerPlan Dockerfile project's container;
+    /// its checks (400 not a project container, 409 a deploy is running, …) come before the 428.
     public static let containerRecreate = "container_recreate"
-    /// `POST …/containers/:name/pull` (428).
+    /// `POST …/containers/:name/pull` (428). Not for project containers (400 "deploy kullanin") nor
+    /// compose-managed ones; checks before the 428; a failed recreate restores the old container
+    /// (502 `action_failed` with `output`).
     public static let imageUpdate = "image_update"
-    /// `DELETE …/containers/:name` (428).
+    /// `DELETE …/containers/:name` (428; admin token; traefik/postgres/redis/minio: 400).
     public static let containerRemove = "container_remove"
-    /// `GET /servers/:id/docker/disk`, `POST /servers/:id/docker/prune` (428).
+    /// `GET /servers/:id/docker/disk`, `POST /servers/:id/docker/prune` (428; admin token).
     public static let dockerPrune = "docker_prune"
+    /// `container.died` / `.unhealthy` / `.restarted` / `.recreated` on `/events`.
+    public static let containerEvents = "container_events"
 }
 
 // MARK: - What docker's status line says
@@ -737,6 +742,16 @@ public enum ContainerLogRepair {
     /// At most this many lines go into the prompt (the last ones).
     public static let maxLines = 200
 
+    /// With nothing selected: the error lines (the last 40, with 3 lines around the last 5) and
+    /// the last 60 lines, in log order.
+    public static func pick(_ lines: [String]) -> [String] {
+        let errors = lines.indices.filter { ServerPlanLogSeverity.of(lines[$0]) == .error }.suffix(40)
+        var wanted = Set(errors)
+        for index in errors.suffix(5) { for near in (index - 3)...(index + 3) where lines.indices.contains(near) { wanted.insert(near) } }
+        for index in lines.indices.suffix(60) { wanted.insert(index) }
+        return lines.indices.filter { wanted.contains($0) }.map { lines[$0] }
+    }
+
     /// The message typed into the session: what runs where, and the log lines the owner picked.
     public static func prompt(container: String, server: String, image: String?, project: String?, status: String?,
                               lines: [String]) -> String {
@@ -813,5 +828,86 @@ extension ServerPlanClient {
     /// Adds or replaces one key of a project's deploy env (takes effect at the next deploy).
     public func setProjectEnv(projectID: Int, key: String, value: String, secret: Bool) async throws {
         _ = try await send(try request("/projects/\(projectID)/env", method: "POST", json: ["key": key, "value": value, "is_secret": secret]))
+    }
+}
+
+// MARK: - Container events → notifications
+
+/// A container problem worth telling the owner about (from `container_events`).
+public struct ServerPlanContainerAlert: Sendable, Equatable {
+    public enum Reason: Sendable, Equatable {
+        /// Died with a non-zero exit code that isn't a stop (137 / 143).
+        case crashed(exitCode: Int)
+        /// Killed by the kernel for memory.
+        case outOfMemory
+        case unhealthy
+        /// Restarted `count` times within `ServerPlanContainerWatch.loopWindow`.
+        case restartLoop(count: Int)
+    }
+
+    public var reason: Reason
+    public var serverID: Int?
+    public var serverName: String
+    public var container: String
+
+    /// One notification per container: a newer problem replaces the older one.
+    public var noticeID: String { "serverplan-container-\(serverID ?? 0)-\(container)" }
+}
+
+/// Decides which `container.*` events notify: an unexpected death (non-zero exit other than
+/// 137 / 143, or OOM), unhealthy, and a restart loop (3 restarts within 10 minutes). Deliberate
+/// stops and recreates never do.
+public struct ServerPlanContainerWatch: Sendable {
+    public static let loopCount = 3
+    public static let loopWindow: TimeInterval = 600
+
+    private var restarts: [String: [Date]] = [:]
+    private var lastRestartCount: [String: Int] = [:]
+
+    public init() {}
+
+    /// Exit codes of `docker stop` (0 for a clean exit, 143 SIGTERM, 137 SIGKILL after the timeout).
+    public static func isDeliberateStop(exitCode: Int?, oomKilled: Bool) -> Bool {
+        !oomKilled && [0, 137, 143].contains(exitCode ?? 0)
+    }
+
+    public mutating func alert(for event: ServerPlanEvent, now: Date = Date()) -> ServerPlanContainerAlert? {
+        let data = event.data
+        guard let name = data.containerName, !name.isEmpty else { return nil }
+        let key = "\(data.serverID ?? 0)/\(name)"
+        func make(_ reason: ServerPlanContainerAlert.Reason) -> ServerPlanContainerAlert {
+            ServerPlanContainerAlert(reason: reason, serverID: data.serverID, serverName: data.serverName ?? "", container: name)
+        }
+        switch event.kind {
+        case .containerDied:
+            let oom = data.oomKilled == true
+            if oom { return make(.outOfMemory) }
+            guard !Self.isDeliberateStop(exitCode: data.exitCode, oomKilled: false), let code = data.exitCode else { return nil }
+            return make(.crashed(exitCode: code))
+        case .containerUnhealthy:
+            return make(.unhealthy)
+        case .containerRestarted:
+            // The panel polls every 2 minutes: one event can stand for several restarts.
+            let count = data.restartCount
+            let added = count.flatMap { new in lastRestartCount[key].map { max(1, new - $0) } } ?? 1
+            if let count { lastRestartCount[key] = count }
+            let at = event.at ?? now
+            var times = (restarts[key] ?? []).filter { at.timeIntervalSince($0) < Self.loopWindow }
+            times.append(contentsOf: Array(repeating: at, count: min(added, Self.loopCount)))
+            guard times.count >= Self.loopCount else {
+                restarts[key] = times
+                return nil
+            }
+            // Told once per loop: counting starts again.
+            restarts[key] = []
+            return make(.restartLoop(count: times.count))
+        case .containerRecreated:
+            // A new container: its restart history starts over.
+            restarts[key] = nil
+            lastRestartCount[key] = nil
+            return nil
+        default:
+            return nil
+        }
     }
 }

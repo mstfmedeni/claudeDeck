@@ -12,6 +12,15 @@ struct ServerPlanNotice {
     var id: String
     var deploymentID: Int?
     var isFailure: Bool
+    /// A container problem: clicking opens its logs; "Fix with Claude" where its project matches.
+    var container: ContainerRef?
+
+    struct ContainerRef {
+        var serverID: Int
+        var server: String
+        var name: String
+        var canFix: Bool
+    }
 }
 
 /// What a sidebar sheet shows.
@@ -92,6 +101,8 @@ final class ServerPlanController {
     var containerSeries: [String: ServerPlanSeries] = [:]
     /// Containers whose "Claude ile düzelt" is starting ("serverID/name").
     var repairingLogs: Set<String> = []
+    /// Which `container.*` events notify (crash, OOM, unhealthy, restart loop).
+    @ObservationIgnored var containerWatch = ServerPlanContainerWatch()
     /// Servers expanded in the sidebar (kept across launches): their containers are fetched.
     var expandedServers: Set<Int> = Set(UserDefaults.windowState.array(forKey: "sidebar.serversExpandedIDs") as? [Int] ?? []) {
         didSet {
@@ -372,6 +383,8 @@ final class ServerPlanController {
             if watch.okEvent() { onCleared?([Self.balanceNoticeID]) }
             balanceWatch = watch
             model?.onCountsChanged?()
+        case .containerDied, .containerUnhealthy, .containerRestarted, .containerRecreated:
+            containerEvent(event)
         case .unknown:
             break
         }

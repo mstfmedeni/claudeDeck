@@ -748,17 +748,17 @@ def domain_purchase(h, body):
                       "purchase_id": pid, "nameservers": ns, "cloudflare_zone": zone, "whois_privacy": True})
 
 
-# --- Containers: ServerPlan agent API 1.6 (`--v16`) and the still-proposed rest (`--containers`) --
-# 1.6 (ServerPlan internal/web/handlers/agent_containers.go, agent_api.go): container_details,
-# container_inspect, container_stats, server_stats, log_query, container_exec. `--containers` adds
-# what ClaudeDeck still proposes (docs/serverplan-containers.md §5.7-5.10): recreate / pull /
-# remove, docker disk and prune.
+# --- Containers: ServerPlan agent API 1.6 (`--v16`, alias `--containers`) ---------------------------
+# ServerPlan internal/web/handlers/agent_containers.go, agent_container_ops.go,
+# agent_container_events.go, agent_api.go: container details / inspect / stats, numbers on health,
+# log queries, exec terminals, recreate / image update / remove, docker disk and prune, and the
+# container.* events (`--container-events N` plays them).
 
-V16_FEATURES = ["container_details", "container_inspect", "container_stats", "server_stats", "log_query"]
-PROPOSED_FEATURES = ["container_recreate", "image_update", "container_remove", "docker_prune"]
+V16_FEATURES = ["container_details", "container_inspect", "container_stats", "server_stats", "log_query",
+                "container_recreate", "image_update", "container_remove", "docker_prune", "container_events"]
 removed_containers = set()   # (server id, name) removed with DELETE
 net_counters = {}            # server id or (server id, name) -> [rx, tx]
-PROTECTED = ("traefik", "postgres", "redis")
+PROTECTED = ("traefik", "postgres", "redis", "minio")
 LOG_TIME_RE = re.compile(r"^[0-9TZ:.+-]{1,40}$|^[0-9]+[smh]$")
 NAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}")
 
@@ -985,8 +985,6 @@ def containers_get(h, p, query):
         else:
             h.send_json(200, inspect_body(sid, row))
         return True
-    if not args.containers:
-        return False
     m = re.fullmatch(r"/servers/(\d+)/docker/disk", p)
     if m:
         h.send_json(200, {"images": {"count": 14, "active": 5, "size_bytes": 6_400_000_000, "reclaimable_bytes": 3_900_000_000},
@@ -1001,58 +999,149 @@ def server_name(sid):
     return next((s["name"] for s in fixture("servers.json") if s["id"] == sid), "server")
 
 
+def deploying_project(pid):
+    with state_lock:
+        return any(d["project_id"] == pid and d["status"] in ("pending", "building", "transferring", "deploying") for d in deployments.values())
+
+
 def containers_post(h, p, body):
-    if not args.containers:
+    """agent_container_ops.go: the checks come before the 428, the confirm is the container's
+    (prune: the server's) name, docker failures are 502 action_failed with `output`."""
+    if not args.v16:
         return False
     m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/(recreate|pull)", p)
     if m:
         sid, name, op = int(m.group(1)), unquote(m.group(2)), m.group(3)
+        if not known_server(sid):
+            return h.error(404, "not_found", "Sunucu bulunamadi") or True
+        if not NAME_RE.fullmatch(name):
+            return h.error(400, "bad_request", "Gecersiz container adi") or True
+        row = next((r for r in container_rows(sid) if r["name"] == name), None)
+        if op == "recreate":
+            if not row or row.get("project_id") is None:
+                return h.error(400, "bad_request", "ServerPlan proje container'i degil") or True
+            if deploying_project(row["project_id"]):
+                return h.error(409, "conflict", "Bu proje icin devam eden bir deploy var") or True
+            if body.get("confirm") != name:
+                return confirm_required(h, "%s @ %s: container yeniden olusturulur (mevcut imaj, guncel env)" % (name, server_name(sid)), name) or True
+            new_id = secrets.token_hex(6)
+            emit("container.recreated", {"server_id": sid, "server_name": server_name(sid), "name": name, "id": new_id,
+                                         "project_id": row["project_id"], "reason": "recreate"})
+            return h.send_json(200, {"success": True, "id": new_id}) or True
+        # pull
+        if row and row.get("project_id") is not None:
+            return h.error(400, "bad_request", "Imaj ServerPlan tarafindan derleniyor; deploy kullanin") or True
+        if not row:
+            return h.error(404, "not_found", "Container bulunamadi") or True
+        if name.startswith("compose-"):
+            return h.error(400, "bad_request", "docker compose ile yonetilen container; compose ile guncelleyin") or True
+        summary = "%s @ %s: %s imaji cekilir; yeni surum varsa container yeniden olusturulur" % (name, server_name(sid), row.get("image", name))
+        if name in PROTECTED:
+            summary += " (DIKKAT: sunucu altyapisi, tum uygulamalar etkilenebilir)"
         if body.get("confirm") != name:
-            what = "yeniden olusturulur (mevcut imaj, guncel env)" if op == "recreate" else "imaji cekilir, degistiyse yeniden olusturulur"
-            confirm_required(h, "%s @ %s: container %s" % (name, server_name(sid), what), name)
-        elif op == "pull":
-            h.send_json(200, {"success": True, "updated": name != "postgres", "old_image_id": "sha256:aaa", "new_image_id": "sha256:bbb",
-                              "output": "Status: Downloaded newer image for %s" % name})
-        else:
-            h.send_json(200, {"success": True, "id": secrets.token_hex(6)})
-        return True
+            return confirm_required(h, summary, name) or True
+        output = "%s: Pulling from library/%s\nDigest: sha256:%s\nStatus: Downloaded newer image for %s" % (
+            row.get("image", name).split(":")[-1], name, "c" * 64, row.get("image", name))
+        if name == "traefik":
+            # The mock's failure case: the recreate failed and the old container came back.
+            return h.send_json(502, {"error": "action_failed", "output": output,
+                                     "message": "yeni container baslatilamadi: exit status 125 port is already allocated; eski container geri yuklendi"}) or True
+        updated = name != "postgres"
+        result = {"success": True, "updated": updated, "old_image_id": "sha256:" + "a" * 64,
+                  "new_image_id": "sha256:" + ("b" if updated else "a") * 64, "output": output}
+        if updated:
+            result["id"] = secrets.token_hex(6)
+            emit("container.recreated", {"server_id": sid, "server_name": server_name(sid), "name": name, "id": result["id"], "reason": "image_update"})
+        return h.send_json(200, result) or True
     m = re.fullmatch(r"/servers/(\d+)/docker/prune", p)
     if m:
         sid = int(m.group(1))
+        if not known_server(sid):
+            return h.error(404, "not_found", "Sunucu bulunamadi") or True
         name = server_name(sid)
+        images = body.get("images") or "dangling"
+        if images not in ("dangling", "unused", "none"):
+            return h.error(400, "bad_request", "images sadece dangling, unused veya none olabilir") or True
+        containers, build_cache, volumes = body.get("containers", True), body.get("build_cache", True), bool(body.get("volumes"))
+        what = []
+        if containers:
+            what.append("durmus containerlar")
+        if images == "dangling":
+            what.append("etiketsiz (dangling) imajlar")
+        elif images == "unused":
+            what.append("kullanilmayan tum imajlar")
+        if build_cache:
+            what.append("build cache")
+        if volumes:
+            what.append("kullanilmayan volume'ler")
+        if not what:
+            return h.error(400, "bad_request", "Temizlenecek bir sey secilmedi") or True
         if body.get("confirm") != name:
-            parts = []
-            if body.get("images", "dangling") != "none":
-                parts.append("imajlar (%s)" % body.get("images", "dangling"))
-            if body.get("containers", True):
-                parts.append("durmus containerlar")
-            if body.get("build_cache", True):
-                parts.append("build cache")
-            if body.get("volumes"):
-                parts.append("KULLANILMAYAN VOLUME'LAR VE VERILERI")
-            confirm_required(h, "%s: %s silinecek (~5.6 GB geri kazanilabilir)" % (name, ", ".join(parts) or "hicbir sey"), name)
-        else:
-            h.send_json(200, {"success": True, "reclaimed_bytes": 5_640_000_000, "output": "Total reclaimed space: 5.64GB"})
-        return True
+            summary = "%s: silinecek: %s (geri kazanilabilir: imajlar 3.9GB, containerlar 40.0MB, build cache 1.7GB" % (name, ", ".join(what))
+            summary += ", volume'ler 300.0MB)" if volumes else ")"
+            if images == "unused" and containers:
+                summary += ". Durmus proje containerlari ve imajlari silinir; o projeler icin tekrar deploy gerekir"
+            if volumes:
+                summary += ". UYARI: hicbir container'a bagli olmayan volume'ler icindeki verilerle birlikte kalici olarak silinir"
+            return confirm_required(h, summary, name) or True
+        output = "$ docker container prune -f\nTotal reclaimed space: 40MB\n$ docker image prune -f\nTotal reclaimed space: 3.9GB\n"
+        if sid == 2:
+            # The mock's partial failure: what ran still counts.
+            return h.send_json(502, {"error": "action_failed", "message": "docker builder prune -f: exit status 1",
+                                     "reclaimed_bytes": 3_940_000_000, "output": output + "$ docker builder prune -f\nError: daemon busy\n"}) or True
+        return h.send_json(200, {"success": True, "reclaimed_bytes": 5_640_000_000, "output": output + "$ docker builder prune -f\nTotal: 1.7GB\n"}) or True
     return False
 
 
-def containers_delete(h, p, body):
-    if not args.containers:
+def containers_delete(h, p, body, query):
+    if not args.v16:
         return False
     m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)", p)
     if not m:
         return False
     sid, name = int(m.group(1)), unquote(m.group(2))
-    if name in PROTECTED:
-        h.error(400, "bad_request", "%s silinemez" % name)
-    elif body.get("confirm") != name:
-        confirm_required(h, "%s @ %s: container silinir (docker rm -f; volume'lar kalir)" % (name, server_name(sid)), name)
+    confirm = body.get("confirm") or (query.get("confirm") or [""])[0]
+    if not known_server(sid):
+        h.error(404, "not_found", "Sunucu bulunamadi")
+    elif name in PROTECTED:
+        h.error(400, "bad_request", "%s sunucu altyapisi; silinemez" % name)
+    elif confirm != name:
+        row = next((r for r in container_rows(sid) if r["name"] == name), None)
+        summary = "%s @ %s: container zorla silinir (docker rm -f)" % (name, server_name(sid))
+        if row and row.get("project_name"):
+            summary += "; %s projesi yeniden deploy edilene kadar calismaz" % row["project_name"]
+        confirm_required(h, summary, name)
+    elif not any(r["name"] == name for r in container_rows(sid)):
+        h.error(404, "not_found", "Container bulunamadi")
     else:
         with state_lock:
             removed_containers.add((sid, name))
         h.send_json(200, {"success": True})
     return True
+
+
+CONTAINER_EVENT_SCRIPT = [
+    # (type, data) on server 1; a stop's 143 and the recreate don't notify in ClaudeDeck.
+    ("container.died", {"name": "payments-api", "exit_code": 1, "oom_killed": False}),
+    ("container.unhealthy", {"name": "postgres"}),
+    ("container.restarted", {"name": "acme-storefront", "restart_count": 1}),
+    ("container.restarted", {"name": "acme-storefront", "restart_count": 2}),
+    ("container.restarted", {"name": "acme-storefront", "restart_count": 4}),
+    ("container.died", {"name": "traefik", "exit_code": 143, "oom_killed": False}),
+    ("container.died", {"name": "acme-storefront", "exit_code": 137, "oom_killed": True}),
+    ("container.recreated", {"name": "acme-storefront", "reason": "recreate"}),
+]
+
+
+def play_container_events(every):
+    """The panel's 2-minute poller, faster: one scripted event every `every` seconds, forever."""
+    i = 0
+    while True:
+        time.sleep(every)
+        kind, data = CONTAINER_EVENT_SCRIPT[i % len(CONTAINER_EVENT_SCRIPT)]
+        row = next((r for r in container_rows(1) if r["name"] == data["name"]), {"id": "0" * 12})
+        emit(kind, dict(data, server_id=1, server_name=server_name(1), id=row.get("id", "0" * 12)))
+        i += 1
 
 
 # --- Rate limiting (ServerPlan 1.5, `--v15`) ------------------------------------------------------
@@ -1177,8 +1266,6 @@ class Handler(BaseHTTPRequestHandler):
                     if "terminal" in me["features"]:
                         features.append("container_exec")
                     me.update(server_version="1.6", features=features)
-                if args.containers:
-                    me.update(features=me["features"] + PROPOSED_FEATURES)
                 return self.send_json(200, me)
             if p == "/ratelimit" and args.v15:
                 return ratelimit_get(self, query)
@@ -1443,7 +1530,7 @@ class Handler(BaseHTTPRequestHandler):
         if p is None:
             return
         body = self.body()
-        if not containers_delete(self, p, body) and not v12_delete(self, p, body):
+        if not containers_delete(self, p, body, parse_qs(urlparse(self.path).query)) and not v12_delete(self, p, body):
             self.error(404, "not_found", "Bulunamadı")
 
 
@@ -1470,9 +1557,9 @@ def main():
     parser.add_argument("--v16", action="store_true",
                         help="/me says 1.6 (implies --v15): container details / inspect / stats, numbers on health, logs "
                              "since/until/grep/timestamps, container_exec terminals (ServerPlan's real 1.6 shapes)")
-    parser.add_argument("--containers", action="store_true",
-                        help="--v16 plus what ClaudeDeck still proposes (docs/serverplan-containers.md §5.7-5.10): "
-                             "recreate/pull/remove, docker disk/prune")
+    parser.add_argument("--containers", action="store_true", help="the same as --v16 (kept for older scripts)")
+    parser.add_argument("--container-events", type=float, default=0, metavar="SECONDS",
+                        help="with --v16: play a container.* event every SECONDS (crash, unhealthy, restart loop, stop, OOM, recreate)")
     args = parser.parse_args()
     if args.containers:
         args.v16 = True
@@ -1486,6 +1573,8 @@ def main():
     if args.port == 5050:
         raise SystemExit("refusing :5050 (the real panel's port)")
     load_state()
+    if args.v16 and args.container_events > 0:
+        threading.Thread(target=play_container_events, args=(args.container_events,), daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     print("ServerPlan mock on http://127.0.0.1:%d (token %s)" % (args.port, args.token), flush=True)

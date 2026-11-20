@@ -521,4 +521,104 @@ import Testing
         let me = try JSONDecoder().decode(ServerPlanMe.self, from: Data(Self.me15.utf8))
         #expect(me.has(feature: ServerPlanContract.Feature.containerExec))
     }
+
+    // MARK: Container operations and events as shipped (4482a80, 6781af6, 904b64a)
+
+    /// recreate / pull / remove check before the 428: such an answer goes straight back, no approval.
+    @Test func opsRefusedBeforeTheConfirmationAskNobody() async throws {
+        let transport = Transport([
+            "GET /servers": [(200, Self.servers)],
+            "POST /servers/1/containers/api/recreate": [(409, #"{"error":"conflict","message":"Bu proje icin devam eden bir deploy var"}"#)],
+            "POST /servers/1/containers/acme-storefront/pull": [(400, #"{"error":"bad_request","message":"Imaj ServerPlan tarafindan derleniyor; deploy kullanin"}"#)],
+            "DELETE /servers/1/containers/postgres": [(400, #"{"error":"bad_request","message":"postgres sunucu altyapisi; silinemez"}"#)],
+        ])
+        let asked = Box<[String]>([])
+        let r = try runner(transport, me: Self.me15, approve: true, asked: asked)
+        let conflict = await r.run("container-recreate", method: "POST", form: ["server": "1", "container": "api"])
+        #expect(conflict.status == 409 && conflict.text.contains("deploy"))
+        let pull = await r.run("container-pull", method: "POST", form: ["server": "1", "container": "acme-storefront"])
+        #expect(pull.status == 400 && pull.text.contains("deploy kullanin"))
+        let remove = await r.run("container-remove", method: "POST", form: ["server": "1", "container": "postgres"])
+        #expect(remove.status == 400)
+        #expect(asked.value.isEmpty && transport.requests.allSatisfy { ($0.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? "").contains("confirm") == false })
+    }
+
+    /// 502 action_failed keeps docker's output (and a partial prune's reclaimed bytes) in the message.
+    @Test func actionFailedCarriesItsOutput() async throws {
+        let failed = #"{"error":"action_failed","message":"docker builder prune -f: exit status 1","reclaimed_bytes":3940000000,"output":"$ docker builder prune -f\nError: daemon busy\n"}"#
+        let transport = Transport(["POST /servers/2/docker/prune": [(428, #"{"error":"confirm_required","summary":"staging: silinecek","confirm":"staging"}"#), (502, failed)]])
+        let c = client(transport)
+        let action = ServerPlanAction.prune(serverID: 2, serverName: "staging", options: ServerPlanPruneOptions())
+        let preview = try await c.preview(action)
+        #expect(preview.expected == "staging")
+        do {
+            _ = try await c.perform(#require(ServerPlanConfirmation(action, expected: preview.expected)))
+            Issue.record("expected action_failed")
+        } catch ServerPlanError.http(let status, let code, let message) {
+            #expect(status == 502 && code == "action_failed")
+            #expect(message?.contains("daemon busy") == true && message?.contains("exit status 1") == true && message?.contains("GB") == true)
+        }
+        // The prune body: the panel's defaults unless changed.
+        #expect(transport.body(0)["images"] as? String == "dangling" && transport.body(0)["volumes"] as? Bool == false
+            && transport.body(1)["confirm"] as? String == "staging")
+    }
+
+    private func event(_ type: String, _ data: String, at: String = "2026-11-21T10:00:00Z") -> ServerPlanEvent {
+        ServerPlanEvent(ServerSentEvent(event: type, data: #"{"type":"\#(type)","at":"\#(at)","data":\#(data)}"#))!
+    }
+
+    @Test func containerEventsDecode() {
+        let died = event("container.died", #"{"server_id":1,"server_name":"prod","name":"api","id":"3f2a9c1b7d4e","exit_code":1,"oom_killed":false}"#)
+        #expect(died.kind == .containerDied && died.kind.isContainer && died.data.containerName == "api" && died.data.containerID == "3f2a9c1b7d4e")
+        #expect(died.data.exitCode == 1 && died.data.oomKilled == false && died.data.serverName == "prod")
+        let restarted = event("container.restarted", #"{"server_id":1,"name":"api","id":"3f2a9c1b7d4e","restart_count":4}"#)
+        #expect(restarted.data.restartCount == 4)
+        let recreated = event("container.recreated", #"{"server_id":1,"name":"api","id":"9a9a9a9a9a9a","project_id":12,"reason":"image_update"}"#)
+        #expect(recreated.kind == .containerRecreated && recreated.data.reason == "image_update" && recreated.data.projectID == 12)
+        // A deploy event still reads its numeric id.
+        #expect(event("deploy.failed", #"{"id":207}"#).data.deploymentID == 207)
+    }
+
+    @Test func containerAlertsFilterStopsAndRecreates() {
+        var watch = ServerPlanContainerWatch()
+        func died(_ code: Int, oom: Bool = false) -> ServerPlanContainerAlert.Reason? {
+            watch.alert(for: event("container.died", #"{"server_id":1,"server_name":"prod","name":"api","exit_code":\#(code),"oom_killed":\#(oom)}"#))?.reason
+        }
+        #expect(died(1) == .crashed(exitCode: 1) && died(2) == .crashed(exitCode: 2) && died(-1) == .crashed(exitCode: -1))
+        #expect(died(0) == nil && died(137) == nil && died(143) == nil)
+        #expect(died(137, oom: true) == .outOfMemory && died(1, oom: true) == .outOfMemory)
+        let unhealthy = watch.alert(for: event("container.unhealthy", #"{"server_id":1,"server_name":"prod","name":"db"}"#))
+        #expect(unhealthy?.reason == .unhealthy && unhealthy?.noticeID == "serverplan-container-1-db" && unhealthy?.serverName == "prod")
+        #expect(watch.alert(for: event("container.recreated", #"{"server_id":1,"name":"api","reason":"recreate"}"#)) == nil)
+        #expect(watch.alert(for: event("container.died", #"{"server_id":1,"exit_code":1}"#)) == nil)  // no name
+    }
+
+    @Test func restartLoopNeedsThreeWithinTenMinutes() {
+        var watch = ServerPlanContainerWatch()
+        func restarted(_ count: Int?, at: String, name: String = "api") -> ServerPlanContainerAlert.Reason? {
+            let extra = count.map { #","restart_count":\#($0)"# } ?? ""
+            return watch.alert(for: event("container.restarted", #"{"server_id":1,"name":"\#(name)"\#(extra)}"#, at: at))?.reason
+        }
+        #expect(restarted(1, at: "2026-11-21T10:00:00Z") == nil)
+        #expect(restarted(2, at: "2026-11-21T10:02:00Z") == nil)
+        #expect(restarted(nil, at: "2026-11-21T10:02:00Z", name: "other") == nil)  // per container
+        #expect(restarted(3, at: "2026-11-21T10:04:00Z") == .restartLoop(count: 3))
+        // Told once: counting starts over.
+        #expect(restarted(4, at: "2026-11-21T10:06:00Z") == nil)
+        // Spread over more than 10 minutes: no loop.
+        #expect(restarted(5, at: "2026-11-21T10:17:00Z") == nil)
+        #expect(restarted(6, at: "2026-11-21T10:28:00Z") == nil)
+        // One poll that saw several restarts counts them all.
+        #expect(restarted(9, at: "2026-11-21T10:30:00Z") == .restartLoop(count: 4))
+        // A recreate starts the history over.
+        _ = watch.alert(for: event("container.recreated", #"{"server_id":1,"name":"api"}"#))
+        #expect(restarted(1, at: "2026-11-21T10:31:00Z") == nil && restarted(2, at: "2026-11-21T10:32:00Z") == nil)
+    }
+
+    @Test func repairPicksErrorsAndTheTail() {
+        let lines = (0..<100).map { $0 == 10 ? "ERROR boom" : "line \($0)" }
+        let picked = ContainerLogRepair.pick(lines)
+        #expect(picked.contains("ERROR boom") && picked.contains("line 7") && picked.contains("line 13") && !picked.contains("line 20"))
+        #expect(picked.last == "line 99" && picked.count == 7 + 60)
+    }
 }

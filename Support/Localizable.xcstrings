@@ -24103,6 +24103,126 @@
           }
         }
       }
+    },
+    "%@ crashed (exit %lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ çöktü (exit %2$lld)"
+          }
+        }
+      }
+    },
+    "%@ ran out of memory": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ için bellek yetmedi"
+          }
+        }
+      }
+    },
+    "%@ is unhealthy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sağlıksız"
+          }
+        }
+      }
+    },
+    "%@ keeps restarting (%lld× in 10 min)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ sürekli yeniden başlıyor (10 dk'da %2$lld kez)"
+          }
+        }
+      }
+    },
+    "The container stopped on %@. Open its logs to see why.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner %@ üzerinde durdu. Nedenini görmek için loglarını aç."
+          }
+        }
+      }
+    },
+    "The kernel killed it on %@ for memory (OOM).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ üzerinde çekirdek bellek yetmediği için durdurdu (OOM)."
+          }
+        }
+      }
+    },
+    "Its health check fails on %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ üzerinde sağlık kontrolü başarısız."
+          }
+        }
+      }
+    },
+    "Docker keeps restarting it on %@; it probably crashes at start.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker %@ üzerinde onu sürekli yeniden başlatıyor; büyük ihtimalle açılışta çöküyor."
+          }
+        }
+      }
+    },
+    "Open Logs": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logları Aç"
+          }
+        }
+      }
+    },
+    "Notify about container problems": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Container sorunlarında bildir"
+          }
+        }
+      }
+    },
+    "A container that crashed, ran out of memory, went unhealthy or keeps restarting (on the Mac and the phone)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çöken, belleği yetmeyen, sağlıksız olan ya da sürekli yeniden başlayan bir container (Mac'te ve telefonda)"
+          }
+        }
+      }
+    },
+    "Reclaimed anyway: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de boşaltılan: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

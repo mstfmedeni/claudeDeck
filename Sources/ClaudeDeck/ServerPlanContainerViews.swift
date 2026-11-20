@@ -474,13 +474,7 @@ struct ServerPlanLogsPane: View {
     /// and the tail.
     private func fix(_ ids: Set<Int>) {
         var picked = lines(ids)
-        if picked.isEmpty {
-            let errorIDs = entries.filter { $0.severity == .error }.map(\.id).suffix(40)
-            var wanted = Set(errorIDs)
-            for id in errorIDs.suffix(5) { for near in (id - 3)...(id + 3) { wanted.insert(near) } }
-            for entry in entries.suffix(60) { wanted.insert(entry.id) }
-            picked = entries.filter { wanted.contains($0.id) }.map(\.text)
-        }
+        if picked.isEmpty { picked = ContainerLogRepair.pick(entries.map(\.text)) }
         ServerPlanController.shared.fixLogsWithClaude(serverID: serverID, server: server, container: container, lines: picked)
     }
 

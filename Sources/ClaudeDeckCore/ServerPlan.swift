@@ -491,7 +491,20 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
         /// v1.4, edge-triggered on the panel: the Namecheap balance fell under its threshold / recovered.
         case registrarLowBalance = "registrar.low_balance"
         case registrarBalanceOK = "registrar.balance_ok"
+        /// 1.6 `container_events` (a 2-minute poller on the panel; the first tick is silent):
+        /// `{server_id,server_name,name,id,exit_code,oom_killed}`. A deliberate stop fires it too
+        /// (exit 0, 137 or 143).
+        case containerDied = "container.died"
+        /// `{server_id,server_name,name,id}`
+        case containerUnhealthy = "container.unhealthy"
+        /// `{server_id,server_name,name,id,restart_count}`
+        case containerRestarted = "container.restarted"
+        /// `{server_id,server_name,name,id,reason:"recreate"|"image_update"}` (after an agent's
+        /// recreate or image update).
+        case containerRecreated = "container.recreated"
         case unknown
+
+        public var isContainer: Bool { [.containerDied, .containerUnhealthy, .containerRestarted, .containerRecreated].contains(self) }
     }
 
     public struct Payload: Decodable, Sendable, Equatable {
@@ -505,6 +518,13 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
         public var availableBalance: Double?
         public var currency: String?
         public var lowThreshold: Double?
+        /// `container.*` events: the container, docker's short id and what happened.
+        public var containerName: String?
+        public var containerID: String?
+        public var exitCode: Int?
+        public var oomKilled: Bool?
+        public var restartCount: Int?
+        public var reason: String?
 
         public init(deploymentID: Int? = nil, projectID: Int? = nil, projectName: String? = nil, serverID: Int? = nil,
                     serverName: String? = nil, errorSummary: String? = nil,
@@ -525,6 +545,7 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
             case deploymentID = "deployment_id", id, projectID = "project_id", projectName = "project_name", project
             case serverID = "server_id", serverName = "server_name", server, errorSummary = "error_summary", error
             case availableBalance = "available_balance", currency, lowThreshold = "low_threshold"
+            case name, exitCode = "exit_code", oomKilled = "oom_killed", restartCount = "restart_count", reason
         }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -537,6 +558,13 @@ public struct ServerPlanEvent: Decodable, Sendable, Equatable {
             availableBalance = try? c.decodeIfPresent(Double.self, forKey: .availableBalance)
             currency = try? c.decodeIfPresent(String.self, forKey: .currency)
             lowThreshold = try? c.decodeIfPresent(Double.self, forKey: .lowThreshold)
+            containerName = try? c.decodeIfPresent(String.self, forKey: .name)
+            // A container event's `id` is docker's hex id (a deploy event's is a number).
+            containerID = try? c.decodeIfPresent(String.self, forKey: .id)
+            exitCode = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .exitCode))?.value
+            oomKilled = try? c.decodeIfPresent(Bool.self, forKey: .oomKilled)
+            restartCount = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .restartCount))?.value
+            reason = try? c.decodeIfPresent(String.self, forKey: .reason)
         }
     }
 
@@ -689,8 +717,16 @@ public enum ServerPlanError: Error, Sendable, Equatable, LocalizedError {
                 return ErrorBody(message: text?.isEmpty == false ? text : nil)
             }
             let error = object["error"] as? String
-            let message = object["message"] as? String
-            return ErrorBody(code: error, message: message ?? error, summary: object["summary"] as? String, confirm: object["confirm"] as? String)
+            var message = object["message"] as? String ?? error
+            // 1.6 `action_failed` (recreate, image update, prune): docker's last lines and, for a
+            // partial prune, what was freed anyway.
+            if let bytes = (object["reclaimed_bytes"] as? NSNumber)?.doubleValue, bytes > 0 {
+                message = (message ?? "") + "\n" + String(localized: "Reclaimed anyway: \(ByteSize.format(bytes))")
+            }
+            if let output = (object["output"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+                message = (message ?? "") + "\n" + output.split(separator: "\n").suffix(20).joined(separator: "\n")
+            }
+            return ErrorBody(code: error, message: message, summary: object["summary"] as? String, confirm: object["confirm"] as? String)
         }
     }
 }

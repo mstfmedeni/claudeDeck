@@ -17,6 +17,11 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
     nonisolated static let purchaseCategory = "ownerApprovalPurchase"
     nonisolated static let loadCategory = "systemLoad"
     nonisolated static let showAgentsAction = "showAgents"
+    /// A ServerPlan container problem: Open Logs, and Fix with Claude where its project matches.
+    nonisolated static let containerCategory = "serverPlanContainer"
+    nonisolated static let containerFixCategory = "serverPlanContainerFix"
+    nonisolated static let openLogsAction = "openLogs"
+    nonisolated static let fixWithClaudeAction = "fixWithClaude"
     private let model: AppModel
     private var center: UNUserNotificationCenter? {
         // UNUserNotificationCenter crashes outside an app bundle (e.g. `swift run`).
@@ -61,6 +66,19 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             UNNotificationCategory(
                 identifier: Self.accountCategory,
                 actions: [UNNotificationAction(identifier: Self.switchAccountAction, title: String(localized: "Switch Account"), options: [])],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: Self.containerCategory,
+                actions: [UNNotificationAction(identifier: Self.openLogsAction, title: String(localized: "Open Logs"), options: [.foreground])],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: Self.containerFixCategory,
+                actions: [
+                    UNNotificationAction(identifier: Self.openLogsAction, title: String(localized: "Open Logs"), options: [.foreground]),
+                    UNNotificationAction(identifier: Self.fixWithClaudeAction, title: String(localized: "Fix with Claude"), options: [.foreground]),
+                ],
                 intentIdentifiers: []
             ),
             UNNotificationCategory(
@@ -197,6 +215,10 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
         content.body = notice.body
         content.sound = notice.isFailure ? .default : nil
         if let id = notice.deploymentID { content.userInfo = ["serverPlanDeployment": id] }
+        if let container = notice.container {
+            content.userInfo = ["serverPlanContainer": container.name, "serverPlanServerID": container.serverID, "serverPlanServer": container.server]
+            content.categoryIdentifier = container.canFix ? Self.containerFixCategory : Self.containerCategory
+        }
         content.threadIdentifier = "serverplan"
         center.add(UNNotificationRequest(identifier: notice.id, content: content, trigger: nil))
     }
@@ -323,6 +345,19 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
                 self.model.openMainWindow?()
                 NSApp.activate()
                 self.model.showDecisions()
+            }
+            return
+        }
+        if let name = userInfo["serverPlanContainer"] as? String, let serverID = userInfo["serverPlanServerID"] as? Int {
+            let server = userInfo["serverPlanServer"] as? String ?? ""
+            let fix = response.actionIdentifier == Self.fixWithClaudeAction
+            await MainActor.run {
+                let controller = ServerPlanController.shared
+                if fix {
+                    Task { await controller.fixContainerFromNotice(serverID: serverID, server: server, name: name) }
+                } else {
+                    controller.showContainerLogs(serverID: serverID, server: server, name: name)
+                }
             }
             return
         }

@@ -46,6 +46,13 @@ struct ServerPlanSettingsSection: View {
                     set: { value in model.mutate { $0.settings.serverPlanProjectRows = value } }
                 ))
                 if controller.offersRegistrarBalance { ServerPlanBalanceSettings() }
+                if controller.me?.has(feature: ServerPlanContract.Feature.containerEvents) == true {
+                    Toggle("Notify about container problems", isOn: Binding(
+                        get: { model.deck.settings.serverPlanContainerAlerts },
+                        set: { value in model.mutate { $0.settings.serverPlanContainerAlerts = value } }
+                    ))
+                    .help("A container that crashed, ran out of memory, went unhealthy or keeps restarting (on the Mac and the phone)")
+                }
             }
         } header: {
             Text("ServerPlan")

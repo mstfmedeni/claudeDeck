@@ -30,6 +30,97 @@ extension ServerPlanController {
 
     static func key(_ serverID: Int, _ container: String) -> String { "\(serverID)/\(container)" }
 
+    // MARK: Container events (1.6 `container_events`)
+
+    /// Shows a `container.*` event on the row at once, reads the server's list again for docker's
+    /// own status, and notifies a crash, OOM, unhealthy or restart loop (Settings › ServerPlan).
+    func containerEvent(_ event: ServerPlanEvent) {
+        let data = event.data
+        guard let serverID = data.serverID, let name = data.containerName else { return }
+        if var list = containers[serverID], let index = list.firstIndex(where: { $0.name == name }) {
+            var row = list[index]
+            switch event.kind {
+            case .containerDied:
+                row.state = "exited"
+                row.status = "Exited (\(data.exitCode ?? 0)) just now"
+                row.healthField = nil
+            case .containerUnhealthy:
+                row.state = "running"
+                row.healthField = "unhealthy"
+                if let status = row.status {
+                    row.status = status.contains("(healthy)") ? status.replacingOccurrences(of: "(healthy)", with: "(unhealthy)")
+                        : status.contains("(unhealthy)") ? status : status + " (unhealthy)"
+                }
+            case .containerRestarted, .containerRecreated:
+                row.state = "running"
+                row.status = "Up Less than a second"
+                row.healthField = nil
+                if let id = data.containerID { row.containerID = id }
+            default:
+                break
+            }
+            list[index] = row
+            containers[serverID] = list
+        }
+        Task { await refreshContainers(serverID: serverID) }
+        guard model?.deck.settings.serverPlanContainerAlerts ?? true else { return }
+        var watch = containerWatch
+        let alert = watch.alert(for: event)
+        containerWatch = watch
+        if let alert { notifyContainer(alert) }
+    }
+
+    /// One server's containers again (after an event).
+    func refreshContainers(serverID: Int) async {
+        guard let client, me?.allows(.read) != false else { return }
+        if let list = try? await client.containers(serverID: serverID) { containers[serverID] = list }
+    }
+
+    private func notifyContainer(_ alert: ServerPlanContainerAlert) {
+        let name = alert.container
+        let server = alert.serverName.isEmpty ? (self.server(alert.serverID)?.name ?? "") : alert.serverName
+        let title: String = switch alert.reason {
+        case .crashed(let code): String(localized: "\(name) crashed (exit \(code))")
+        case .outOfMemory: String(localized: "\(name) ran out of memory")
+        case .unhealthy: String(localized: "\(name) is unhealthy")
+        case .restartLoop(let count): String(localized: "\(name) keeps restarting (\(count)× in 10 min)")
+        }
+        let body: String = switch alert.reason {
+        case .crashed: String(localized: "The container stopped on \(server). Open its logs to see why.")
+        case .outOfMemory: String(localized: "The kernel killed it on \(server) for memory (OOM).")
+        case .unhealthy: String(localized: "Its health check fails on \(server).")
+        case .restartLoop: String(localized: "Docker keeps restarting it on \(server); it probably crashes at start.")
+        }
+        var canFix = false
+        if let serverID = alert.serverID, let model {
+            let row = container(serverID, name) ?? ServerPlanContainer(name: name)
+            canFix = project(for: row, serverID: serverID).flatMap { repairProject(for: $0, model: model) } != nil
+        }
+        onNotice?(ServerPlanNotice(title: title, body: body, id: alert.noticeID, deploymentID: nil, isFailure: true,
+                                   container: alert.serverID.map { ServerPlanNotice.ContainerRef(serverID: $0, server: server, name: name, canFix: canFix) }))
+    }
+
+    /// A container notification's click: the container sheet on its logs.
+    func showContainerLogs(serverID: Int, server: String, name: String) {
+        model?.openMainWindow?()
+        NSApp.activate()
+        sheet = .container(serverID: serverID, server: server, container: name, tab: .logs)
+    }
+
+    /// A container notification's "Fix with Claude": its last log lines (the errors and the tail)
+    /// go to a new session in the container's project.
+    func fixContainerFromNotice(serverID: Int, server: String, name: String) async {
+        guard let client else { return }
+        model?.openMainWindow?()
+        NSApp.activate()
+        let text = (try? await client.containerLogs(serverID: serverID, container: name, tail: 300)) ?? ""
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        if containers[serverID] == nil { await refreshContainers(serverID: serverID) }
+        let row = container(serverID, name) ?? ServerPlanContainer(name: name)
+        fixLogsWithClaude(serverID: serverID, server: server, container: row, lines: ContainerLogRepair.pick(lines))
+    }
+
     // MARK: Sampling (while a sheet is open)
 
     /// One health sample of a server (the panel runs a few commands over SSH).
