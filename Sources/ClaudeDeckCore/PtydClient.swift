@@ -242,6 +242,21 @@ public final class PtydClient: @unchecked Sendable {
         }
     }
 
+    /// The helper can replace its own code without ending its sessions (protocol 3 and later).
+    public var supportsUpgrade: Bool { welcome.protocolVersion >= PtydProtocol.upgradeVersion && isFull }
+
+    /// Asks the helper to exec into the binary now at its path (an update replaced it). `.ok`
+    /// (with the new build) means it is about to: the connection drops in a moment and the same
+    /// helper, same pid and instance, answers again with every session. `.refused("not_newer")`
+    /// or `("invalid_candidate")`: it keeps running as it is. Never sent to an older helper.
+    public func upgrade(_ completion: @escaping @Sendable (Result<PtydFrame, PtydClientError>) -> Void) {
+        guard supportsUpgrade else {
+            callbackQueue.async { completion(.failure(.refused(PtydErrorCode.badRequest, nil))) }
+            return
+        }
+        request(PtydMessage(op: .upgrade), completion: completion)
+    }
+
     /// Closes the connection (the helper keeps every session running).
     public func close() {
         queue.async { self.disconnect(notify: false) }

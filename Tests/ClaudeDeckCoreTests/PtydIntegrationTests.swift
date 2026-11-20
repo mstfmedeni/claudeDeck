@@ -4,7 +4,7 @@ import Testing
 @testable import ClaudeDeckCore
 
 /// The helper binary as built next to the tests (`swift test` builds it: the test target depends on it).
-private let helperBinary: URL? = {
+let helperBinary: URL? = {
     var dirs = Bundle.allBundles.map { $0.bundleURL.deletingLastPathComponent() }
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     dirs += [root.appending(path: ".build/debug"), root.appending(path: ".build/release")]
@@ -12,7 +12,7 @@ private let helperBinary: URL? = {
 }()
 
 /// Collects a session's output; waits for text to show up.
-private final class Collector: @unchecked Sendable {
+final class Collector: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes: [String: [UInt8]] = [:]
     private var exits: [String: PtydSessionInfo] = [:]
@@ -26,7 +26,7 @@ private final class Collector: @unchecked Sendable {
     var isDisconnected: Bool { lock.withLock { disconnected } }
 }
 
-private func waitFor(_ seconds: Double = 5, _ condition: () -> Bool) -> Bool {
+func waitFor(_ seconds: Double = 5, _ condition: () -> Bool) -> Bool {
     let deadline = Date().addingTimeInterval(seconds)
     while Date() < deadline {
         if condition() { return true }
@@ -36,31 +36,45 @@ private func waitFor(_ seconds: Double = 5, _ condition: () -> Bool) -> Bool {
 }
 
 /// A helper running as a child process in its own temporary folder (never launchd).
-private final class HelperProcess {
+final class HelperProcess {
     let dir: URL
     let paths: PtydPaths
     let process = Process()
+    /// The helper's stderr (its log), when asked for.
+    private(set) var logFile: URL?
 
-    init(extra: [String] = []) throws {
+    /// - Parameters:
+    ///   - binary: the helper to run (default: the one built next to the tests).
+    ///   - logging: keep its log in `dir/stderr.log`.
+    init(binary: URL? = nil, extra: [String] = [], logging: Bool = false) throws {
         // Short path: Unix socket paths are limited to 104 bytes.
         dir = URL(fileURLWithPath: "/tmp/cdptyd-\(UUID().uuidString.prefix(8))")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         paths = PtydPaths(directory: dir)
-        try launch(extra: extra)
+        try launch(binary: binary, extra: extra, logging: logging)
     }
 
     init(sharing other: HelperProcess) throws {
         dir = other.dir
         paths = other.paths
-        try launch(extra: [])
+        try launch(binary: nil, extra: [], logging: false)
     }
 
-    private func launch(extra: [String]) throws {
-        process.executableURL = try #require(helperBinary)
+    private func launch(binary: URL?, extra: [String], logging: Bool) throws {
+        process.executableURL = try binary ?? #require(helperBinary)
         process.arguments = ["--dir", dir.path, "--build", "test", "--ring-bytes", "65536"] + extra
-        process.standardError = FileHandle.nullDevice
+        if logging {
+            let url = dir.appending(path: "stderr.log")
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            process.standardError = try FileHandle(forWritingTo: url)
+            logFile = url
+        } else {
+            process.standardError = FileHandle.nullDevice
+        }
         try process.run()
     }
+
+    var log: String { logFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "" }
 
     func waitUntilListening() -> Bool {
         waitFor { (try? PtydClient.connect(socket: self.paths.socket, build: "test", timeout: 1, callbackQueue: DispatchQueue(label: "probe")))
@@ -86,7 +100,7 @@ private final class HelperProcess {
     }
 }
 
-private func sync<T: Sendable>(_ body: (@escaping @Sendable (Result<T, PtydClientError>) -> Void) -> Void) throws -> T {
+func sync<T: Sendable>(_ body: (@escaping @Sendable (Result<T, PtydClientError>) -> Void) -> Void) throws -> T {
     let semaphore = DispatchSemaphore(value: 0)
     nonisolated(unsafe) var result: Result<T, PtydClientError>?
     body { result = $0; semaphore.signal() }
@@ -94,12 +108,12 @@ private func sync<T: Sendable>(_ body: (@escaping @Sendable (Result<T, PtydClien
     return try result.get()
 }
 
-private func shellSpawn(_ script: String, id: String = UUID().uuidString, env: [String] = [], cwd: String = "/tmp") -> PtydSpawn {
+func shellSpawn(_ script: String, id: String = UUID().uuidString, env: [String] = [], cwd: String = "/tmp") -> PtydSpawn {
     PtydSpawn(id: id, executable: "/bin/sh", argv: ["sh", "-c", script], env: ["PATH=/usr/bin:/bin"] + env, cwd: cwd,
               cols: 80, rows: 24, meta: ["k": "v"])
 }
 
-private let tickLoop = #"i=0; while :; do echo "tick $i"; i=$((i+1)); sleep 0.05; done"#
+let tickLoop = #"i=0; while :; do echo "tick $i"; i=$((i+1)); sleep 0.05; done"#
 
 @Suite(.serialized, .enabled(if: helperBinary != nil, "claudedeck-ptyd not built"))
 struct PtydIntegrationTests {

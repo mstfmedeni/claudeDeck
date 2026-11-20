@@ -18,6 +18,19 @@ public final class PtydServer: @unchecked Sendable {
         /// another version with these).
         public var protocolVersion = PtydProtocol.version
         public var oldestCompatibleClient = PtydProtocol.oldestCompatibleClient
+        /// Where the running binary was loaded from, captured at launch (an update may move the
+        /// old file away; the new one lands at this path). Nil: no self-update.
+        public var executablePath: String?
+        /// The arguments to exec the next image with, argv[0] included (`--resume-fd` is added).
+        public var arguments: [String] = []
+        /// How often the binary at `executablePath` is looked at (0: never; `upgrade` still works).
+        public var watchInterval: TimeInterval = 5
+        /// The running image's designated requirement, captured at launch
+        /// (`PtydUpgradeCheck.ownDesignatedRequirement`): a candidate must satisfy it. Nil: none
+        /// is ever accepted.
+        public var designatedRequirement: String?
+        /// Tests only: accept a candidate of the same build (the signature is still checked).
+        public var allowSameBuildUpgrade = false
 
         public init(paths: PtydPaths, build: String, ringBytes: Int = PtydProtocol.defaultRingBytes, idleExit: TimeInterval? = nil) {
             self.paths = paths
@@ -34,7 +47,8 @@ public final class PtydServer: @unchecked Sendable {
     }
 
     public let options: Options
-    public let instance = UUID().uuidString
+    /// A fresh id per helper process; an exec into an updated binary keeps it (same process).
+    public private(set) var instance = UUID().uuidString
     private let queue = DispatchQueue(label: "claudedeck.ptyd")
     private var listenFD: Int32 = -1
     private var lockFD: Int32 = -1
@@ -45,11 +59,16 @@ public final class PtydServer: @unchecked Sendable {
     private var draining = false
     private var shuttingDown = false
     private var idleTimer: DispatchSourceTimer?
+    /// Self-update (PtydHandover): the binary watch, and an upgrade being checked or under way.
+    private var binaryWatch: PtydBinaryWatch
+    private var watchTimer: DispatchSourceTimer?
+    private var upgrading = false
     private let log: @Sendable (String) -> Void
 
     public init(options: Options, log: @escaping @Sendable (String) -> Void = { _ in }) {
         self.options = options
         self.log = log
+        binaryWatch = PtydBinaryWatch(baseline: options.executablePath.flatMap(PtydFileIdentity.init(path:)))
     }
 
     /// Takes the lock and starts listening. Throws `.alreadyRunning` if another helper has it.
@@ -72,12 +91,46 @@ public final class PtydServer: @unchecked Sendable {
         } catch {
             throw StartError.failed("\(error)")
         }
+        serve()
+        log("listening on \(options.paths.socket.path) (instance \(instance), build \(options.build))")
+    }
+
+    /// The previous image of this process exec'd into this one (PtydHandover): takes over its
+    /// socket, lock and sessions instead of starting afresh. The lock is already held through
+    /// the inherited descriptor (flock again would conflict with it), and the socket already
+    /// listens (connections made during the exec wait in its backlog).
+    public func resume(_ handover: PtydHandover) throws {
+        for fd in [handover.listenFD, handover.lockFD] where fcntl(fd, F_GETFD) < 0 {
+            throw StartError.failed("inherited descriptor \(fd) is not open")
+        }
+        // Children must never inherit these (nor the masters: restoreSession).
+        PtydSocket.setCloseOnExec(handover.listenFD)
+        PtydSocket.setCloseOnExec(handover.lockFD)
+        PtydSocket.setNonBlocking(handover.listenFD)
+        listenFD = handover.listenFD
+        lockFD = handover.lockFD
+        instance = handover.instance
+        queue.sync {
+            draining = handover.draining
+            for saved in handover.sessions { restoreSession(saved) }
+        }
+        serve()
+        let alive = handover.sessions.filter(\.alive).count
+        log("resumed from build \(handover.fromBuild) as build \(options.build): \(alive) live sessions, "
+            + "\(handover.sessions.count - alive) ended (instance \(instance))")
+        queue.async { self.exitIfDrained() }
+    }
+
+    /// Accepts connections and watches the binary.
+    private func serve() {
         let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptClients() }
         source.activate()
         acceptSource = source
-        queue.async { self.updateIdleTimer() }
-        log("listening on \(options.paths.socket.path) (instance \(instance), build \(options.build))")
+        queue.async {
+            self.updateIdleTimer()
+            self.startBinaryWatch()
+        }
     }
 
     /// Exits the process (socket removed first, the lock goes with the process).
@@ -340,6 +393,22 @@ public final class PtydServer: @unchecked Sendable {
         case .shutdown:
             reply(message, .ok, to: client)
             shutdown()
+        case .upgrade:
+            // A helper pretending to be older (tests) answers like one that doesn't know it.
+            guard options.protocolVersion >= PtydProtocol.upgradeVersion else {
+                return fail(message, PtydErrorCode.badRequest, to: client)
+            }
+            upgrade(reason: "asked by client \(client.id)") { [self] verdict in
+                guard !client.closed else { return }
+                switch verdict {
+                case .go(let build):
+                    self.reply(message, .ok, to: client) { $0.build = build }
+                case .notNewer:
+                    self.fail(message, PtydErrorCode.notNewer, to: client)
+                case .invalid:
+                    self.fail(message, PtydErrorCode.invalidCandidate, to: client)
+                }
+            }
         default:
             fail(message, PtydErrorCode.badRequest, to: client)
         }
@@ -365,6 +434,8 @@ public final class PtydServer: @unchecked Sendable {
         var writeSource: DispatchSourceWrite?
         var exitSource: DispatchSourceProcess?
         var killTimer: DispatchSourceTimer?
+        /// When `killTimer` fires (handed over to the next image).
+        var killDeadline: DispatchTime?
 
         init(spawn: PtydSpawn, pid: pid_t, master: Int32, startedAt: Double, ringBytes: Int) {
             self.spawn = spawn
@@ -392,7 +463,49 @@ public final class PtydServer: @unchecked Sendable {
         let startedAt = PtydLaunchPlan.processStartTime(pid) ?? Date().timeIntervalSince1970
         let session = Session(spawn: spawn, pid: pid, master: master, startedAt: startedAt, ringBytes: options.ringBytes)
         sessions[spawn.id] = session
+        watch(session)
+        log("spawned \(spawn.id) pid \(pid)")
+        return session
+    }
 
+    /// A session as the previous image left it (same child, same pty master).
+    private func restoreSession(_ saved: PtydHandover.Session) {
+        let hasPty = saved.alive && saved.master >= 0 && fcntl(saved.master, F_GETFD) >= 0
+        if saved.alive, !hasPty { log("session \(saved.spawn.id): its pty didn't come through the exec") }
+        let session = Session(spawn: saved.spawn, pid: saved.pid, master: hasPty ? saved.master : -1,
+                              startedAt: saved.startedAt, ringBytes: saved.alive ? options.ringBytes : 1)
+        session.cols = saved.cols
+        session.rows = saved.rows
+        session.exitCode = saved.exitCode
+        session.exitSignal = saved.exitSignal
+        sessions[saved.spawn.id] = session
+        guard saved.alive else {
+            session.alive = false
+            return
+        }
+        if !saved.scrollback.isEmpty { session.ring.append(saved.scrollback) }
+        guard hasPty else {
+            // Without its pty nobody can attach; it is still reaped and its exit reported.
+            watchExit(session)
+            return
+        }
+        PtydSocket.setCloseOnExec(saved.master)
+        PtydSocket.setNonBlocking(saved.master)
+        session.input = saved.pendingInput
+        watch(session)
+        if saved.readStopped {
+            // As before the exec: EOF seen, the exit source finishes it.
+            session.readSource?.suspend()
+            session.readSuspended = true
+        }
+        if !session.input.isEmpty { flushInput(session) }
+        if let killIn = saved.killIn { scheduleKill(session, after: max(0, killIn)) }
+        log("restored \(saved.spawn.id) pid \(saved.pid) (\(saved.scrollback.count) bytes of scrollback)")
+    }
+
+    /// Reads the session's pty and reaps its child when it exits.
+    private func watch(_ session: Session) {
+        let master = session.master
         let read = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
         read.setEventHandler { [weak self, weak session] in
             guard let self, let session else { return }
@@ -401,8 +514,11 @@ public final class PtydServer: @unchecked Sendable {
         read.setCancelHandler { close(master) }
         read.activate()
         session.readSource = read
+        watchExit(session)
+    }
 
-        let exit = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+    private func watchExit(_ session: Session) {
+        let exit = DispatchSource.makeProcessSource(identifier: session.pid, eventMask: .exit, queue: queue)
         exit.setEventHandler { [weak self, weak session] in
             guard let self, let session else { return }
             self.reap(session)
@@ -414,8 +530,6 @@ public final class PtydServer: @unchecked Sendable {
             guard let self, let session else { return }
             self.reap(session)
         }
-        log("spawned \(spawn.id) pid \(pid)")
-        return session
     }
 
     private func readMaster(_ session: Session) {
@@ -483,6 +597,7 @@ public final class PtydServer: @unchecked Sendable {
         }
         timer.activate()
         session.killTimer = timer
+        session.killDeadline = .now() + seconds
     }
 
     private func reap(_ session: Session) {
@@ -493,7 +608,7 @@ public final class PtydServer: @unchecked Sendable {
         // Whatever the child printed last is still in the pty: keep it for the scrollback.
         if session.readSuspended { session.readSource?.resume(); session.readSuspended = false }
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
-        while true {
+        while session.master >= 0 {
             let n = buffer.withUnsafeMutableBytes { Darwin.read(session.master, $0.baseAddress, $0.count) }
             if n > 0 { deliver(buffer[0..<n], from: session); continue }
             if n < 0, errno == EINTR { continue }
@@ -575,6 +690,151 @@ public final class PtydServer: @unchecked Sendable {
         }
         timer.activate()
         idleTimer = timer
+    }
+
+    // MARK: Self-update (exec into the updated binary)
+
+    /// Looks at the binary every `watchInterval` seconds (a stat; with a large leeway, so an
+    /// idle helper still costs next to nothing). A replaced file is checked once it has stayed
+    /// the same for a few seconds.
+    private func startBinaryWatch() {
+        guard watchTimer == nil, let path = options.executablePath, options.watchInterval > 0 else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        let interval = options.watchInterval
+        timer.schedule(deadline: .now() + interval, repeating: interval, leeway: .milliseconds(Int(interval * 300)))
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.upgrading, !self.shuttingDown else { return }
+            let current = PtydFileIdentity(path: path)
+            if self.binaryWatch.observe(current, now: Date().timeIntervalSince1970) {
+                self.upgrade(reason: "the binary on disk was replaced", identity: current) { _ in }
+            }
+        }
+        timer.activate()
+        watchTimer = timer
+    }
+
+    /// Checks the binary at `executablePath` (off the queue: it reads the file) and, if it's a
+    /// validly signed newer build, re-execs into it a moment after `completion` (which may
+    /// answer the client that asked). Anything wrong: logged, and this image keeps running.
+    private func upgrade(reason: String, identity: PtydFileIdentity? = nil,
+                         completion: @escaping @Sendable (PtydUpgradeCheck.Verdict) -> Void) {
+        guard let path = options.executablePath else {
+            log("upgrade (\(reason)): no executable path; not upgrading")
+            return completion(.invalid("no executable path"))
+        }
+        guard !shuttingDown else { return completion(.invalid("shutting down")) }
+        // One at a time; a second request rides along with the one under way.
+        guard !upgrading else { return completion(.go(build: nil)) }
+        upgrading = true
+        let checked = identity ?? PtydFileIdentity(path: path)
+        let build = options.build
+        let allowSame = options.allowSameBuildUpgrade
+        let requirement = options.designatedRequirement
+        log("upgrade (\(reason)): checking \(path)")
+        DispatchQueue.global(qos: .utility).async { [self] in
+            let verdict = PtydUpgradeCheck.check(path: path, requirement: requirement, currentBuild: build,
+                                                 allowSameBuild: allowSame)
+            self.queue.async {
+                guard case .go(let newBuild) = verdict else {
+                    self.log("upgrade refused: \(verdict); this image keeps running")
+                    self.upgrading = false
+                    self.binaryWatch.reject(checked)
+                    return completion(verdict)
+                }
+                if allowSame { self.log("upgrade: same build allowed (test mode)") }
+                completion(verdict)
+                // A moment for the answer to reach the client before the connection drops.
+                self.queue.asyncAfter(deadline: .now() + 0.25) {
+                    if let problem = self.reexec(path: path, expected: checked, build: newBuild) {
+                        self.log("upgrade failed: \(problem); this image keeps running")
+                        self.binaryWatch.reject(checked)
+                    }
+                    self.upgrading = false
+                }
+            }
+        }
+    }
+
+    /// The state the next image needs (read-only: nothing here changes a session).
+    private func handover() -> PtydHandover {
+        let now = DispatchTime.now()
+        let ordered = sessions.values.sorted { $0.startedAt < $1.startedAt }
+        let scrollbacks = PtydHandover.bounded(ordered.map { $0.alive ? $0.ring.snapshot() : [] })
+        let saved = zip(ordered, scrollbacks).map { session, scrollback in
+            let killIn = session.killDeadline.map { deadline -> Double in
+                deadline > now ? Double(deadline.uptimeNanoseconds - now.uptimeNanoseconds) / 1e9 : 0
+            }
+            return PtydHandover.Session(
+                spawn: session.spawn, pid: session.pid, master: session.alive ? session.master : -1,
+                startedAt: session.startedAt, cols: session.cols, rows: session.rows, alive: session.alive,
+                exitCode: session.exitCode, exitSignal: session.exitSignal, pendingInput: session.input,
+                killIn: session.alive ? killIn : nil, readStopped: session.readSuspended, scrollback: scrollback)
+        }
+        return PtydHandover(instance: instance, fromBuild: options.build, listenFD: listenFD, lockFD: lockFD,
+                            draining: draining, sessions: saved)
+    }
+
+    /// Hands the state over and execs the binary at `path` in this process. Runs on the queue,
+    /// start to finish, so no session is read or changed in between: output arriving meanwhile
+    /// waits in the ptys for the next image. Returns only on failure (why), with everything as
+    /// it was: the clients are still connected and no session was touched.
+    private func reexec(path: String, expected: PtydFileIdentity?, build: String?) -> String? {
+        guard !shuttingDown else { return "shutting down" }
+        // The file must still be the one that was checked.
+        guard PtydFileIdentity(path: path) == expected else { return "the binary changed again since it was checked" }
+        let state = handover()
+        let stateFD: Int32
+        do {
+            stateFD = try state.writeUnlinked(in: options.paths.directory)
+            // The next image can't come back to this one: make sure it can read what it gets.
+            guard try PtydHandover.read(fd: stateFD) == state else {
+                close(stateFD)
+                return "the handover didn't read back the same"
+            }
+        } catch {
+            return "\(error)"
+        }
+        let keep = state.descriptors + [stateFD]
+        for fd in keep where fcntl(fd, F_GETFD) < 0 {
+            close(stateFD)
+            return "descriptor \(fd) is not open"
+        }
+        var args = options.arguments
+        if let index = args.firstIndex(of: "--resume-fd") { args.removeSubrange(index..<min(index + 2, args.count)) }
+        args += ["--resume-fd", String(stateFD)]
+        if args.count == 2 { args.insert(path, at: 0) }
+
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        // SETEXEC: replace this process (same pid) like execve; CLOEXEC_DEFAULT: every descriptor
+        // not inherited below is closed, so none leaks into the next image (the clients' sockets
+        // close, and their apps reconnect).
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETEXEC | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK))
+        // This runs on a dispatch thread, which may block signals: the next image starts with none blocked.
+        var empty = sigset_t()
+        sigemptyset(&empty)
+        posix_spawnattr_setsigmask(&attributes, &empty)
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        // stdin/out/err (the log) as they are, when open.
+        for fd in Int32(0)...2 where fcntl(fd, F_GETFD) >= 0 { posix_spawn_file_actions_addinherit_np(&actions, fd) }
+        for fd in keep { posix_spawn_file_actions_addinherit_np(&actions, fd) }
+        defer {
+            posix_spawnattr_destroy(&attributes)
+            posix_spawn_file_actions_destroy(&actions)
+        }
+        let argv = args.map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        log("upgrade: handing \(state.sessions.filter(\.alive).count) live sessions to build \(build ?? "?") "
+            + "(\(state.sessions.reduce(0) { $0 + $1.scrollback.count }) bytes of scrollback), exec \(path)")
+        // The inherit actions alone don't keep a close-on-exec descriptor open: clear the flag
+        // just for the exec. Only this queue forks (forkExec), so no child can catch them meanwhile.
+        for fd in keep { _ = fcntl(fd, F_SETFD, 0) }
+        let result = posix_spawn(nil, path, &actions, &attributes, argv, environ)
+        // Only on failure: the new image didn't start, this one carries on.
+        for fd in keep { PtydSocket.setCloseOnExec(fd) }
+        close(stateFD)
+        return "exec: \(String(cString: strerror(result))) (descriptors \(keep))"
     }
 
     // MARK: fork + exec
