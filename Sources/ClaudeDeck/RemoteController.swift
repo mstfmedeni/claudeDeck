@@ -32,6 +32,11 @@ final class RemoteController {
     /// Files coming in from remotes (uploads), a piece at a time.
     @ObservationIgnored private let receiver = RemoteTransfer.Receiver()
     var lastRejectedPeer: String? { server?.lastRejectedPeer }
+    /// macOS Local Network access is off for ClaudeDeck (browsing is refused with
+    /// kDNSServiceErr_PolicyDenied): devices on this network connect, but the listener never
+    /// gets their connections. Checked while hosting on the local network.
+    private(set) var localNetworkDenied = false
+    @ObservationIgnored private var lanPermissionProbe: RemoteDiscovery?
 
     // MARK: Remote state
     enum Connection: Equatable {
@@ -231,6 +236,7 @@ final class RemoteController {
         // Local-network access changes what the listener accepts and advertises: start it over.
         if server != nil, hostingLAN != settings.remoteLAN { restartServer() }
         settings.remoteHost ? startHosting() : stopHosting()
+        updateLANPermissionProbe(settings.remoteHost && settings.remoteLAN)
         updateLANDiscovery(settings.remoteClient)
         settings.remoteClient ? reconnect(force: false) : disconnect()
     }
@@ -665,7 +671,9 @@ final class RemoteController {
     /// The order set in Settings › Remote › Addresses, ahead of the found addresses; republished
     /// to paired devices (snapshot and pairing code).
     func applyAddressOrder() {
-        let ordered = RemoteHostConnection.publishedOrder(custom: model?.deck.settings.remoteAddresses ?? [], found: foundAddresses)
+        // Addresses typed in Settings that are no longer this Mac's go behind the live ones.
+        let current = Set(Tailscale.allInterfaceAddresses().map(\.ip))
+        let ordered = RemoteHostConnection.publishedOrder(custom: model?.deck.settings.remoteAddresses ?? [], found: foundAddresses, current: current)
         hostAddresses = Self.allowLoopback ? ordered + ["127.0.0.1"] : ordered
         publishPairing()
         publishSnapshot()
@@ -1304,6 +1312,27 @@ final class RemoteController {
         }
         if let id = local.pairedHostID, let chosen = availableHosts.first(where: { $0.id == id }) { return chosen }
         return availableHosts.first
+    }
+
+    /// Browses the local network while hosting on it, only to learn whether macOS lets this
+    /// app use it (Settings › Remote shows how to turn it on).
+    private func updateLANPermissionProbe(_ on: Bool) {
+        if on, lanPermissionProbe == nil {
+            let probe = RemoteDiscovery()
+            probe.onDeniedChange = { [weak self] denied in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.localNetworkDenied = denied
+                    if denied { peerLog.error("Local Network access is off for ClaudeDeck: devices on this network can't connect") }
+                }
+            }
+            probe.start()
+            lanPermissionProbe = probe
+        } else if !on, let probe = lanPermissionProbe {
+            probe.stop()
+            lanPermissionProbe = nil
+            localNetworkDenied = false
+        }
     }
 
     /// Starts / stops browsing the local network with the remote side.

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The phone's last connection attempts, for "can't connect" reports (Settings › Connection Log).
-/// In memory only; each attempt is one address tried one way, plus the waits between rounds.
+/// In memory only; each attempt is one address tried one way (or skipped), plus the waits between rounds.
 public struct RemoteConnectionLog: Sendable, Equatable {
     /// How an address was reached.
     public enum Route: String, Sendable, Equatable, CaseIterable {
@@ -42,8 +42,10 @@ public struct RemoteConnectionLog: Sendable, Equatable {
         case failed(String?)
         /// A ClaudeDeck answered and said no (wrong key, old version).
         case refused(String)
-        /// Another address got in first, or the attempt was called off.
+        /// Another way got in first, or the attempt was called off.
         case cancelled
+        /// Not tried: it can't work from here (another subnet, the Tailscale VPN off).
+        case skipped(String)
     }
 
     public struct Entry: Sendable, Equatable, Identifiable {
@@ -102,6 +104,7 @@ public struct RemoteConnectionLog: Sendable, Equatable {
                 case .failed(let reason): result = "failed" + (reason.map { ": \($0)" } ?? "")
                 case .refused(let reason): result = "refused: \(reason)"
                 case .cancelled: result = "cancelled"
+                case .skipped(let reason): result = "skipped: \(reason)"
                 }
                 return "\(time) \(address) [\(route.rawValue)] \(result) (\(String(format: "%.2f", duration)) s)"
             case .backoff(let wait, let reason):
