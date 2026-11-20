@@ -3,8 +3,10 @@
 Inventory of ServerPlan's container and server capabilities (ServerPlan repo
 `~/Desktop/ServerPlan/servermanager`, agent API `server_version` **1.4**, checked 2026-11-20; 1.5
 since added only Cloudflare rate limiting, feature `ratelimit`) and how ClaudeDeck uses them. The
-proposed additions at the end are what ClaudeDeck is already feature-gated on: it lights them up as
-soon as `/me` lists their feature, whatever version ships them.
+additions in section 5 were ClaudeDeck's proposal; **ServerPlan shipped all of them in agent API
+1.6** (2026-11-21: ee0f581, 96d770f, 4482a80, 6781af6, 904b64a). Section 6 lists where the shipped
+API differs from the proposal; ClaudeDeck follows the shipped one. ClaudeDeck still gates every call
+on its `/me` feature, never on the version.
 
 ## 1. The agent API today (`/api/v1/agent`, bearer token)
 
@@ -122,12 +124,18 @@ lists the feature named in section 5.
   and (gated) CPU; a container's details and its last 100 log lines; Start / Stop / Restart send a
   request that becomes an Onaylar card on the Mac (approved on the Mac only); the phone shows
   "waiting for your approval on the Mac" and then the result.
-- **Mock**: `tools/serverplan-mock.py --containers` serves all of section 5 (and `--v15` the
-  rate limiting), for the demo and manual tests.
+- **Mock**: `tools/serverplan-mock.py --v16` (alias `--containers`) serves 1.6 as shipped (section
+  6), `--container-events SECONDS` plays the container events, for the demo and manual tests.
+- **Container events** (`container_events`): a crash (non-zero exit other than 137 / 143), OOM,
+  unhealthy, or a restart loop (3 restarts within 10 minutes) notifies on the Mac and the phone,
+  with Open Logs and Fix with Claude (when the container's project is a ClaudeDeck project);
+  deliberate stops and recreates don't. Settings › ServerPlan › "Notify about container problems"
+  (on by default). The rows update from the events at once.
 
-## 5. Missing in the agent API: requests for ServerPlan
+## 5. The container API ClaudeDeck asked for (shipped in 1.6)
 
-Proposed for the next API version (1.5 shipped only `ratelimit`). Every one is announced by a `/me` feature (ClaudeDeck gates on the
+Proposed for the next API version (1.5 shipped only `ratelimit`; 1.6 shipped all of it, with the
+differences in section 6). Every one is announced by a `/me` feature (ClaudeDeck gates on the
 feature, never on the version), uses the existing error shape `{"error","message"}`, the existing
 `containerNameRe` check (`400 bad_request`), `404 not_found` for an unknown server or container,
 and `502 server_unreachable` for SSH/docker failures. Destructive ones use `agentConfirm` (428
@@ -261,3 +269,45 @@ agent is active (like the health poller). ClaudeDeck would notify like a failed 
 | recreate, pull, remove, prune | confirm dialog | the owner (Onaylar queue) |
 | container shell | owner opens it himself | not offered to agents |
 | env edit | confirm dialog per change | `server env set|rm` as before (`env rm`: the owner) |
+
+## 6. What ServerPlan 1.6 actually sends (differences from section 5)
+
+Checked against the Go code (`internal/web/handlers/agent_containers.go`, `agent_container_ops.go`,
+`agent_container_events.go`, `agent_streams.go`, `internal/monitor/parse.go`, `recreate.go`).
+
+- **List** (`container_details`): `project_id` / `project_name` are `null` without a match,
+  `domains` is `[]`; `health` is parsed from docker's status (`healthy|unhealthy|starting|none`);
+  `created` is docker's `CreatedAt` text (`2026-11-20 09:12:03 +0000 UTC`).
+- **Inspect**: `id` is 12 characters; `status` is built from inspect, not docker ps:
+  `running (healthy)`, `running`, `exited (1)`, else the state. `started_at` / `finished_at` are
+  `null` when docker's time is zero; `ports` are `{private, public, type, ip}` with `public: null`
+  when not published; `labels` is always an object; env values never (keys only).
+- **Stats**: both routes answer a **list** (`…/:name/stats` too: one row, or none). Sizes are
+  bytes; net and block are docker's cumulative counters. 404 for a container docker doesn't know.
+- **Server stats**: the numbers sit on `GET /servers/:id/health`; each may be `null` on its own and
+  all are absent when SSH fails. Also `load5`, `load15`, `uptime_seconds`.
+- **Logs** (`log_query`): `since` / `until` must match `^[0-9TZ:.+-]{1,40}$|^[0-9]+[smh]$` (RFC 3339
+  without spaces, or `10m`); `grep` at most 200 bytes, one line, case-insensitive fixed string, and
+  `tail` applies after it; `timestamps=1`. The stream takes `since` and `timestamps` only and answers
+  400 to `until` or `grep`, so ClaudeDeck filters a followed log itself. An unknown container's logs
+  are a 502 (docker's error), or an empty 200 with `grep` (the pipe hides it).
+- **Exec** (`container_exec`, only with the `terminal` scope, `servers.ssh` and
+  `containers.control`): `POST /ws-ticket {"server_id","command":"exec","container","cols","rows"}`;
+  400 for a bad name or a stopped container, 403 without `containers.control`, 404 for an unknown
+  server or container, 502 for SSH / docker. No 428. The WebSocket is the server terminal's, with
+  `{"type":"error","message"}` from the server.
+- **Recreate / pull / remove / prune**: the checks run before the 428, so the preview can come back
+  400 / 404 / 409 / 502 (ClaudeDeck shows it and asks no one). Recreate: only a ServerPlan
+  Dockerfile project's container, `409 conflict` while it deploys, `{"success","id"}`. Pull: not for
+  project containers (400 "deploy kullanin") nor compose-managed or unsupported ones; infra
+  containers get a warning in the summary; `{"success","updated","old_image_id","new_image_id",
+  "output","id"?}`; a failed recreate restores the old container. Remove: admin token,
+  `{"confirm"}` or `?confirm=`, traefik / postgres / redis / minio refused (400). Prune: admin token,
+  defaults dangling images + containers + build cache, volumes off; the summary warns about volume
+  data and about stopped project containers that need a redeploy. Failures are `502 action_failed`
+  with `output` (prune also `reclaimed_bytes`).
+- **Events** (`container_events`, a 2-minute poller, up to ~2 minutes late, the first tick silent):
+  `container.died {server_id,server_name,name,id,exit_code,oom_killed}` (a deliberate stop too:
+  exit 0 / 137 / 143), `container.unhealthy {…,name,id}`, `container.restarted {…,restart_count}`,
+  `container.recreated {…,reason:"recreate"|"image_update"}`.
+- **Not in 1.6**: nothing of section 5 is missing.

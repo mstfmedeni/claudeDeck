@@ -895,17 +895,17 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 |---|---|---|
 | `server list` · `projects` · `deployments [--project P]` | `GET /servers` · `/projects` · `/deployments` | |
 | `server health SERVER` · `containers SERVER` | `GET /servers/:id/health` · `/containers` | |
-| `server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since T]` | `GET …/logs`; `--follow` the log stream, 25 s per request. `--grep`: case-insensitive text, on the fetched tail (the panel's with `log_query`); `--since 10m`/RFC 3339: only with `log_query` (else 501) | |
+| `server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since T] [--until T] [--timestamps]` | `GET …/logs`; `--follow` the log stream, 25 s per request. `--grep`: case-insensitive text (one line, at most 200 characters with `log_query`), the panel's with `log_query` (then `--tail` counts after the filter), else on the fetched tail; with `--follow` always filtered here (the stream refuses `grep`). `--since` / `--until` (`10m`, `2h` or RFC 3339 without spaces) and `--timestamps`: only with `log_query` (else 501); `--until` not with `--follow` | |
 | `server deploy PROJECT [--server S] [--force] [--wait]` | `POST /projects/:id/deploy` | confirmed automatically, logged |
 | `server deploy-status ID [--wait]` | `GET /deployments/:id` (long poll with `--wait`) | |
 | `server container SERVER CONTAINER start\|stop\|restart` | `POST …/containers/:name/:verb` | the owner's dialog |
 | `server container SERVER CONTAINER status\|inspect` | `GET /servers/:id/containers` + `/domains` + `/projects` (+ `GET …/containers/:name` with `container_inspect`): state, health, uptime, exit code, image, ports, domains, project | |
 | `server container SERVER CONTAINER env` | the container's ServerPlan project (the panel's container ↔ domain ↔ project rule), then `GET /projects/:id/env` (secrets hidden) | |
 | `server container SERVER CONTAINER logs …` | the same as `server logs SERVER CONTAINER …` | |
-| `server container SERVER CONTAINER stats` | `GET …/containers/:name/stats` (`container_stats`) | |
-| `server container SERVER CONTAINER recreate\|pull\|remove` | `POST …/recreate` · `POST …/pull` · `DELETE …/containers/:name` (`container_recreate`, `image_update`, `container_remove`; scope `containers`) | the owner's dialog (confirm = the container) |
+| `server container SERVER CONTAINER stats` | `GET …/containers/:name/stats` (`container_stats`; a one-row list) | |
+| `server container SERVER CONTAINER recreate\|pull\|remove` | `POST …/recreate` · `POST …/pull` · `DELETE …/containers/:name` (`container_recreate`, `image_update`, `container_remove`; scope `containers`; remove: admin token). The panel's checks come first and go straight back without asking anyone: recreate only for a ServerPlan Dockerfile project's container (`400`), `409 conflict` while that project deploys; pull not for project containers (`400` "deploy kullanin") nor compose-managed ones; remove never traefik / postgres / redis / minio (`400`). A failed recreate or pull is `502 action_failed` with docker's output (pull restores the old container) | the owner's dialog (confirm = the container) |
 | `server stats SERVER` | `GET /servers/:id/health` (CPU %, memory %, disk %, load) + `GET …/containers/stats` with `container_stats` | |
-| `server disk SERVER` · `prune SERVER [--images dangling\|unused\|none] [--volumes] [--no-build-cache] [--no-containers]` | `GET /servers/:id/docker/disk` · `POST /servers/:id/docker/prune` (`docker_prune`; prune: scope `containers`) | prune: the owner's dialog (confirm = the server) |
+| `server disk SERVER` · `prune SERVER [--images dangling\|unused\|none] [--volumes] [--no-build-cache] [--no-containers]` | `GET /servers/:id/docker/disk` · `POST /servers/:id/docker/prune` (`docker_prune`; prune: scope `containers`, admin token). The 428 summary warns about volume data and about stopped project containers needing a redeploy; a partial failure is `502 action_failed` with `reclaimed_bytes` and the output | prune: the owner's dialog (confirm = the server) |
 | `server ratelimit show HOST` | `GET /ratelimit?host=` (1.5, `ratelimit`; scope `read`) → `{"zone_rules":[{"description","expression","action","ratelimit":{"characteristics","period","requests_per_period","mitigation_timeout"}}]}` | |
 | `server ratelimit set HOST [--paths /init,/v1/*] [--rate 20/10s]` | `POST /ratelimit` `{"host","paths","requests","period"}` (scope `dns`) → `{"rule"}` | the owner's dialog when the zone already has a rule (confirm = the host) |
 | `server ratelimit clear HOST` | `POST /ratelimit/clear` `{"host"}` (scope `dns`) → `{"cleared":true}` | always the owner's dialog (confirm = the host) |
@@ -1056,10 +1056,13 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 - **Mock**: `tools/serverplan-mock.py --v14 [--balance N] [--low-threshold N] [--namecheap
   unconfigured]`; `POST /_demo/balance?value=N` moves the balance and emits the events on a crossing.
   In the demo: `CLAUDEDECK_SERVERPLAN_DEMO=1 CLAUDEDECK_SERVERPLAN_MOCK_ARGS="--v14 --balance 15" tools/demo.sh`.
-  `--v15` adds `/ratelimit` (`--cloudflare unconfigured`: 412); `--containers` adds the proposed
-  container features (stats, inspect, logs `since`/`grep`, exec terminals, recreate / pull /
-  remove, docker disk / prune, numbers on health). The mock's `/domains` rows carry no `fqdn`, like
-  the panel's, and include a root static site (`@`).
+  `--v15` adds `/ratelimit` (`--cloudflare unconfigured`: 412); `--v16` (alias `--containers`) serves
+  ServerPlan 1.6's container API with its real shapes and errors (details, inspect, stats, numbers
+  on health, logs `since`/`until`/`grep`/`timestamps`, exec terminals, recreate / pull / remove,
+  docker disk / prune; traefik's pull and staging's prune fail with `502 action_failed`), and
+  `--container-events SECONDS` plays `container.*` events (crash, unhealthy, restart loop, a stop,
+  OOM, recreate) on `/events`. The mock's `/domains` rows carry no `fqdn`, like the panel's, and
+  include a root static site (`@`).
 - **Containers**: `container … status|inspect|env|logs` and `stats SERVER` work on any panel
   (status and env are built from the container list, the domains and the projects with the
   panel's own rule: an app domain's container is `lower(target)` or `lower(project_name)`, a static
@@ -1067,10 +1070,15 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   (the message lists the server's containers); a container that isn't a ServerPlan project's has no
   env (`404 no_project`). `container … stats|recreate|pull|remove`, `disk` and `prune` are offered
   only when `/me` lists their feature (`container_stats`, `container_recreate`, `image_update`,
-  `container_remove`, `docker_prune`; proposed to ServerPlan in docs/serverplan-containers.md §5),
+  `container_remove`, `docker_prune`; all shipped in ServerPlan 1.6, docs/serverplan-containers.md),
   never on a version alone; otherwise `501 not_available`, exit 4. Recreate, pull, remove and prune
   wait up to 330 s (the owner's 2 minutes, then docker). `logs --grep` filters the fetched tail (the
-  tail applies first) until the panel has `log_query`; `--since` needs `log_query`.
+  tail applies first) until the panel has `log_query`; `--since`, `--until` and `--timestamps` need
+  `log_query`. Logs of an unknown container are the panel's 502 (or an empty answer with `--grep`):
+  the CLI checks the container list and answers `404 unknown_container`, exit 5. A shell inside a
+  container (`container_exec`) is the owner's own, from the app; it isn't offered to agents.
+  Container events (`container.*` on `/events`) notify the owner; there is no `server events`
+  command.
 - **Rate limiting (1.5, `ratelimit`)**: `ratelimit set HOST` limits `/init` to 20 requests per 10 s
   per IP by default; `--paths` takes absolute paths (comma separated, `*` only at the end),
   `--rate N/Ms` or `N/Mm`. Cloudflare Free allows one rule per zone: replacing the zone's rule is the
