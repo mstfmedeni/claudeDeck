@@ -1,9 +1,10 @@
 # ServerPlan containers and servers: what exists, what ClaudeDeck uses, what's missing
 
 Inventory of ServerPlan's container and server capabilities (ServerPlan repo
-`~/Desktop/ServerPlan/servermanager`, agent API `server_version` **1.4**, checked 2026-11-20) and
-how ClaudeDeck uses them. The proposed additions at the end are what ClaudeDeck is already
-feature-gated on: it lights them up as soon as `/me` lists their feature.
+`~/Desktop/ServerPlan/servermanager`, agent API `server_version` **1.4**, checked 2026-11-20; 1.5
+since added only Cloudflare rate limiting, feature `ratelimit`) and how ClaudeDeck uses them. The
+proposed additions at the end are what ClaudeDeck is already feature-gated on: it lights them up as
+soon as `/me` lists their feature, whatever version ships them.
 
 ## 1. The agent API today (`/api/v1/agent`, bearer token)
 
@@ -82,35 +83,51 @@ events.
 Everything below works against a 1.4 panel; the items marked *(gated)* light up when `/me`
 lists the feature named in section 5.
 
-- **Container rows**: state dot (running / restarting / unhealthy / exited), image tag, uptime and
-  health parsed from docker's status (`Up 2 hours (healthy)`), published ports, the domains that
-  route to it (the panel's container ↔ domain rule above), the ServerPlan project it belongs to.
-- **Container detail sheet**: Overview (all of the above, the project's env keys with secrets
-  hidden, *(gated)* inspect data: restart count, started at, mounts, networks), Logs, Stats,
-  actions.
-- **Live logs**: SSE follow (the panel's `log_stream`), else polling the tail; search (case
-  insensitive substring, or `re:` regex), "errors only", error / warning highlighting, stderr
-  marked, pause, multi-line selection and **Claude ile düzelt** (the selected lines, or the last
-  errors, go to a Claude session in the matched ClaudeDeck project with the container, server,
-  image and project; same flow as a failed deploy's Fix with Claude). *(gated)* `since` / `grep`
-  on the panel.
-- **Stats**: server CPU / RAM / disk / load sparklines sampled from `health` while the sheet is
-  open (every 10 s, numbers parsed from the panel's strings); *(gated)* per-container CPU, memory,
-  network and block I/O with sparklines, and a stats column in the container list.
-- **Terminals**: server SSH terminal (existing), *(gated)* container shell (`docker exec`).
-- **Actions**: start / stop / restart (the panel's 428 summary in a confirmation dialog);
-  *(gated)* recreate, update image, remove, prune (disk usage first). Project env view and edit
-  (add / change / delete a row) for the container's project, each change confirmed.
-- **CLI**: `server container SERVER CONTAINER logs|stats|inspect|status|env|start|stop|restart|recreate|pull|remove`,
-  `server logs … [--since T] [--grep TEXT]` (client side until the panel filters), `server stats SERVER`,
-  `server disk SERVER`, `server prune SERVER …`. Reads need no approval; start, stop, restart,
-  recreate, pull, remove and prune need the owner (Onaylar queue).
-- **Phone** (Mac `Feature.serverPlanContainers`): a server's containers with state and (gated)
-  stats, the last log lines, and "Restart" which asks the owner on the Mac (an Onaylar card).
+- **Container rows** (sidebar, under an expanded server): a state dot (running, starting,
+  unhealthy, restarting, stopped, crashed = exited with a non-zero code), "up 2 hours · tag ·
+  first domain or port", the CPU % when per-container stats are there, a hover info button,
+  double-click or "Show Details" for the sheet. Health and uptime are parsed from docker's status
+  (`Up 2 hours (healthy)`); domains and the project come from the panel's container ↔ domain ↔
+  project rule above (`ServerPlanContainerMatch`), or from the panel when it sends them.
+- **Container sheet** (ServerPlanContainerViews.swift): header with state and Start / Stop /
+  Restart, Server Terminal, a "More" menu (shell in container, recreate, update image, remove:
+  *(gated)*). Tabs:
+  - Overview: state, health, uptime / exit code, image, ports, domains (links), project (and its
+    ClaudeDeck project), id and created *(gated: container_details)*, restarts / started / OOM /
+    networks / mounts / env keys *(gated: container_inspect)*.
+  - Logs: the SSE follow (`log_stream`), else the tail polled every 5 s; 500 lines first, 5000
+    kept; search (case-insensitive text, or a regex after `re:`), "Errors only", errors red,
+    warnings orange, stderr grey; multi-line selection with Copy and **Claude ile Düzelt** (the
+    selected lines, or with none selected the error lines with context and the last 60 lines, go
+    to a new Claude session in the container's ClaudeDeck project with the container, server,
+    image, status and project; the same project matching as a failed deploy's Fix with Claude).
+  - Stats: server CPU / memory / disk / load sparklines (numbers parsed from the 1.4 strings),
+    network in/out *(gated: server_stats)*, per-container CPU / memory / network
+    *(gated: container_stats)*; sampled every 10 s only while the tab is open and a window visible.
+  - Env: the project's deploy env (secrets shown as "secret", never read back), add / change a
+    key (confirmed), delete a row through the panel's 428 *(gated: env_delete, 1.3)*, "Recreate
+    Now" *(gated)*.
+- **Server sheet** (server row › Show Details): health sparklines, the containers with state,
+  CPU and memory, and Docker's disk (images, containers, volumes, build cache) with a clean-up
+  (dangling / all unused images, stopped containers, build cache, unused volumes with a warning)
+  *(gated: docker_prune)*.
+- **Confirmations**: every start / stop / restart / recreate / pull / remove / prune / env delete
+  first asks the panel without `confirm` and shows its 428 summary in a SwiftUI alert where the
+  owner clicked (the sheet's own while a sheet is up); env saves are confirmed in the pane. These
+  are the owner's own clicks, so they don't go through the Onaylar queue; agent calls and phone
+  requests do.
+- **CLI**: see docs/agents.md (`server container … status|inspect|env|stats|logs|recreate|pull|remove`,
+  `server logs … --grep/--since`, `server stats|disk|prune`).
+- **Phone** (Mac `Feature.serverPlanContainers`): Servers › a server › Containers: state, status
+  and (gated) CPU; a container's details and its last 100 log lines; Start / Stop / Restart send a
+  request that becomes an Onaylar card on the Mac (approved on the Mac only); the phone shows
+  "waiting for your approval on the Mac" and then the result.
+- **Mock**: `tools/serverplan-mock.py --containers` serves all of section 5 (and `--v15` the
+  rate limiting), for the demo and manual tests.
 
 ## 5. Missing in the agent API: requests for ServerPlan
 
-Proposed as API **1.5**. Every one is announced by a `/me` feature (ClaudeDeck gates on the
+Proposed for the next API version (1.5 shipped only `ratelimit`). Every one is announced by a `/me` feature (ClaudeDeck gates on the
 feature, never on the version), uses the existing error shape `{"error","message"}`, the existing
 `containerNameRe` check (`400 bad_request`), `404 not_found` for an unknown server or container,
 and `502 server_unreachable` for SSH/docker failures. Destructive ones use `agentConfirm` (428
