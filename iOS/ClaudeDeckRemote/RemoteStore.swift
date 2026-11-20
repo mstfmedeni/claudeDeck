@@ -162,10 +162,7 @@ final class RemoteStore {
 
     /// Settings › In-App Tailscale. Off: never started, connections as before.
     let tailnet = InAppTailnet()
-    /// Per tailnet address, the way that worked on the current network (system or in-app).
-    /// Forgotten when the network changes.
-    @ObservationIgnored private var rememberedRoutes: [String: RemoteRoute] = [:]
-    /// Watches for network changes (routes to forget, a retry to bring forward).
+    /// Watches for network changes (a retry to bring forward).
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private var networkSignature: String?
 
@@ -174,7 +171,7 @@ final class RemoteStore {
     /// The Local Network permission is off: the Mac at home can't be found directly.
     private(set) var localNetworkDenied = false
     @ObservationIgnored private let discovery = RemoteDiscovery()
-    /// The addresses the current connection attempt is racing.
+    /// The addresses the current connection attempt is racing (skipped ones aren't).
     @ObservationIgnored private var attemptAddresses: Set<String> = []
 
     init() {
@@ -211,7 +208,6 @@ final class RemoteStore {
         guard signature != networkSignature else { return }
         let first = networkSignature == nil
         networkSignature = signature
-        rememberedRoutes = [:]
         // Wi-Fi back, a VPN up, cellular instead: don't wait out the backoff (up to 30 s). Not on
         // the monitor's first report, which is just the network as it is.
         guard !first, isActive, pairing != nil, case .retrying = connection else { return }
@@ -221,8 +217,16 @@ final class RemoteStore {
 
     /// The in-app node came up or the setting changed: try again if we aren't connected.
     private func tailnetChanged() {
-        rememberedRoutes = [:]
-        guard isActive, pairing != nil, !isRefused, connection != .connected else { return }
+        guard isActive, let pairing, !isRefused, connection != .connected else { return }
+        // The node came up mid-race: don't start over (that called off the in-app ways just
+        // as they were getting in). Its ways wait for it; ones that gave up start again.
+        if connection == .connecting, let hostConnection, (hostConnection.inAppDialer != nil) == tailnet.enabled {
+            if tailnet.enabled, !hostConnection.isTrying(.inApp) {
+                hostConnection.add(effectivePairing(pairing).addresses.filter(InAppTailscale.isTailnetAddress)
+                    .map { RemoteCandidate(address: $0, route: .inApp) })
+            }
+            return
+        }
         retryDelay = 2
         reconnect()
     }
@@ -233,10 +237,17 @@ final class RemoteStore {
     private func lanHostsChanged(_ hosts: [DiscoveredHost]) {
         lanHosts = hosts
         guard isActive, let pairing, connection != .connected, !isRefused else { return }
-        // Just got home: go local if we aren't connected. Mid-attempt too, when the Mac's local
-        // address wasn't in it (found after the app came to the front), but once per address set.
+        // Just got home: go local if we aren't connected. Mid-attempt, the Mac's local name
+        // (found after the app came to the front) joins the race instead of restarting it.
         let local = Set(hosts.filter { $0.hostID == pairing.id }.map(\.address))
-        if connection != .connecting || (!local.isEmpty && !local.isSubset(of: attemptAddresses)) { reconnect() }
+        if connection == .connecting, let hostConnection {
+            let fresh = local.subtracting(attemptAddresses)
+            guard !fresh.isEmpty else { return }
+            attemptAddresses.formUnion(fresh)
+            hostConnection.add(fresh.sorted().map { RemoteCandidate(address: $0, route: .system) })
+            return
+        }
+        reconnect()
     }
 
     private var isRefused: Bool { if case .refused = connection { true } else { false } }
@@ -270,7 +281,8 @@ final class RemoteStore {
         stored.hostName = snapshot.hostName
         if let remote = snapshot.addresses, !remote.isEmpty {
             let bonjour = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) != nil }
-            let typed = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) == nil && !remote.contains($0) }
+            // Addresses the Mac no longer lists: its own kinds went stale (dropped), others stay.
+            let typed = stored.addresses.filter { RemoteBonjour.serviceName(of: $0) == nil && !remote.contains($0) && !Self.isMacListed($0) }
             // Ordered on the Mac: its list as is, the rest after it.
             stored.addresses = snapshot.addressesOrdered == true ? remote + bonjour + typed : bonjour + remote + typed
         }
@@ -279,6 +291,33 @@ final class RemoteStore {
         stored.updatedAt = Date()
         PairingKeychain.save(stored)
         pairing = stored
+    }
+
+    /// The kinds of address the Mac lists itself (its local-network IPs, its Tailscale IPs and
+    /// name): one it no longer lists is stale (a new DHCP lease), not worth trying. Names typed
+    /// here (a public name, a `.local` name) stay.
+    static func isMacListed(_ address: String) -> Bool {
+        Tailscale.isPrivateLAN(address) || InAppTailscale.isTailnetAddress(address)
+    }
+
+    // MARK: The way in
+
+    /// The way that last got in, per paired Mac: started first next time (in-app Tailscale
+    /// included). Kept across launches and networks: a stale one costs one way in the race.
+    private static func routeKey(_ id: UUID) -> String { "remote.lastRoute.\(id.uuidString)" }
+
+    private func rememberedRoute(_ pairing: RemotePairing) -> RemoteCandidate? {
+        guard let data = UserDefaults.standard.data(forKey: Self.routeKey(pairing.id)),
+              let candidate = try? JSONDecoder().decode(RemoteCandidate.self, from: data),
+              effectivePairing(pairing).addresses.contains(candidate.address) else { return nil }
+        return candidate
+    }
+
+    private func rememberRoute() {
+        guard let pairing, let address = hostConnection?.connectedAddress, let route = hostConnection?.connectedRoute,
+              let data = try? JSONEncoder().encode(RemoteCandidate(address: address, route: route)) else { return }
+        let key = Self.routeKey(pairing.id)
+        if UserDefaults.standard.data(forKey: key) != data { UserDefaults.standard.set(data, forKey: key) }
     }
 
     // MARK: Pairing
@@ -320,6 +359,7 @@ final class RemoteStore {
     }
 
     func forget() {
+        if let pairing { UserDefaults.standard.removeObject(forKey: Self.routeKey(pairing.id)) }
         PairingKeychain.delete()
         addressOrder = []
         macOrdered = false
@@ -331,7 +371,8 @@ final class RemoteStore {
 
     // MARK: Lifecycle
 
-    /// Scene phase: connect in front, let go in the background.
+    /// Scene phase: connect in front, let go in the background (after a short grace: back
+    /// within it, the same connection carries on).
     func setActive(_ active: Bool) {
         inForeground = active
         tailnet.setForeground(active)
@@ -339,15 +380,76 @@ final class RemoteStore {
         // After a refusal (wrong password) only a new pairing retries: each attempt counts
         // against the Mac's limit.
         if active, case .refused = connection { isActive = true; return }
+        if active, backgroundClose != nil {
+            endBackgroundGrace()
+            isActive = true
+            if resumeConnection() { return }
+            retryDelay = 2
+            reconnect()
+            return
+        }
         guard active != isActive || (active && connection != .connected && hostConnection == nil) else { return }
         isActive = active
         if active {
             retryDelay = 2
             reconnect()
+        } else if connection == .connected, hostConnection != nil {
+            startBackgroundGrace()
         } else {
             close()
             if pairing != nil { connection = .paused }
         }
+    }
+
+    /// How long a connection is kept after the app leaves the screen. Shorter than the Mac's
+    /// `RemoteServer.pushSilence`: it pushes again soon after this phone lets go.
+    static let backgroundGrace: TimeInterval = 15
+    @ObservationIgnored private var backgroundClose: Task<Void, Never>?
+    @ObservationIgnored private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+
+    /// Keeps the connection (and the app running, to show the Mac's alerts) for a moment: a
+    /// quick look at another app doesn't cost a reconnect.
+    private func startBackgroundGrace() {
+        endBackgroundGrace()
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "ClaudeDeck connection") { [weak self] in
+            MainActor.assumeIsolated { self?.closeForBackground() }
+        }
+        backgroundClose = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(RemoteStore.backgroundGrace))
+            guard let self, !Task.isCancelled else { return }
+            self.closeForBackground()
+        }
+    }
+
+    private func closeForBackground() {
+        let stillAway = !isActive
+        endBackgroundGrace()
+        guard stillAway else { return }
+        close()
+        if pairing != nil { connection = .paused }
+    }
+
+    private func endBackgroundGrace() {
+        backgroundClose?.cancel()
+        backgroundClose = nil
+        if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
+    }
+
+    /// Back in front with the connection kept: a ping makes sure it still works (iOS may have
+    /// suspended the app meanwhile); no answer in 2 s, a new race. False: nothing to resume.
+    private func resumeConnection() -> Bool {
+        guard connection == .connected, let current = hostConnection else { return false }
+        current.probe(timeout: 2) { [weak self, weak current] alive in
+            MainActor.assumeIsolated {
+                guard let self, let current, self.hostConnection === current, !alive, self.isActive else { return }
+                self.retryDelay = 2
+                self.reconnect()
+            }
+        }
+        return true
     }
 
     func reconnect() {
@@ -356,15 +458,23 @@ final class RemoteStore {
         hostConnection?.close()
         connection = .connecting
         let effective = effectivePairing(pairing)
-        attemptAddresses = Set(effective.addresses)
         let next = RemoteHostConnection(pairing: effective, deviceName: Self.deviceName)
         next.keepsOrder = !addressOrder.isEmpty || macOrdered
         if tailnet.enabled {
             next.inAppDialer = tailnet.dialer
-            next.rememberedRoutes = rememberedRoutes
-            // Start the node now if a tailnet address may need it (signed in before only).
+            // Start the node now, next to the other ways (signed in before only).
             if effective.addresses.contains(where: InAppTailscale.isTailnetAddress) { tailnet.prewarm() }
         }
+        // Skip what can't work from this network; the Mac's local name only when it's here.
+        let local = lanHosts.filter { $0.hostID == pairing.id }.map(\.address)
+        next.interfaces = NetworkInterface.current()
+        next.advertised = Set(local)
+        // The way in last time goes first; at home (the Mac advertising here) this network does.
+        if let remembered = rememberedRoute(pairing),
+           local.isEmpty || RemoteConnectionLog.Route.of(address: remembered.address, via: remembered.route) == .lan {
+            next.preferred = remembered
+        }
+        attemptAddresses = Set(next.plan().candidates.map(\.address))
         next.onStateChange = { [weak self, weak next] state in
             MainActor.assumeIsolated {
                 guard let self, let next, self.hostConnection === next else { return }
@@ -476,6 +586,7 @@ final class RemoteStore {
     }
 
     private func close() {
+        endBackgroundGrace()
         retryTask?.cancel()
         hostConnection?.close()
         hostConnection = nil
@@ -497,10 +608,7 @@ final class RemoteStore {
         case .connected:
             connection = .connected
             retryDelay = 2
-            if let address = hostConnection?.connectedAddress, let route = hostConnection?.connectedRoute,
-               tailnet.enabled, InAppTailscale.isTailnetAddress(address) {
-                rememberedRoutes[address] = route
-            }
+            rememberRoute()
             for id in sinks.keys {
                 terminalStates[id] = .waiting
                 hostConnection?.openTerminal(id)
@@ -546,6 +654,8 @@ final class RemoteStore {
         let fresh = RemoteSnapshot.newAttention(from: snapshot, to: new)
         snapshot = new
         learn(from: new)
+        // The Mac's id may have just been learned: the way in is kept under it.
+        rememberRoute()
         announceConversations()
         for id in openConversations.keys {
             guard let session = new.session(id) else { continue }

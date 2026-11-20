@@ -81,6 +81,17 @@ import Testing
         #expect(plan.skipped.isEmpty)
     }
 
+    /// The owner's Mac: its typed list still has 192.168.38.50 after en1 moved to .120.
+    @Test func staleTypedLANAddressesGoBehindTheLiveOnes() {
+        let typed = ["192.168.8.50", "192.168.38.50", "100.81.1.1", "mac.tail1234.ts.net"]
+        let found = ["mac.tail1234.ts.net", "100.81.1.1", "192.168.8.50", "192.168.38.120"]
+        let current: Set<String> = ["127.0.0.1", "192.168.8.50", "192.168.38.120", "100.81.1.1"]
+        #expect(RemoteHostConnection.publishedOrder(custom: typed, found: found, current: current)
+                == ["192.168.8.50", "100.81.1.1", "mac.tail1234.ts.net", "192.168.38.120", "192.168.38.50"])
+        // Without the interfaces: as before.
+        #expect(RemoteHostConnection.publishedOrder(custom: typed, found: found) == typed + ["192.168.38.120"])
+    }
+
     @Test func currentInterfacesHaveTheirNetmasks() {
         let lo = NetworkInterface.current().first { $0.address == "127.0.0.1" }
         #expect(lo?.prefixLength == 8)

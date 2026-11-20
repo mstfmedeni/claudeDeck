@@ -95,6 +95,11 @@ struct RemoteSettingsSection: View {
              ? String(localized: "At home your other devices find this Mac by its name and connect directly; away, they use Tailscale. Everything is encrypted with the pairing key on both paths.")
              : String(localized: "Off: only Tailscale. Turn on to connect directly at home, even without Tailscale."))
             .font(.caption).foregroundStyle(.secondary)
+        if model.deck.settings.remoteLAN, remote.localNetworkDenied {
+            Label("Local Network access is off for ClaudeDeck: devices on this network can't connect. Turn it on in System Settings › Privacy & Security › Local Network.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption).foregroundStyle(.orange)
+        }
         LabeledContent("Status") {
             switch remote.hostState {
             case .listening(let port):

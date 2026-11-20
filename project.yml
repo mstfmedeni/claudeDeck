@@ -166,6 +166,7 @@ targets:
       - Sources/ClaudeDeckCore/RemoteScreen.swift
       - Sources/ClaudeDeckCore/TailscaleAddress.swift
       - Sources/ClaudeDeckCore/InAppTailscale.swift
+      - Sources/ClaudeDeckCore/RemoteRoutePlan.swift
       - Sources/ClaudeDeckCore/RemoteStream.swift
       - Sources/ClaudeDeckCore/APNs.swift
       - Sources/ClaudeDeckCore/RemoteCrypto.swift

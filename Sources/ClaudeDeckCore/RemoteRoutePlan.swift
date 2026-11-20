@@ -65,7 +65,7 @@ public struct NetworkInterface: Equatable, Sendable {
                 }
             }
             result.append(NetworkInterface(name: String(cString: pointer.pointee.ifa_name),
-                                           address: Tailscale.normalized(String(cString: host)), prefixLength: prefix))
+                                           address: Tailscale.normalized(String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)), prefixLength: prefix))
         }
         return result
     }

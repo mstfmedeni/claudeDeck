@@ -20993,6 +20993,46 @@
           }
         }
       }
+    },
+    "Not on this network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu ağda değil"
+          }
+        }
+      }
+    },
+    "The Tailscale VPN is off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale VPN kapalı"
+          }
+        }
+      }
+    },
+    "The Mac isn't on this network": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac bu ağda görünmüyor"
+          }
+        }
+      }
+    },
+    "Local Network access is off for ClaudeDeck: devices on this network can't connect. Turn it on in System Settings › Privacy & Security › Local Network.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck için Yerel Ağ erişimi kapalı: bu ağdaki cihazlar bağlanamıyor. Sistem Ayarları › Gizlilik ve Güvenlik › Yerel Ağ'dan açın."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

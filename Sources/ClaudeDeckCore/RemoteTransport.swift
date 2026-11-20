@@ -1,5 +1,10 @@
 import Foundation
 import Network
+import os
+
+/// Accepted / dropped connections and handshakes on the host (Console: subsystem
+/// co.codemagnet.ClaudeDeck, category remote). Addresses are public: they're what's debugged.
+private let serverLog = Logger(subsystem: "co.codemagnet.ClaudeDeck", category: "remote")
 
 // TCP transport for remote mode (see RemoteProtocol.swift). Everything runs on the queue given
 // at init (the app passes `.main`); callbacks arrive there too.
@@ -509,14 +514,17 @@ public final class RemoteServer: @unchecked Sendable {
 
     private func accept(_ connection: NWConnection) {
         let channel = RemoteChannel(connection: connection, queue: queue)
+        let local = "\(channel.localIP ?? "?") on \(channel.interfaceName ?? "?")"
         guard let ip = channel.remoteIP, acceptsPeer(ip) else {
             lastRejectedPeer = "\(connection.endpoint)"
+            serverLog.notice("Dropped \("\(connection.endpoint)", privacy: .public) → \(local, privacy: .public): source address not allowed (Tailscale only, or local network off)")
             connection.cancel()
             return
         }
         // Then where it arrived (the source address alone can be spoofed by the network's range).
         if let acceptsPath, !acceptsPath(ip, channel.localIP) {
-            lastRejectedPeer = "\(connection.endpoint) → \(channel.localIP ?? "?") on \(channel.interfaceName ?? "?")"
+            lastRejectedPeer = "\(connection.endpoint) → \(local)"
+            serverLog.notice("Dropped \(ip, privacy: .public) → \(local, privacy: .public): a Tailscale address that didn't arrive on Tailscale")
             connection.cancel()
             return
         }
@@ -524,14 +532,17 @@ public final class RemoteServer: @unchecked Sendable {
         let now = Date()
         pruneFailures(now: now)
         if (failures[ip]?.count ?? 0) >= Self.maxFailures {
+            serverLog.notice("Dropped \(ip, privacy: .public): too many wrong passwords lately")
             connection.cancel()
             return
         }
         // Unfinished handshakes are dropped after 10 s; until then only so many per address.
         guard pending.values.filter({ $0.ip == ip }).count < maxPendingPerAddress else {
+            serverLog.notice("Dropped \(ip, privacy: .public): too many unfinished handshakes from it")
             connection.cancel()
             return
         }
+        serverLog.info("Accepted \(ip, privacy: .public) → \(local, privacy: .public)")
         channel.maxPayloadBeforeHandshake = Self.maxPayloadBeforeHandshake
         let id = ObjectIdentifier(channel)
         pending[id] = PendingPeer(channel: channel, startedAt: Date(), ip: ip)
@@ -697,6 +708,7 @@ public final class RemoteServer: @unchecked Sendable {
         switch message {
         case .hello(let version, let nonce, let deviceName) where peer.remoteNonce == nil:
             guard version == RemoteMessage.protocolVersion else {
+                serverLog.notice("Refused \(peer.ip, privacy: .public): protocol \(version) (this Mac speaks \(RemoteMessage.protocolVersion))")
                 peer.channel.close(refusing: String(localized: "The other Mac runs a different ClaudeDeck version. Update both Macs."))
                 return
             }
@@ -715,10 +727,12 @@ public final class RemoteServer: @unchecked Sendable {
                   RemoteHandshake.matches(proof, RemoteHandshake.remoteProof(key: key, remoteNonce: remoteNonce, hostNonce: hostNonce))
             else {
                 noteFailure(peer.ip)
+                serverLog.notice("Refused \(peer.ip, privacy: .public): wrong password or pairing key")
                 peer.channel.close(refusing: String(localized: "The password or pairing key doesn't match."))
                 return
             }
             pending[id] = nil
+            serverLog.info("Paired \(peer.ip, privacy: .public) (\(peer.name ?? "?", privacy: .public))")
             peers[id] = Peer(channel: peer.channel, name: peer.name ?? "Mac")
             peer.channel.send(.welcome(proof: RemoteHandshake.hostProof(key: key, remoteNonce: remoteNonce, hostNonce: hostNonce)))
             peer.channel.startEncrypting(RemoteCipher(pairingKey: key, remoteNonce: remoteNonce, hostNonce: hostNonce, role: .host))
@@ -736,7 +750,10 @@ public final class RemoteServer: @unchecked Sendable {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let now = Date()
-            for peer in self.pending.values where now.timeIntervalSince(peer.startedAt) > 10 { peer.channel.close() }
+            for peer in self.pending.values where now.timeIntervalSince(peer.startedAt) > 10 {
+                serverLog.info("Dropped \(peer.ip, privacy: .public): handshake unfinished after 10 s (\(peer.remoteNonce == nil ? "no hello" : "no auth", privacy: .public))")
+                peer.channel.close()
+            }
             for peer in self.peers.values where now.timeIntervalSince(peer.channel.lastReceived) > 75 { peer.channel.close() }
             self.resyncDrained()
         }
@@ -918,18 +935,20 @@ public final class RemoteHostConnection: @unchecked Sendable {
 
     /// Whether the connection still carries traffic (after the app was in the background): a
     /// ping, and anything back from the Mac within `timeout`. On the connection's queue.
-    public func probe(timeout: TimeInterval, completion: @escaping (Bool) -> Void) {
+    public func probe(timeout: TimeInterval, completion: @escaping @Sendable (Bool) -> Void) {
         guard case .connected = state, let channel else { completion(false); return }
         let sent = Date()
         channel.send(.ping)
-        let deadline = sent.addingTimeInterval(timeout)
-        func check() {
-            guard !finished, self.channel === channel else { completion(false); return }
+        awaitTraffic(on: channel, since: sent, until: sent.addingTimeInterval(timeout), completion: completion)
+    }
+
+    private func awaitTraffic(on channel: RemoteChannel, since sent: Date, until deadline: Date, completion: @escaping @Sendable (Bool) -> Void) {
+        queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, !self.finished, self.channel === channel else { completion(false); return }
             if channel.lastReceived >= sent { completion(true); return }
             guard Date() < deadline else { completion(false); return }
-            queue.asyncAfter(deadline: .now() + 0.05) { check() }
+            self.awaitTraffic(on: channel, since: sent, until: deadline, completion: completion)
         }
-        queue.asyncAfter(deadline: .now() + 0.05) { check() }
     }
 
     @discardableResult
@@ -982,10 +1001,15 @@ public final class RemoteHostConnection: @unchecked Sendable {
     }
 
     /// The Mac's published addresses: its own order (Settings › Remote › Addresses) first, then
-    /// the found ones it doesn't list.
-    public static func publishedOrder(custom: [String], found: [String]) -> [String] {
+    /// the found ones it doesn't list. With `current` (the Mac's interface addresses now), a
+    /// listed private-network IP that's on none of them (an old DHCP lease) goes last: kept,
+    /// as it may be a router's forward, but behind the addresses the Mac has now.
+    public static func publishedOrder(custom: [String], found: [String], current: Set<String>? = nil) -> [String] {
         let custom = custom.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        return custom + found.filter { !custom.contains($0) }
+        let rest = found.filter { !custom.contains($0) }
+        guard let current else { return custom + rest }
+        let stale = custom.filter { Tailscale.isPrivateLAN($0) && !current.contains(Tailscale.normalized($0)) }
+        return custom.filter { !stale.contains($0) } + rest + stale
     }
 
     /// This network first (Bonjour names, private IPs), Tailscale last: a 100.x address with
