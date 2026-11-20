@@ -318,11 +318,20 @@ processes, so quitting, a crash or an update of ClaudeDeck no longer ends them.
 - **If the helper dies**, its sessions get SIGHUP and end. ClaudeDeck notices the dropped connection and
   resumes them once their old processes are gone, so nothing runs twice. A process that survives (it
   ignored SIGHUP) is left alone, and a banner offers **Restart Helper (Restarts Sessions)**.
-- **Updates:** a newer ClaudeDeck keeps using an older helper whose protocol it speaks; Settings ›
-  Sessions then says "Helper is outdated (build X, app build Y)". With an incompatible one, the
-  helper's sessions are shown read-only with a banner. The new helper takes over when no session is
-  running (also as soon as the last one ends), or when you restart the helper: **Restart Helper
-  (Restarts Sessions)** is always in Settings › Sessions while the helper runs.
+- **Updates:** the helper updates itself in place without interrupting anything. When an update
+  replaces its binary (it checks every few seconds), or the updated app asks it to, it checks that the
+  new file is a newer build signed by the same developer (its designated requirement) and re-execs
+  into it: same process, so every session keeps its process, pid, terminal and scrollback; the app
+  reconnects within a moment and reattaches them. Its code then matches its file on disk again, so
+  privacy grants (Full Disk Access) keep applying (an outdated helper running old code after an
+  update loses them). If anything in that handover fails, the helper keeps running as it was and
+  logs why in `ptyd.log`.
+  - A helper from before this (0.6.12 and older) can't: it needs one restart, which resumes its
+    sessions. Settings › Sessions › "Restart an outdated helper when its sessions are quiet" (on by
+    default) does it once nothing happens in them for a while; otherwise a banner offers **Restart
+    Helper (Restarts Sessions)**. With no session in it, it is replaced at once.
+  - With an incompatible helper, its sessions are shown read-only with a banner. **Restart Helper
+    (Restarts Sessions)** is always in Settings › Sessions while the helper runs.
 - **Privacy (Full Disk Access):** macOS treats the helper as its own app, so ClaudeDeck's Full Disk
   Access or Desktop grant doesn't cover the sessions in it (they get "Operation not permitted"). Settings
   › Sessions shows the helper's access (Full / Desktop only / None / Unknown), compared with the app's;
