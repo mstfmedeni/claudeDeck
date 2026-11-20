@@ -17,14 +17,23 @@ struct ServerPlanNotice {
 /// What a sidebar sheet shows.
 enum ServerPlanSheet: Identifiable, Equatable {
     case deploy(id: Int, title: String)
-    case logs(serverID: Int, server: String, container: String)
+    /// A container's details, opened on `tab`.
+    case container(serverID: Int, server: String, container: String, tab: ServerPlanContainerTab)
+    /// A server's health, its containers' use and Docker's disk.
+    case server(serverID: Int, server: String)
 
     var id: String {
         switch self {
         case .deploy(let id, _): "deploy-\(id)"
-        case .logs(let serverID, _, let container): "logs-\(serverID)-\(container)"
+        case .container(let serverID, _, let container, _): "container-\(serverID)-\(container)"
+        case .server(let serverID, _): "server-\(serverID)"
         }
     }
+}
+
+enum ServerPlanContainerTab: String, CaseIterable, Identifiable {
+    case overview, logs, stats, env
+    var id: String { rawValue }
 }
 
 /// A destructive action waiting for the user's yes (with the server's summary of what it does).
@@ -53,8 +62,8 @@ final class ServerPlanController {
     private(set) var projects: [ServerPlanProject] = []
     /// Recent deploys (no logs), newest first.
     private(set) var deployments: [ServerPlanDeployment] = []
-    private(set) var containers: [Int: [ServerPlanContainer]] = [:]
-    private(set) var health: [Int: ServerPlanHealth] = [:]
+    var containers: [Int: [ServerPlanContainer]] = [:]
+    var health: [Int: ServerPlanHealth] = [:]
     private(set) var capabilities: [Int: ServerPlanCapabilities] = [:]
     private(set) var lastError: String?
     private(set) var lastRefresh: Date?
@@ -70,6 +79,19 @@ final class ServerPlanController {
     var sheet: ServerPlanSheet?
     var pendingConfirm: ServerPlanPendingConfirm?
     var actionError: String?
+    /// The panel's domains (v1.1): which of them route to which container.
+    var domains: [ServerPlanDomain] = []
+    /// Confirmed actions the panel hasn't answered yet (their buttons show progress).
+    var actionRunning: Set<ServerPlanAction> = []
+    /// What the last finished action said ("Reclaimed 1.2 GB").
+    var actionNotice: String?
+    /// Sparkline samples (taken only while a detail sheet is open): per server, and per
+    /// container ("serverID/name") on panels with `container_stats`.
+    var serverSeries: [Int: ServerPlanSeries] = [:]
+    var containerStats: [Int: [String: ServerPlanContainerStats]] = [:]
+    var containerSeries: [String: ServerPlanSeries] = [:]
+    /// Containers whose "Claude ile düzelt" is starting ("serverID/name").
+    var repairingLogs: Set<String> = []
     /// Servers expanded in the sidebar (kept across launches): their containers are fetched.
     var expandedServers: Set<Int> = Set(UserDefaults.windowState.array(forKey: "sidebar.serversExpandedIDs") as? [Int] ?? []) {
         didSet {
@@ -232,6 +254,7 @@ final class ServerPlanController {
         }
         if listsOnly { return }
         await refreshContainers()
+        await refreshDomains()
         if force || Date().timeIntervalSince(healthAt) >= Self.healthInterval {
             healthAt = Date()
             await refreshHealth()
@@ -240,7 +263,7 @@ final class ServerPlanController {
         if force { await refreshBalance(force: true) }
     }
 
-    private func refreshContainers() async {
+    func refreshContainers() async {
         guard let client, me?.allows(.read) != false else { return }
         for id in expandedServers where servers.contains(where: { $0.id == id && $0.effectiveStatus != .offline }) {
             if let list = try? await client.containers(serverID: id) { containers[id] = list }
@@ -615,9 +638,12 @@ final class ServerPlanController {
             actionError = String(localized: "This needs a confirmation first.")
             return
         }
+        actionRunning.insert(pending.action)
         Task {
+            defer { actionRunning.remove(pending.action) }
             do {
-                switch try await client.perform(confirmation) {
+                let result = try await client.perform(confirmation)
+                switch result {
                 case .deployStarted(let started):
                     actionError = nil
                     startedHere.insert(started.deploymentID)
@@ -625,10 +651,9 @@ final class ServerPlanController {
                         sheet = .deploy(id: started.deploymentID, title: name)
                     }
                     absorb([ServerPlanDeployment(id: started.deploymentID, projectID: actionProjectID(pending.action), status: .pending)], fromEvent: true)
-                case .done:
+                case .done, .answer:
                     actionError = nil
-                    if case .container(let serverID, _, _, _) = pending.action,
-                       let list = try? await client.containers(serverID: serverID) { containers[serverID] = list }
+                    actionDone(pending.action, result: result)
                 }
             } catch {
                 actionError = error.localizedDescription
@@ -671,11 +696,7 @@ final class ServerPlanController {
                 return
             }
             let spProject = projects.first { $0.id == deployment.projectID }
-            var deckProject = spProject.flatMap(deckProject(for:))
-            if deckProject == nil, let path = spProject?.repoPath, FileManager.default.fileExists(atPath: path) {
-                deckProject = model.addProject(path: path)
-            }
-            guard let deckProject else {
+            guard let deckProject = repairProject(for: spProject, model: model) else {
                 actionError = String(localized: "No ClaudeDeck project has this project's folder; add it first.")
                 done?(nil, actionError)
                 NSSound.beep()
@@ -701,6 +722,14 @@ final class ServerPlanController {
             model.sendPrompt(DeployRepair.prompt(project: projectName, server: deployment.serverName, deployment: deployment, log: deployment.log ?? ""), to: target)
             done?(target, nil)
         }
+    }
+
+    /// The ClaudeDeck project a repair goes to: the one with the ServerPlan project's folder,
+    /// added if the folder exists on this Mac.
+    func repairProject(for spProject: ServerPlanProject?, model: AppModel) -> Project? {
+        if let match = spProject.flatMap(deckProject(for:)) { return match }
+        if let path = spProject?.repoPath, FileManager.default.fileExists(atPath: path) { return model.addProject(path: path) }
+        return nil
     }
 
     // MARK: Clearing failures (local: nothing changes on the panel)

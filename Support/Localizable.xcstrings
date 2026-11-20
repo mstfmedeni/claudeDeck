@@ -21703,6 +21703,1106 @@
           }
         }
       }
+    },
+    "Unhealthy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağlıksız"
+          }
+        }
+      }
+    },
+    "Restarting": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden başlıyor"
+          }
+        }
+      }
+    },
+    "Paused": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duraklatıldı"
+          }
+        }
+      }
+    },
+    "Crashed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çöktü"
+          }
+        }
+      }
+    },
+    "exited (%lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "çıktı (%lld)"
+          }
+        }
+      }
+    },
+    "Show Details": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntıları Göster"
+          }
+        }
+      }
+    },
+    "Open Shell in Container": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteynerde Kabuk Aç"
+          }
+        }
+      }
+    },
+    "Recreate…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Oluştur…"
+          }
+        }
+      }
+    },
+    "Update Image…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmajı Güncelle…"
+          }
+        }
+      }
+    },
+    "Remove…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaldır…"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genel Bakış"
+          }
+        }
+      }
+    },
+    "Stats": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İstatistikler"
+          }
+        }
+      }
+    },
+    "Env": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Env"
+          }
+        }
+      }
+    },
+    "Server Terminal": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sunucu Terminali"
+          }
+        }
+      }
+    },
+    "State": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum"
+          }
+        }
+      }
+    },
+    "Health": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağlık"
+          }
+        }
+      }
+    },
+    "Up": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma süresi"
+          }
+        }
+      }
+    },
+    "Exit code": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çıkış kodu"
+          }
+        }
+      }
+    },
+    "Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmaj"
+          }
+        }
+      }
+    },
+    "Ports": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Portlar"
+          }
+        }
+      }
+    },
+    "Domains": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alan adları"
+          }
+        }
+      }
+    },
+    "(%@ in ClaudeDeck)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(ClaudeDeck'te %@)"
+          }
+        }
+      }
+    },
+    "Not a ServerPlan project's container": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir ServerPlan projesinin konteyneri değil"
+          }
+        }
+      }
+    },
+    "Container ID": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner kimliği"
+          }
+        }
+      }
+    },
+    "Created": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oluşturulma"
+          }
+        }
+      }
+    },
+    "Restarts": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden başlatmalar"
+          }
+        }
+      }
+    },
+    "Started": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatılma"
+          }
+        }
+      }
+    },
+    "Out of memory": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek yetersiz"
+          }
+        }
+      }
+    },
+    "Killed by the kernel (OOM)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çekirdek tarafından sonlandırıldı (OOM)"
+          }
+        }
+      }
+    },
+    "Networks": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağlar"
+          }
+        }
+      }
+    },
+    "Mounts": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı noktaları"
+          }
+        }
+      }
+    },
+    "Env keys": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Env anahtarları"
+          }
+        }
+      }
+    },
+    "Search (re: for a regex)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ara (düzenli ifade için re:)"
+          }
+        }
+      }
+    },
+    "Errors only": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnızca hatalar"
+          }
+        }
+      }
+    },
+    "Reload the log": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Günlüğü yeniden yükle"
+          }
+        }
+      }
+    },
+    "Not a valid regular expression.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçerli bir düzenli ifade değil."
+          }
+        }
+      }
+    },
+    "%lld of %lld lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld satırdan %1$lld"
+          }
+        }
+      }
+    },
+    "%lld lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld satır"
+          }
+        }
+      }
+    },
+    "%lld errors": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld hata"
+          }
+        }
+      }
+    },
+    "Copy %lld Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Satırı Kopyala"
+          }
+        }
+      }
+    },
+    "Fix %lld Lines with Claude": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Satırı Claude ile Düzelt"
+          }
+        }
+      }
+    },
+    "This container doesn't belong to a ServerPlan project with a folder on this Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu konteyner, bu Mac'te klasörü olan bir ServerPlan projesine ait değil."
+          }
+        }
+      }
+    },
+    "Sends the selected lines (or, with none selected, the shown errors and the last lines) to a Claude session in the project.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçili satırları (seçim yoksa görünen hataları ve son satırları) projedeki bir Claude oturumuna gönderir."
+          }
+        }
+      }
+    },
+    "Collecting…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toplanıyor…"
+          }
+        }
+      }
+    },
+    "CPU": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU"
+          }
+        }
+      }
+    },
+    "Disk": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk"
+          }
+        }
+      }
+    },
+    "Load (1 min)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yük (1 dk)"
+          }
+        }
+      }
+    },
+    "Network in": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ giriş"
+          }
+        }
+      }
+    },
+    "Network out": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ çıkış"
+          }
+        }
+      }
+    },
+    "This container": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu konteyner"
+          }
+        }
+      }
+    },
+    "Per-container CPU, memory and network need ServerPlan's container_stats; this panel doesn't offer it yet.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner başına CPU, bellek ve ağ için ServerPlan'ın container_stats özelliği gerekir; bu panel henüz sunmuyor."
+          }
+        }
+      }
+    },
+    "Not running.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışmıyor."
+          }
+        }
+      }
+    },
+    "Processes: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Süreçler: %lld"
+          }
+        }
+      }
+    },
+    "Sampled every 10 seconds while this is open.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu açıkken 10 saniyede bir ölçülür."
+          }
+        }
+      }
+    },
+    "Deploy env of %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ deploy env'i"
+          }
+        }
+      }
+    },
+    "secret": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "gizli"
+          }
+        }
+      }
+    },
+    "KEY": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ANAHTAR"
+          }
+        }
+      }
+    },
+    "Value": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değer"
+          }
+        }
+      }
+    },
+    "Secret": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizli"
+          }
+        }
+      }
+    },
+    "Save…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydet…"
+          }
+        }
+      }
+    },
+    "Changes apply at the next deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değişiklikler bir sonraki deploy'da geçerli olur."
+          }
+        }
+      }
+    },
+    "Recreate Now…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şimdi Yeniden Oluştur…"
+          }
+        }
+      }
+    },
+    "This container doesn't belong to a ServerPlan project, so it has no env here.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu konteyner bir ServerPlan projesine ait değil, bu yüzden burada env'i yok."
+          }
+        }
+      }
+    },
+    "Save %@ to the deploy env of %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ deploy env'ine kaydedilsin mi?"
+          }
+        }
+      }
+    },
+    "The value is stored as a secret; it can't be read back.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değer gizli olarak saklanır; geri okunamaz."
+          }
+        }
+      }
+    },
+    "The running container keeps its env until the next deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan konteyner bir sonraki deploy'a kadar env'ini korur."
+          }
+        }
+      }
+    },
+    "%@ saved.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kaydedildi."
+          }
+        }
+      }
+    },
+    "Docker isn't answering": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker yanıt vermiyor"
+          }
+        }
+      }
+    },
+    "Containers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteynerler"
+          }
+        }
+      }
+    },
+    "No containers loaded yet.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Henüz konteyner yüklenmedi."
+          }
+        }
+      }
+    },
+    "Per-container CPU and memory need ServerPlan's container_stats; this panel doesn't offer it yet.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner başına CPU ve bellek için ServerPlan'ın container_stats özelliği gerekir; bu panel henüz sunmuyor."
+          }
+        }
+      }
+    },
+    "Docker disk": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker diski"
+          }
+        }
+      }
+    },
+    "Disk usage and clean-up need ServerPlan's docker_prune; this panel doesn't offer it yet. ServerPlan removes dangling images after every deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk kullanımı ve temizlik için ServerPlan'ın docker_prune özelliği gerekir; bu panel henüz sunmuyor. ServerPlan her deploy'dan sonra sahipsiz imajları siler."
+          }
+        }
+      }
+    },
+    "Total": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toplam"
+          }
+        }
+      }
+    },
+    "In use": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanımda"
+          }
+        }
+      }
+    },
+    "Size": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boyut"
+          }
+        }
+      }
+    },
+    "Reclaimable": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geri kazanılabilir"
+          }
+        }
+      }
+    },
+    "Images": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmajlar"
+          }
+        }
+      }
+    },
+    "Volumes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Volume'lar"
+          }
+        }
+      }
+    },
+    "Build cache": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleme önbelleği"
+          }
+        }
+      }
+    },
+    "Dangling": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sahipsiz"
+          }
+        }
+      }
+    },
+    "All unused": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılmayan tümü"
+          }
+        }
+      }
+    },
+    "Keep": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koru"
+          }
+        }
+      }
+    },
+    "Stopped containers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durmuş konteynerler"
+          }
+        }
+      }
+    },
+    "Unused volumes (their data too)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılmayan volume'lar (verileriyle birlikte)"
+          }
+        }
+      }
+    },
+    "Up to %@ can be freed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En fazla %@ boşaltılabilir."
+          }
+        }
+      }
+    },
+    "Clean Up…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temizle…"
+          }
+        }
+      }
+    },
+    "%@ started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ başlatıldı."
+          }
+        }
+      }
+    },
+    "%@ stopped.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ durduruldu."
+          }
+        }
+      }
+    },
+    "%@ restarted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ yeniden başlatıldı."
+          }
+        }
+      }
+    },
+    "%@ recreated.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ yeniden oluşturuldu."
+          }
+        }
+      }
+    },
+    "%@ removed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kaldırıldı."
+          }
+        }
+      }
+    },
+    "%@ already runs the newest image.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ zaten en yeni imajla çalışıyor."
+          }
+        }
+      }
+    },
+    "%@ runs the updated image.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ güncellenen imajla çalışıyor."
+          }
+        }
+      }
+    },
+    "Docker cleaned up: %@ freed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker temizlendi: %@ boşaltıldı."
+          }
+        }
+      }
+    },
+    "Docker cleaned up.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker temizlendi."
+          }
+        }
+      }
+    },
+    "%@ deleted; it's gone at the next deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ silindi; bir sonraki deploy'da kalkar."
+          }
+        }
+      }
+    },
+    "No ClaudeDeck project has this container's project folder; add it first.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir ClaudeDeck projesinde bu konteynerin proje klasörü yok; önce ekleyin."
+          }
+        }
+      }
+    },
+    "Recreate %@ on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ üzerindeki %1$@ yeniden oluşturulsun mu?"
+          }
+        }
+      }
+    },
+    "Update the image of %@ on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ üzerindeki %1$@ imajı güncellensin mi?"
+          }
+        }
+      }
+    },
+    "Remove %@ from %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ üzerinden kaldırılsın mı?"
+          }
+        }
+      }
+    },
+    "Clean up Docker on %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ üzerindeki Docker temizlensin mi?"
+          }
+        }
+      }
+    },
+    "Delete %@ from the env of %@?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ env'inden silinsin mi?"
+          }
+        }
+      }
+    },
+    "Recreate": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden Oluştur"
+          }
+        }
+      }
+    },
+    "Update Image": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İmajı Güncelle"
+          }
+        }
+      }
+    },
+    "Clean Up": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temizle"
+          }
+        }
+      }
+    },
+    "The container is deleted; its volumes stay.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konteyner silinir; volume'ları kalır."
+          }
+        }
+      }
+    },
+    "The running container is replaced by a new one.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan konteyner yenisiyle değiştirilir."
+          }
+        }
+      }
+    },
+    "Removes %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaldırılanlar: %@."
+          }
+        }
+      }
+    },
+    "The key is gone from the deploy env at the next deploy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtar bir sonraki deploy'da deploy env'inden kalkar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
