@@ -193,7 +193,14 @@ final class PtydController {
     /// Takes a fresh connection into use. An outdated helper with nothing running is replaced
     /// by this build's; one with live sessions keeps serving them.
     private func adopt(_ candidate: PtydClient, startIfNeeded: Bool) async {
-        let sessions = (try? await candidate.list()) ?? []
+        // A helper that answers the handshake but not the list (starved on an overloaded Mac)
+        // is unresponsive, never "no sessions": that would mark its live sessions as ended.
+        guard let sessions = try? await candidate.list(timeout: 15) else {
+            ptydLog.error("the helper didn't list its sessions in time")
+            candidate.close()
+            setState(paths.helperHoldsLock() ? .unresponsive : .gone)
+            return
+        }
         let alive = sessions.filter(\.alive)
         let outdated = candidate.welcome.build != Self.appBuild || !candidate.isFull
         if outdated, alive.isEmpty, startIfNeeded {
@@ -203,8 +210,8 @@ final class PtydController {
                 candidate.close()
                 kickstart()
                 if mode == .child { _ = startHelper() }
-                if let fresh = await tryConnect(for: .seconds(6)) {
-                    install(fresh, sessions: (try? await fresh.list()) ?? [])
+                if let fresh = await tryConnect(for: .seconds(6)), let listed = try? await fresh.list(timeout: 15) {
+                    install(fresh, sessions: listed)
                     return
                 }
             }
@@ -263,6 +270,48 @@ final class PtydController {
             liveSessions = [:]
         }
         state = new
+        // Alive but not answering (an overloaded Mac): keep trying instead of leaving its
+        // sessions held for good.
+        if case .unresponsive = new { reconnectWithBackoff() }
+    }
+
+    // MARK: Reconnecting
+
+    /// A helper that holds its lock but didn't answer is tried again (2 s, 4 s, 8 s… up to 30 s
+    /// apart, with a longer handshake each time) until it answers or is gone. Meanwhile its
+    /// sessions stay held ("Connecting to the session helper…"): nothing that may still run there
+    /// is started a second time. Once it answers, the held sessions are attached.
+    private(set) var reconnecting = false
+    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
+
+    private func reconnectWithBackoff() {
+        guard reconnectTask == nil else { return }
+        reconnecting = true
+        reconnectTask = Task { @MainActor [weak self] in
+            var attempt = 0
+            while let self, !Task.isCancelled, self.client == nil {
+                attempt += 1
+                try? await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5))))
+                guard self.client == nil else { break }
+                let handshake = min(15, 2 + Double(attempt) * 2)
+                if let found = await self.tryConnect(for: .seconds(1), handshake: handshake) {
+                    ptydLog.info("the helper answered after \(attempt) retries")
+                    // While this task is set, a failed adopt (unresponsive again) starts no second loop.
+                    await self.adopt(found, startIfNeeded: false)
+                    if self.client != nil { break }
+                    continue
+                }
+                if !self.paths.helperHoldsLock() {
+                    // The helper is gone (crashed, or quit): its sessions take the usual path.
+                    ptydLog.info("the unresponsive helper is gone")
+                    self.state = .gone
+                    break
+                }
+            }
+            self?.reconnectTask = nil
+            self?.reconnecting = false
+            self?.model?.resolveHeldSessions()
+        }
     }
 
     private func refreshState() {
@@ -276,11 +325,11 @@ final class PtydController {
         refreshState()
     }
 
-    private func tryConnect(for duration: Duration) async -> PtydClient? {
+    private func tryConnect(for duration: Duration, handshake: TimeInterval = 2) async -> PtydClient? {
         let socket = paths.socket
         let deadline = ContinuousClock.now + duration
         repeat {
-            let found = await Task.detached { try? PtydClient.connect(socket: socket, build: PtydController.appBuild, timeout: 2) }.value
+            let found = await Task.detached { try? PtydClient.connect(socket: socket, build: PtydController.appBuild, timeout: handshake) }.value
             if let found { return found }
             try? await Task.sleep(for: .milliseconds(200))
         } while ContinuousClock.now < deadline
