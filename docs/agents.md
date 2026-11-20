@@ -445,7 +445,8 @@ claudedeck slot release build [SLOT_ID]
   `loadDetail`, `load.top` (heaviest sessions), `load.booted_simulators` and `load.fired` add an
   optional "What is using the Mac" list. Older phones ignore the new fields.
 - Testing: in demo mode with `CLAUDEDECK_SNAPSHOT_DIR`, a file `load.inject` containing
-  `overloaded`, `busy`, `ok`, a JSON sample, or `real` replaces the measured numbers.
+  `overloaded`, `busy`, `ok`, a JSON sample, or `real` replaces the measured numbers; an empty
+  file `load.tab` opens the "Mac Yükü" tab.
 
 The session helper under load: if it holds its lock but doesn't answer (at launch, or after a
 dropped connection, e.g. "client N fell behind"), ClaudeDeck keeps its sessions held, shows
