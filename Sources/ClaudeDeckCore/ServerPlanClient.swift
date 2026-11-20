@@ -73,16 +73,53 @@ public struct URLSessionServerPlanTransport: ServerPlanTransport {
 public enum ServerPlanAction: Sendable, Equatable, Hashable {
     case deploy(projectID: Int, projectName: String, serverID: Int?, forceRebuild: Bool)
     case container(serverID: Int, serverName: String, name: String, verb: ContainerVerb)
+    /// 1.5: recreate, update the image, remove (features `container_recreate`, `image_update`,
+    /// `container_remove`).
+    case containerOp(serverID: Int, serverName: String, name: String, op: ContainerOp)
+    /// 1.5 `docker_prune`: confirmed with the server's name.
+    case prune(serverID: Int, serverName: String, options: ServerPlanPruneOptions)
+    /// v1.3 `env_delete`: one project env row, confirmed with its key.
+    case envDelete(projectID: Int, projectName: String, envID: Int, key: String)
 
     public enum ContainerVerb: String, Sendable, Hashable, CaseIterable {
         case start, stop, restart
+    }
+
+    public enum ContainerOp: String, Sendable, Hashable, CaseIterable {
+        case recreate, pull, remove
+
+        /// The `/me` feature that offers it.
+        public var feature: String {
+            switch self {
+            case .recreate: ServerPlanContract.Feature.containerRecreate
+            case .pull: ServerPlanContract.Feature.imageUpdate
+            case .remove: ServerPlanContract.Feature.containerRemove
+            }
+        }
     }
 
     /// The exact name the server expects in `"confirm"`: the project's display name / the container.
     public var confirmTarget: String {
         switch self {
         case .deploy(_, let projectName, _, _): projectName
-        case .container(_, _, let name, _): name
+        case .container(_, _, let name, _), .containerOp(_, _, let name, _): name
+        case .prune(_, let serverName, _): serverName
+        case .envDelete(_, _, _, let key): key
+        }
+    }
+
+    var method: String {
+        switch self {
+        case .containerOp(_, _, _, .remove), .envDelete: "DELETE"
+        default: "POST"
+        }
+    }
+
+    /// The container a request names (checked before its URL is built).
+    public var containerName: String? {
+        switch self {
+        case .container(_, _, let name, _), .containerOp(_, _, let name, _): name
+        default: nil
         }
     }
 
@@ -90,17 +127,26 @@ public enum ServerPlanAction: Sendable, Equatable, Hashable {
         switch self {
         case .deploy(let id, _, _, _): "/projects/\(id)/deploy"
         case .container(let serverID, _, let name, let verb): "/servers/\(serverID)/containers/\(ServerPlanClient.pathComponent(name))/\(verb.rawValue)"
+        case .containerOp(let serverID, _, let name, .remove): "/servers/\(serverID)/containers/\(ServerPlanClient.pathComponent(name))"
+        case .containerOp(let serverID, _, let name, let op): "/servers/\(serverID)/containers/\(ServerPlanClient.pathComponent(name))/\(op.rawValue)"
+        case .prune(let serverID, _, _): "/servers/\(serverID)/docker/prune"
+        case .envDelete(let projectID, _, let envID, _): "/projects/\(projectID)/env/\(envID)"
         }
     }
 
     /// The request body; without `confirm` the server only answers 428 with what it would do.
     func body(confirm: String?) -> [String: Any] {
         var body: [String: Any] = [:]
-        if let confirm { body["confirm"] = confirm }
-        if case .deploy(_, _, let serverID, let force) = self {
+        switch self {
+        case .deploy(_, _, let serverID, let force):
             if let serverID { body["server_id"] = serverID }
             if force { body["force_rebuild"] = true }
+        case .prune(_, _, let options):
+            body = options.body
+        default:
+            break
         }
+        if let confirm { body["confirm"] = confirm }
         return body
     }
 }
@@ -123,6 +169,8 @@ public struct ServerPlanConfirmation: Sendable, Equatable {
 public enum ServerPlanActionResult: Sendable, Equatable {
     case deployStarted(ServerPlanDeployStarted)
     case done
+    /// Done, with what the panel said (`{"reclaimed_bytes"}` of a prune, `{"updated"}` of a pull, …).
+    case answer([String: String])
 }
 
 /// What the server says a destructive action would do (its 428 answer to an unconfirmed request).
@@ -276,9 +324,9 @@ public struct ServerPlanClient: Sendable {
     /// Asks what a destructive action would do, without doing it: the request carries no
     /// `confirm`, so the server checks auth and permission and answers 428 with a summary.
     public func preview(_ action: ServerPlanAction) async throws -> ServerPlanActionPreview {
-        if case .container(_, _, let name, _) = action { try Self.checkContainer(name) }
+        if let name = action.containerName { try Self.checkContainer(name) }
         do {
-            _ = try await send(try request(action.path, method: "POST", json: action.body(confirm: nil)))
+            _ = try await send(try request(action.path, method: action.method, json: action.body(confirm: nil)))
         } catch ServerPlanError.confirmRequired(let summary, let expected) {
             return ServerPlanActionPreview(summary: summary, expected: expected)
         }
@@ -290,17 +338,43 @@ public struct ServerPlanClient: Sendable {
     /// `ServerPlanConfirmation`, which the confirmation dialog makes.
     public func perform(_ confirmation: ServerPlanConfirmation) async throws -> ServerPlanActionResult {
         let action = confirmation.action
-        if case .container(_, _, let name, _) = action { try Self.checkContainer(name) }
-        let (data, _) = try await send(try request(action.path, method: "POST", json: action.body(confirm: confirmation.target)))
-        if case .deploy = action { return .deployStarted(try Self.decode(ServerPlanDeployStarted.self, from: data)) }
-        return .done
+        if let name = action.containerName { try Self.checkContainer(name) }
+        // Recreating, pulling and pruning run docker on the server: give them time.
+        let timeout: TimeInterval = switch action {
+        case .containerOp, .prune: 180
+        default: 20
+        }
+        let (data, _) = try await send(try request(action.path, method: action.method, json: action.body(confirm: confirmation.target), timeout: timeout))
+        switch action {
+        case .deploy: return .deployStarted(try Self.decode(ServerPlanDeployStarted.self, from: data))
+        case .containerOp, .prune, .envDelete:
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+            var answer: [String: String] = [:]
+            for (key, value) in object where key != "success" {
+                switch value {
+                case let text as String: answer[key] = text
+                case let number as NSNumber:
+                    answer[key] = CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue
+                default: break
+                }
+            }
+            return answer.isEmpty ? .done : .answer(answer)
+        case .container: return .done
+        }
     }
 
     // MARK: Terminal
 
     /// A single-use, 60 s ticket for a terminal on `serverID`; `claude` only where its capabilities say so.
-    public func terminalTicket(serverID: Int, cols: Int, rows: Int, command: ServerPlanTerminalCommand = .shell) async throws -> ServerPlanTicket {
-        let body: [String: Any] = ["server_id": serverID, "cols": cols, "rows": rows, "command": command.rawValue]
+    /// `container` (with `.exec`, 1.5 `container_exec`): a shell inside that container.
+    public func terminalTicket(serverID: Int, cols: Int, rows: Int, command: ServerPlanTerminalCommand = .shell,
+                               container: String? = nil) async throws -> ServerPlanTicket {
+        var body: [String: Any] = ["server_id": serverID, "cols": cols, "rows": rows, "command": command.rawValue]
+        if command == .exec {
+            guard let container else { throw ServerPlanError.http(status: 400, code: "bad_request", message: "exec needs a container") }
+            try Self.checkContainer(container)
+            body["container"] = container
+        }
         let (data, _) = try await send(try request(ServerPlanContract.ticketPath, method: "POST", json: body))
         return try Self.decode(ServerPlanTicket.self, from: data)
     }
@@ -328,8 +402,9 @@ public struct ServerPlanClient: Sendable {
     }
 
     /// Ticket + URL for a terminal on `serverID`.
-    public func terminalURL(serverID: Int, cols: Int = 120, rows: Int = 40, command: ServerPlanTerminalCommand = .shell) async throws -> URL {
-        try webSocketURL(for: try await terminalTicket(serverID: serverID, cols: cols, rows: rows, command: command))
+    public func terminalURL(serverID: Int, cols: Int = 120, rows: Int = 40, command: ServerPlanTerminalCommand = .shell,
+                            container: String? = nil) async throws -> URL {
+        try webSocketURL(for: try await terminalTicket(serverID: serverID, cols: cols, rows: rows, command: command, container: container))
     }
 
     // MARK: Server-Sent Events
@@ -378,9 +453,12 @@ public struct ServerPlanClient: Sendable {
     }
 
     /// Follows a container's log (`event: log`), starting with the last `tail` lines.
-    public func containerLogStream(serverID: Int, container: String, tail: Int = 100) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
+    /// `since` only for a panel with `log_query` (the caller checks).
+    public func containerLogStream(serverID: Int, container: String, tail: Int = 100, since: String? = nil) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
         try Self.checkContainer(container)
-        return try await events(Self.logsPath(serverID: serverID, container: container) + "/stream", query: [URLQueryItem(name: "tail", value: String(tail))])
+        var query = [URLQueryItem(name: "tail", value: String(tail))]
+        if let since, !since.isEmpty { query.append(URLQueryItem(name: "since", value: since)) }
+        return try await events(Self.logsPath(serverID: serverID, container: container) + "/stream", query: query)
     }
 
     /// `/events`, resuming after `lastEventID`.

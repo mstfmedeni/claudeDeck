@@ -571,6 +571,65 @@ import Testing
         #expect(missing.code == 4 && missing.err.contains("doesn't offer this yet"))
     }
 
+    @Test func serverContainerArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        // Reads: one GET each, to their own command.
+        for (verb, command) in [("status", "container-inspect"), ("inspect", "container-inspect"), ("env", "container-env"), ("stats", "container-stats")] {
+            let call = try #require(try run(["server", "container", "prod", "api", verb], answers: [("ok", "200 0")]).curlCalls.first)
+            #expect(call.last == base + command && call.contains("-G") && call.contains("server=prod") && call.contains("container=api"), "\(verb)")
+        }
+        // `container … logs` is `logs …`, with --grep / --since passed on.
+        let logs = try #require(try run(["server", "container", "prod", "api", "logs", "--tail", "300", "--grep", "error", "--since", "10m"],
+                                        answers: [("line", "200 0")]).curlCalls.first)
+        #expect(logs.last == base + "logs" && logs.contains("tail=300") && logs.contains("grep=error") && logs.contains("since=10m"))
+        #expect(try run(["server", "logs", "prod", "api", "--since", "yesterday; rm"]).code == 2)
+        // Owner-gated ones: POST, the long wait.
+        for verb in ["recreate", "pull", "remove"] {
+            let call = try #require(try run(["server", "container", "prod", "api", verb], answers: [("done", "200 0")]).curlCalls.first)
+            #expect(call.last == base + "container-\(verb)" && !call.contains("-G") && call.contains("container=api"), "\(verb)")
+        }
+        let restart = try #require(try run(["server", "container", "prod", "api", "restart"], answers: [("done", "200 0")]).curlCalls.first)
+        #expect(restart.last == base + "container" && restart.contains("action=restart"))
+        #expect(try run(["server", "container", "prod", "api", "delete"]).code == 2)
+        #expect(try run(["server", "container", "prod", "api", "exec"]).curlCalls.isEmpty)
+        // Server-wide.
+        let stats = try #require(try run(["server", "stats", "prod"], answers: [("server: cpu 1%", "200 0")]).curlCalls.first)
+        #expect(stats.last == base + "stats" && stats.contains("-G") && stats.contains("server=prod"))
+        #expect(try run(["server", "stats"]).code == 2)
+        let disk = try #require(try run(["server", "disk", "prod"], answers: [("TYPE", "200 0")]).curlCalls.first)
+        #expect(disk.last == base + "disk")
+        let prune = try #require(try run(["server", "prune", "prod", "--images", "unused", "--volumes", "--no-build-cache"],
+                                         answers: [("done", "200 0")]).curlCalls.first)
+        #expect(prune.last == base + "prune" && prune.contains("images=unused") && prune.contains("volumes=1")
+            && prune.contains("build_cache=0") && prune.contains("containers=1"))
+        let plain = try #require(try run(["server", "prune", "prod"], answers: [("done", "200 0")]).curlCalls.first)
+        #expect(plain.contains("images=dangling") && plain.contains("volumes=0") && plain.contains("build_cache=1"))
+        #expect(try run(["server", "prune", "prod", "--images", "everything"]).code == 2)
+        let refused = try run(["server", "prune", "prod"], answers: [(#"{"error":"owner_refused","message":"no"}"#, "403 4")])
+        #expect(refused.code == 4)
+        let missing = try run(["server", "container", "prod", "api", "recreate"],
+                              answers: [(#"{"error":"not_available","message":"not available: ServerPlan doesn't offer this yet"}"#, "501 4")])
+        #expect(missing.code == 4 && missing.err.contains("doesn't offer this yet"))
+    }
+
+    @Test func serverRateLimitArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/server/"
+        let show = try #require(try run(["server", "ratelimit", "show", "api.x.com"], answers: [("no rule", "200 0")]).curlCalls.first)
+        #expect(show.last == base + "ratelimit-show" && show.contains("-G") && show.contains("host=api.x.com"))
+        let set = try #require(try run(["server", "ratelimit", "set", "api.x.com", "--paths", "/init,/v1/*", "--rate", "100/1m"],
+                                       answers: [("set", "200 0")]).curlCalls.first)
+        #expect(set.last == base + "ratelimit-set" && !set.contains("-G") && set.contains("paths=/init,/v1/*") && set.contains("rate=100/1m"))
+        let plain = try #require(try run(["server", "ratelimit", "set", "api.x.com"], answers: [("set", "200 0")]).curlCalls.first)
+        #expect(plain.contains("paths=") && plain.contains("rate="))
+        let clear = try #require(try run(["server", "ratelimit", "clear", "api.x.com"], answers: [("cleared", "200 0")]).curlCalls.first)
+        #expect(clear.last == base + "ratelimit-clear" && clear.contains("host=api.x.com"))
+        #expect(try run(["server", "ratelimit", "show"]).code == 2)
+        #expect(try run(["server", "ratelimit", "drop", "api.x.com"]).code == 2)
+        #expect(try run(["server", "ratelimit", "clear", "api.x.com", "--rate", "1/1s"]).code == 2)
+        let refused = try run(["server", "ratelimit", "clear", "api.x.com"], answers: [(#"{"error":"owner_refused","message":"no"}"#, "403 4")])
+        #expect(refused.code == 4)
+    }
+
     @Test func staticSiteArguments() throws {
         let base = "http://127.0.0.1:47832/v1/cli/server/"
         let quick = try run(["server", "static", "add", "prod", "example.com"], answers: [("added", "201 0")])

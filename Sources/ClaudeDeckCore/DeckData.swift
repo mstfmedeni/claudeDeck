@@ -157,12 +157,18 @@ public struct ServerPlanTerminalTarget: Codable, Sendable, Equatable {
     public var serverName: String
     /// Start `claude` in the remote shell once it's up.
     public var runClaude: Bool
+    /// A shell inside this container instead of the server's (ServerPlan 1.5 `container_exec`).
+    public var container: String?
 
-    public init(serverID: Int, serverName: String, runClaude: Bool = false) {
+    public init(serverID: Int, serverName: String, runClaude: Bool = false, container: String? = nil) {
         self.serverID = serverID
         self.serverName = serverName
         self.runClaude = runClaude
+        self.container = container
     }
+
+    /// What the panel's ticket asks for.
+    public var command: ServerPlanTerminalCommand { container != nil ? .exec : runClaude ? .claude : .shell }
 }
 
 
