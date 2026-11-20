@@ -324,6 +324,8 @@ final class PtydController {
         }
         let rest = model?.terminals.helperLost(lost) ?? []
         ptydLog.info("reattached \(carried) sessions to helper build \(fresh.welcome.build, privacy: .public) (same process); \(rest.count) ended meanwhile")
+        // Started while the helper was away (held): decided again now that it answers.
+        model?.resolveHeldSessions()
         if !rest.isEmpty { await model?.recoverHelperSessions(rest) }
         return true
     }
