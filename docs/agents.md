@@ -509,7 +509,7 @@ drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; nev
     that `simslim verify` finds already slim with this profile only gets `simslim on --no-reboot`.
     Otherwise it's rebooted slim: stopping services without a reboot leaves most of the memory
     in use. `--keep-state` uses `--no-reboot` instead, for a device whose running state matters.
-  - **Fallback:** if simslim is missing or fails (timeout 7 min), the device boots stock as before,
+  - **Fallback:** if simslim is missing or fails (timeout 5 min), the device boots stock as before,
     stderr gets a warning and `--json` says `"slim":"unavailable"`; simslim never fails the acquire.
     `--json` adds `slim` (`on`, `off`, `unavailable`), `slim_profile` (`default`, the simslim.json's
     `name`, `full`) and `memory_bytes` (`simslim measure`). Every simslim command is in the

@@ -214,10 +214,13 @@ extension AppModel {
 
         // simslim (SimSlim.swift): the project's simslim.json or the default, plus --keep;
         // --full-slim, --stock and the setting change it. Never fails the acquire.
-        let callerProject: Project?
-        switch SessionCLI.project(form["project"] ?? "", callerProject: deck.session(caller)?.projectID, projects: deck.projects) {
+        // The caller's project (or `--project P`): its simslim.json and the holder name. A session
+        // without a project still acquires (default profile, plain name); only a given P must exist.
+        var callerProject: Project?
+        let projectRef = (form["project"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        switch SessionCLI.project(projectRef, callerProject: deck.session(caller)?.projectID, projects: deck.projects) {
         case .found(let id): callerProject = deck.project(id)
-        case .unknown: return SessionCLI.failure(404, "unknown_project", exit: .unknown)
+        case .unknown: if !projectRef.isEmpty { return SessionCLI.failure(404, "unknown_project", exit: .unknown) }
         case .ambiguous: return SessionCLI.failure(400, "ambiguous", exit: .usage)
         }
         var slimOptions = SimSlim.Options(form: form)
@@ -286,7 +289,8 @@ extension AppModel {
                 }
                 break
             }
-            let memory = slim.state == .on ? await Task.detached { SimSlim.measure(udid: device, run: slimRunner) }.value : nil
+            // From `simslim measure` whenever simslim is installed (stock devices too).
+            let memory = await Task.detached { SimSlim.measure(udid: device, run: slimRunner ?? SimulatorsController.simslimRunner()) }.value
             logAgent(callerName, inbound: true, "claudedeck sim acquire · \(shownName) (\(udid))" + (isNew ? ", created" : ", reused")
                 + ", slim \(slim.state.rawValue)" + (memory.map { String(format: ", %.1f GB", Double($0) / 1_073_741_824) } ?? ""))
             let runtime = step.reuse?.runtime.displayName ?? step.runtime?.runtime.displayName

@@ -20,8 +20,9 @@ public enum SimSlim {
                                               "health", "photos", "apps", "messaging", "connectivity", "telemetry", "mdm", "other"]
     /// The per-app profile at a project's root: `{"name": "...", "except": [...], "keep": [...]}`.
     public static let profileFileName = "simslim.json"
-    /// `simslim on` (a slim boot can take a minute; a first boot longer).
-    public static let onTimeout: TimeInterval = 420
+    /// `simslim on` (a slim boot took 48 s on a new device; a first boot can take longer). Plus
+    /// bootstatus (240 s) per device, two devices must fit the script's acquire `max_time` (1500 s).
+    public static let onTimeout: TimeInterval = 300
     public static let shortTimeout: TimeInterval = 60
 
     /// "on": slimmed; "off": stock on purpose (`--stock` or the setting); "unavailable": simslim

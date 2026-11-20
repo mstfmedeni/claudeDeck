@@ -708,8 +708,8 @@ extension SessionCLI {
         acquire)
           [ -z "$udid" ] || die "sim acquire: no UDID argument (options: --device, --duo, --keep, --full-slim, --stock, --keep-state, --project)"
           need_session
-          # Creating and booting a simulator can take minutes.
-          max_time=600
+          # Creating, slimming and booting a simulator can take minutes (two with --device X --duo).
+          max_time=1500
           case "$project" in ./*|../*) project=$(abs_path "$project") ;; esac
           call /sim/acquire --data-urlencode "device=$device" --data-urlencode "duo=$duo" --data-urlencode "keep=$keep" \
             --data-urlencode "full=$full" --data-urlencode "stock=$stock" --data-urlencode "keep_state=$keep_state" \
