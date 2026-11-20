@@ -248,15 +248,15 @@ claudedeck skill setup [--user|--project] [--force]
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ |
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
 `start` (project add, new), `server`, `simulators` (sim) and `close` also need their settings (below).
-`status` is under `list`.
+`status` and `load` are under `list`; `slot` and `heavy` need `slots`.
 
 `send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
 session gets the text **as a note** unless **May type into Claude: sessions may send text to other
@@ -305,6 +305,9 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/sim/release` | `udid` (empty: all of the caller's) | simulators |
 | POST | `/v1/cli/sessions/{ref}/close` | `force=1`, `remove=1`, `keep=1`; `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
+| GET | `/v1/cli/load` | | list |
+| POST | `/v1/cli/slot/build/acquire` | `ticket` (wait in line), `timeout` (seconds, at most 25 per request), `label` | slots |
+| POST | `/v1/cli/slot/build/release` | `id` (empty: all of the caller's), or `ticket` (leave the line) | slots |
 
 Errors: `400 bad_request` / `bad_split` / `bad_cwd` / `too_long` / `ambiguous` / `cannot_send_to_self` /
 `cannot_wait_for_self`, `401 unauthorized`, `403 not_allowed` (scope) / `not_yours`, `404 unknown_session`,
@@ -319,8 +322,86 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
 `403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
-`409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`. The routes for agents above (`/v1/projects`,
-`/v1/sessions/{id}/prompt`, …) are unchanged.
+`409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`; while the Mac is
+overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_many_booted` for `sim acquire`; for slots
+`400 bad_ticket`, `404 unknown_slot` / `unknown_slot_id`, `429 no_slot` (exit 124, with `position`, `used`,
+`capacity`). The routes for agents above (`/v1/projects`, `/v1/sessions/{id}/prompt`, …) are unchanged.
+
+### The Mac's load and build slots
+
+Many sessions share one Mac; thirty compiles, a dozen simulators and forty Claude sessions with
+their MCP servers can push it to a load of 1,000, where ClaudeDeck itself stops answering.
+ClaudeDeck samples the system every 12 seconds off the main thread (load average, memory
+pressure and use, swap, booted simulators counted as `launchd_sim` processes, compiler and linker
+processes, the process count, its own running Claude sessions) and derives a level:
+
+| Level | When (defaults, Settings › Resources) |
+|---|---|
+| `overloaded` | the 1-minute load above **2 × cores** for a minute, macOS memory pressure **critical**, or more than **60 % of the cores** in compiler processes (12 on a 20-core Mac) |
+| `busy` | the load above **1 × cores**, memory pressure warning, more than half that many compilers, or the simulator cap reached |
+| `ok` | otherwise |
+
+Hysteresis: overloaded ends only after the numbers stay under 80 % of their thresholds for a
+minute; busy after 30 seconds. An **episode** starts when the level becomes `overloaded` and ends
+only when it is back to `ok` (a Mac swinging between busy and overloaded is one episode). Per
+episode, once: a notification on the Mac (with "Show Agents") and on paired phones listing what's
+behind it ("11 simülatör açık, 30 derleme, 37 oturum"), and a note beside every running session
+another session started: `[ClaudeDeck] Mac aşırı yüklü: ağır işleri (derleme, simülatör) ertele,
+bitmiş simülatörleri bırak.` (a note, never typed into Claude).
+
+With **"Mac yüklüyken ajanları yavaşlat"** (Settings › Resources, on by default), during an episode:
+
+- `claudedeck new` answers `429 overloaded` (exit 4, checked before the rate limit, so it costs no
+  start); `new --queue` queues instead (reason `overloaded`). The queue doesn't drain until the
+  Mac is back to `ok`, then resumes on its own.
+- `claudedeck sim acquire` answers `429 overloaded`. It also answers `429 too_many_booted` whenever
+  booting would exceed **"En fazla açık simülatör"** (a fifth of the cores, 2–10: 4 on a 20-core
+  Mac; booted simulators are counted at that moment, the user's own included).
+- Only one build slot is handed out.
+
+```sh
+claudedeck load [--json]
+# level: overloaded (new sessions, simulators and builds are held back)
+# load: 120.4 on 20 cores (6.02 per core), 5 min 98.1
+# memory: 92% used, pressure warning, swap 6144 MB
+# simulators: 11 booted (sim acquire allows 4)
+# compilers: 30 (overloaded above 12)
+# sessions: 37 Claude sessions, 3400 processes
+# build slots: 1/1 used, 2 waiting
+#   b_1a2b3c4d  iOS build bot  12m  xcodebuild -scheme App build
+claudedeck heavy [--wait SECONDS] [--label TEXT] -- COMMAND...
+claudedeck slot acquire build [--wait SECONDS] [--label TEXT]     # prints b_…
+claudedeck slot release build [SLOT_ID]
+```
+
+- **Build slots** are a global semaphore: **"Aynı anda en fazla derleme"** (a sixth of the
+  cores, 1–8: 3 on a 20-core Mac; 1 during an episode). `slot acquire --wait` waits in line,
+  first come first served: the command asks again every 25 s with the same ticket and keeps its
+  place; a ticket not seen for 45 s gives it up. No slot in time: `429 no_slot`, exit 124.
+- `heavy` waits for a slot (default up to 3600 s), runs the command, releases the slot (also on
+  Ctrl+C, SIGTERM or SIGHUP) and exits with the command's code. ClaudeDeck not answering, the
+  command-line tool off, or no session environment: it runs the command without a slot (a line on
+  stderr), so wrapping is always safe. No slot within `--wait`: exit 124, the command doesn't run.
+- Slots go back with `slot release`, when the holding session (or terminal) ends or is closed,
+  and after the longest hold (Settings, 60 minutes). They live in memory: a restart of the app
+  frees them. Terminals a session opened (`claudedeck open`) may take slots too (scope `slots`).
+- `claudedeck status ID` lists the slots a session holds; `load --json` has `level`,
+  `throttled`, `throttle`, `load1`, `load5`, `cores`, `loadPerCore`, `memoryPressure`,
+  `memoryUsedPercent`, `swapUsedMB`, `simulators`, `maxSimulators`, `compilers`, `maxCompilers`,
+  `processes`, `sessions`, `buildSlots`, `slotsAvailable`, `slotsWaiting`, `slots`
+  (`id`, `session`, `sessionName`, `label`, `since`), `sampledAt`, `contributors`.
+- On screen: a row in the sidebar footer while busy or overloaded (or always, by a setting), a
+  "Mac Load" card on the Dashboard with the last 30 minutes, and on the phone's dashboard
+  (snapshot field `load`, hosts with the `load` feature; older phones ignore it).
+- Testing: in demo mode with `CLAUDEDECK_SNAPSHOT_DIR`, a file `load.inject` containing
+  `overloaded`, `busy`, `ok`, a JSON sample, or `real` replaces the measured numbers.
+
+The session helper under load: if it holds its lock but doesn't answer (at launch, or after a
+dropped connection, e.g. "client N fell behind"), ClaudeDeck keeps its sessions held, shows
+"Connecting to the session helper…", and retries with backoff (2 s up to 30 s apart, longer
+handshakes each time) until it answers, then attaches them; a helper that is gone releases them
+to the usual path. A helper that answers the handshake but not the session list in 15 s counts as
+unresponsive, never as "no sessions". A session that may still run there is never started twice.
 
 ### Closing sessions
 

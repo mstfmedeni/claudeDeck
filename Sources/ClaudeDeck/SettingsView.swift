@@ -5,14 +5,14 @@ import SwiftUI
 /// The Settings window's categories, listed in its sidebar.
 enum SettingsCategory: String, CaseIterable, Identifiable {
     case general, sidebar, sessions, accounts, terminals, notifications
-    case agents, remote, serverPlan, simulators, iCloud, claudeCode
+    case agents, resources, remote, serverPlan, simulators, iCloud, claudeCode
 
     /// The selected category (window UI state; the demo keeps its own).
     static let storageKey = "settings.category"
 
     /// The first group of the sidebar; integrations follow in a second group.
     static let basics: [SettingsCategory] = [.general, .sidebar, .sessions, .accounts, .terminals, .notifications]
-    static let integrations: [SettingsCategory] = [.agents, .remote, .serverPlan, .simulators, .iCloud, .claudeCode]
+    static let integrations: [SettingsCategory] = [.agents, .resources, .remote, .serverPlan, .simulators, .iCloud, .claudeCode]
 
     var id: Self { self }
 
@@ -25,6 +25,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .terminals: "Terminals & Editor"
         case .notifications: "Notifications"
         case .agents: "Agents"
+        case .resources: "Resources"
         case .remote: "Remote"
         case .serverPlan: "ServerPlan"
         case .simulators: "Simulators"
@@ -42,6 +43,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .terminals: "terminal"
         case .notifications: "bell.badge"
         case .agents: "cpu"
+        case .resources: "gauge.with.dots.needle.67percent"
         case .remote: "iphone.radiowaves.left.and.right"
         case .serverPlan: "server.rack"
         case .simulators: "iphone"
@@ -58,6 +60,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .accounts: .orange
         case .notifications: .red
         case .agents: .purple
+        case .resources: .pink
         case .remote: .teal
         case .serverPlan: .indigo
         case .simulators: .cyan
@@ -128,6 +131,7 @@ struct SettingsView: View {
         case .terminals: terminalsPane
         case .notifications: notificationsPane
         case .agents: AgentsSettingsSection()
+        case .resources: ResourcesSettingsSection()
         case .remote: RemoteSettingsSection()
         case .serverPlan: ServerPlanSettingsSection()
         case .simulators: SimulatorSettingsSection()
