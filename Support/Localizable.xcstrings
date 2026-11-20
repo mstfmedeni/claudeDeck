@@ -21979,7 +21979,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ GB'ı aşarsa"
+            "value": "%@ GB üstünde"
           }
         }
       }
@@ -22019,7 +22019,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld'ı aşarsa"
+            "value": "%lld üstünde"
           }
         }
       }
@@ -22129,7 +22129,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sistem yükü bir dakika boyunca %lld'ı aşarsa meşgul (şu an: %@)"
+            "value": "Sistem yükü bir dakika boyunca %lld üstünde kalırsa meşgul (şu an: %@)"
           }
         }
       }
