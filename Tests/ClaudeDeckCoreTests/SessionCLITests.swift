@@ -209,7 +209,7 @@ import Testing
         #expect(SessionCLI.Progress.running.exit == .timeout)
         // Stable numbers: documented in docs/agents.md and the skill.
         #expect(SessionCLI.Progress.limited(nil).exit == .limited)
-        #expect(SessionCLI.Exit.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 6, 124])
+        #expect(SessionCLI.Exit.allCases.map(\.rawValue) == [0, 1, 2, 3, 4, 5, 6, 75, 124])
         #expect(SessionCLI.exit(status: 200, header: "124") == .timeout)
         #expect(SessionCLI.exit(status: 200, header: nil) == .ok)
         #expect(SessionCLI.exit(status: 400, header: nil) == .usage)
@@ -332,6 +332,39 @@ import Testing
         let calls = raw.split(separator: "\u{1E}").map { $0.split(separator: "\u{1F}", omittingEmptySubsequences: false).map(String.init).filter { !$0.isEmpty } }
         return Run(code: process.terminationStatus, out: String(decoding: outData, as: UTF8.self),
                    err: String(decoding: errData, as: UTF8.self), curlCalls: calls)
+    }
+
+    /// A gated server call answers "pending" (202, exit 75); the script long-polls the approval
+    /// and ends with the call's own answer, or with --no-wait stops at once.
+    @Test func serverCallFollowsItsApproval() throws {
+        let pending = ("pending approval a_0123456789ab (expires in 24 h 0 min): s wants to run “container stop” on web", "202 75")
+        let followed = try run(["server", "balance"], answers: [pending, pending, ("stopped web", "200 0")])
+        #expect(followed.code == 0 && followed.out == "stopped web\n")
+        #expect(followed.err.contains("waiting for the owner to approve a_0123456789ab"))
+        #expect(followed.curlCalls.count == 3)
+        #expect(followed.curlCalls.count == 3 && followed.curlCalls[1].last == "http://127.0.0.1:47832/v1/cli/approvals/a_0123456789ab/wait")
+        #expect(followed.curlCalls.count == 3 && followed.curlCalls[1].contains("timeout=25"))
+
+        let refused = try run(["server", "balance"], answers: [pending, (#"{"error":"owner_refused"}"#, "403 4")])
+        #expect(refused.code == 4 && refused.err.contains("owner_refused"))
+
+        let json = #"{"id":"a_0123456789ab","status":"pending","target":"data_x"}"#
+        let noWait = try run(["server", "balance", "--no-wait"], answers: [(json, "202 75")])
+        #expect(noWait.code == 75 && noWait.out == "pending approval a_0123456789ab\n" && noWait.curlCalls.count == 1)
+    }
+
+    @Test func approvalCommands() throws {
+        let pending = ("pending approval a_1 (no expiry): t", "202 75")
+        let timedOut = try run(["approval", "wait", "a_1", "--timeout", "1"], answers: [pending], slowFirstAnswer: 1)
+        #expect(timedOut.code == 75 && timedOut.curlCalls.count == 1 && timedOut.curlCalls.first?.contains("timeout=1") == true)
+        let status = try run(["approval", "status", "a_1"], answers: [("a_1 approved: t → done", "200 0")])
+        #expect(status.code == 0 && status.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/approvals/a_1")
+        let cancel = try run(["approval", "cancel", "a_1"], answers: [("cancelled a_1", "200 0")])
+        #expect(cancel.code == 0 && cancel.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/approvals/a_1/cancel")
+        let restarted = try run(["approval", "wait", "a_1"], answers: [pending, (#"{"error":"unauthorized"}"#, "401 ")])
+        #expect(restarted.code == 75 && restarted.err.contains("stays pending"))
+        #expect(try run(["approval", "status", "d_1"]).code == 2)
+        #expect(try run(["approval", "wait", "a_1", "--timeout", "x"]).code == 2)
     }
 
     @Test func scriptSyntaxAndNoSecret() throws {

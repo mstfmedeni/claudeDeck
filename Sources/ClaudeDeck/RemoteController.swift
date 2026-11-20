@@ -178,7 +178,7 @@ final class RemoteController {
             if let added { self?.pushDecision(added) }
         }
         // An approval asked or answered: the phones' list.
-        // A new one is also pushed (phones that aren't looking): it has to be answered in 2 minutes.
+        // A new one is also pushed (phones that aren't looking); a result line updates the history.
         model.approvals.observe { [weak self] change in
             self?.publishSnapshot()
             if case .added(let approval) = change {
@@ -771,6 +771,8 @@ final class RemoteController {
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
         snapshot.decisions = model.decisions.forRemote()
         snapshot.approvals = model.approvals.pending
+        snapshot.approvalHistory = Approvals.history(model.approvals.book.recent, now: Date())
+        snapshot.decisionHistory = model.decisions.historyForRemote()
         snapshot.agendas = AgendaController.shared.remoteAgendas
         snapshot.agentsRunning = model.cliRunningStarted
         snapshot.agentsCap = model.deck.settings.maxStartedSessions

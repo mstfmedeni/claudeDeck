@@ -497,6 +497,15 @@ public struct DecisionBook: Codable, Sendable, Equatable {
         return (pending + answered).sorted { $0.createdAt > $1.createdAt }.map(Self.trimmed)
     }
 
+    /// The phone's history (`RemoteSnapshot.decisionHistory`): answered and cancelled decisions
+    /// of the last `days` that `forRemote` leaves out, newest first, at most `max`.
+    public func historyForRemote(now: Date = Date(), days: Int = 7, max: Int = 50, recent: TimeInterval = 24 * 3600) -> [OwnerDecision] {
+        let sent = Set(forRemote(now: now, recent: recent).map(\.id))
+        return decisions.filter { !$0.isPending && !sent.contains($0.id) && now.timeIntervalSince($0.resolvedAt) < TimeInterval(days) * 24 * 3600 }
+            .sorted { $0.resolvedAt > $1.resolvedAt }
+            .prefix(max).map(Self.trimmed)
+    }
+
     /// Long contexts are cut for the wire (the Mac keeps the whole text).
     static func trimmed(_ decision: OwnerDecision) -> OwnerDecision {
         var copy = decision

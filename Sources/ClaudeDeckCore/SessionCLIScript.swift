@@ -9,7 +9,8 @@ extension SessionCLI {
     #!/bin/sh
     # claudedeck: ClaudeDeck from inside the terminals it starts. `claudedeck help` for usage.
     # Exit codes: 0 ok/finished, 1 failed or error, 2 usage, 3 blocked, 4 refused, 5 unknown id,
-    # 6 limited (wait: the session waits for its usage limit to reset), 124 timeout
+    # 6 limited (wait: the session waits for its usage limit to reset), 75 an owner approval is
+    # pending (server --no-wait, approval wait --timeout), 124 timeout
     # (docs/agents.md in the ClaudeDeck repository).
 
     usage() {
@@ -78,6 +79,11 @@ extension SessionCLI {
           pending, answered: ANSWER, or cancelled: REASON.
       claudedeck decision cancel ID [--reason TEXT] [--json]
           Withdraws a pending decision this session (or one it started) asked.
+      claudedeck approval status ID [--json]   (a_…: pending with the time left, approved → result, refused, expired)
+      claudedeck approval wait ID [--timeout S] [--json]
+          Waits for an approval a server command asked for and prints that command's own answer
+          (and exits with its code); 75 when --timeout ran out first.
+      claudedeck approval cancel ID [--json]   (withdraws one this session asked for)
       claudedeck decisions [--pending] [--json]
           Every decision, newest first.
     Simulators (Settings > Agents: "Sessions may reserve simulators"):
@@ -191,10 +197,15 @@ extension SessionCLI {
       claudedeck server pg grant SERVER USER DB [--revoke] | pg clone SERVER DB TARGET [--project P] [--wait]
       claudedeck server server-env get SERVER | server-env set SERVER [--from-file FILE | -] [KEY=VALUE...]
           SERVER, PROJECT: an id or a name. Not every panel has every command: see server features.
+          A command the owner must approve (exit 4 if refused) waits for the answer, up to the
+          owner's setting (24 hours by default): it prints "waiting for the owner to approve a_…" on
+          stderr and long-polls. --no-wait prints "pending approval a_…" and exits 75 at once; ClaudeDeck
+          runs the command itself once approved and queues the result for this session.
 
     ID: an id from `claudedeck list`, its first 8 characters, or "self".
     Exit codes: 0 ok/finished, 1 failed (or another error), 2 usage, 3 blocked (needs the user),
-    4 refused, 5 unknown id, 6 limited (waits for its usage limit to reset), 124 timeout.
+    4 refused, 5 unknown id, 6 limited (waits for its usage limit to reset), 75 an owner approval
+    is pending (server --no-wait, approval wait --timeout), 124 timeout.
     EOF
     }
 
@@ -242,8 +253,13 @@ extension SessionCLI {
       fi
     }
 
-    # Prints the answer and exits with its code (errors go to stderr unless --json).
+    # Prints the answer and exits with its code (errors go to stderr unless --json). A server
+    # command waiting on the owner (exit 75) follows its approval first, unless --no-wait.
     finish() {
+      if [ "$code" = 75 ] && [ "${follow_approval:-0}" = 1 ]; then
+        follow_approval=0
+        approval_follow
+      fi
       case "$http" in
         2??) [ -n "$body" ] && printf '%s\n' "$body" ;;
         *)
@@ -266,6 +282,10 @@ extension SessionCLI {
               queue_cancelled|queue_failed) hint=" (see claudedeck queue show QID)" ;;
               unknown_project) hint=" (see claudedeck projects)" ;;
               owner_refused) hint=" (the owner refused or didn't answer in ClaudeDeck)" ;;
+              approval_expired) hint=" (the owner didn't answer in time)" ;;
+              approval_cancelled) hint=" (it was withdrawn)" ;;
+              unknown_approval) hint=" (no such approval; ids look like a_…)" ;;
+              not_pending) hint=" (it isn't pending any more; see claudedeck approval status)" ;;
               serverplan_off) hint=" (ServerPlan isn't set up in ClaudeDeck)" ;;
               not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
@@ -319,6 +339,86 @@ extension SessionCLI {
           ;;
       esac
       exit "$code"
+    }
+
+    # The approval a server call's "pending" answer names: waits for it unless --no-wait.
+    approval_follow() {
+      aid=$(printf '%s' "$body" | sed -n -e 's/.*"id" *: *"\(a_[A-Za-z0-9]*\)".*/\1/p' -e 's/^pending approval \(a_[A-Za-z0-9]*\).*/\1/p' | head -n 1)
+      [ -n "$aid" ] || return 0
+      if [ "${no_wait:-0}" = 1 ]; then
+        if [ "$json" = 1 ]; then printf '%s\n' "$body"; else printf 'pending approval %s\n' "$aid"; fi
+        exit 75
+      fi
+      printf 'claudedeck: waiting for the owner to approve %s in ClaudeDeck (claudedeck approval cancel %s withdraws it)\n' \
+        "$aid" "$aid" >&2
+      approval_poll "$aid" 0
+    }
+
+    # approval_poll ID TIMEOUT: long-polls until the call behind the approval answered (its own
+    # status, body and exit code), or TIMEOUT seconds passed (0: no limit; then exit 75). Retries
+    # ClaudeDeck not answering for up to 10 minutes; a 401 after a restart ends it with exit 75.
+    approval_poll() {
+      p_id=$1; p_limit=$2; p_start=$(date +%s); p_misses=0
+      while :; do
+        p_window=25
+        if [ "$p_limit" -gt 0 ]; then
+          p_left=$((p_limit - ($(date +%s) - p_start)))
+          [ "$p_left" -lt 0 ] && p_left=0
+          [ "$p_left" -lt "$p_window" ] && p_window=$p_left
+        fi
+        max_time=$((p_window + 15)); soft=1
+        call "/approvals/$p_id/wait" -G --data-urlencode "timeout=$p_window" --data-urlencode "format=$(fmt)"
+        soft=0
+        if [ "$http" = 000 ]; then
+          p_misses=$((p_misses + 1))
+          [ "$p_misses" -gt 60 ] && die "ClaudeDeck isn't answering. Is it running, with Settings > Agents > Local API on?" 1
+          if [ "$p_limit" -gt 0 ] && [ $((p_limit - ($(date +%s) - p_start))) -le 0 ]; then code=75; return 0; fi
+          sleep 10
+          continue
+        fi
+        p_misses=0
+        if [ "$http" = 401 ]; then
+          # ClaudeDeck restarted and this terminal's token went with it: the approval is kept,
+          # and its result is queued for the session once it's answered.
+          printf 'claudedeck: ClaudeDeck restarted; %s stays pending and its result will be queued for this session (claudedeck approval status %s in a new terminal)\n' \
+            "$p_id" "$p_id" >&2
+          http=202; body=""; code=75
+          return 0
+        fi
+        [ "$code" = 75 ] || return 0
+        if [ "$p_limit" -gt 0 ] && [ $((p_limit - ($(date +%s) - p_start))) -le 0 ]; then return 0; fi
+      done
+    }
+
+    cmd_approval() {
+      sub=${1:-}
+      case "$sub" in
+        status|wait|cancel) shift ;;
+        *) die "approval: try claudedeck approval status ID, approval wait ID [--timeout S] or approval cancel ID" ;;
+      esac
+      id=""; timeout=0
+      while [ $# -gt 0 ]; do
+        case "$sub:$1" in
+          *:--json) json=1 ;;
+          wait:--timeout) [ $# -ge 2 ] || die "approval wait: --timeout needs seconds"; timeout=$2; shift ;;
+          wait:--timeout=*) timeout=${1#*=} ;;
+          *:-*) die "approval $sub: unknown option $1" ;;
+          *) [ -z "$id" ] || die "approval $sub: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      case "$id" in
+        a_*) case "${id#a_}" in ""|*[!A-Za-z0-9]*) die "approval $sub: not an approval id (a_…): $id" ;; esac ;;
+        *) die "approval $sub: not an approval id (a_…): ${id:-none given}" ;;
+      esac
+      case "$timeout" in ""|*[!0-9]*) die "approval wait: --timeout needs whole seconds (0: no limit)" ;; esac
+      need_session
+      case "$sub" in
+        status) call "/approvals/$id" -G --data-urlencode "format=$(fmt)" ;;
+        cancel) call "/approvals/$id/cancel" --data-urlencode "format=$(fmt)" ;;
+        wait) approval_poll "$id" "$timeout" ;;
+      esac
+      finish
     }
 
     # An argument as a shell reads it back: bare when it's plain, else in single quotes.
@@ -1105,6 +1205,7 @@ extension SessionCLI {
 
     cmd_server() {
       sub=${1:-}; [ $# -gt 0 ] && shift
+      follow_approval=1
       case "$sub" in
         ""|help) usage; exit 0 ;;
         env|local-env|server-env) cmd_server_vars "$sub" "$@"; return ;;
@@ -1134,6 +1235,7 @@ extension SessionCLI {
           --revoke) revoke=1 ;;
           --no-dns) no_dns=1 ;;
           --refresh) refresh=1 ;;
+          --no-wait) no_wait=1 ;;
           --volumes) volumes=1 ;;
           --no-build-cache) no_build_cache=1 ;;
           --no-containers) no_containers=1 ;;
@@ -1390,7 +1492,8 @@ extension SessionCLI {
           elif [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
           elif [ "$p1" = check ]; then max_time=75; srv domain-check GET --data-urlencode "domain=$p2"
           elif [ "$p1" = buy ]; then
-            # The owner has 2 minutes to answer, then the registrar up to 3 minutes.
+            # The owner's card answers "pending approval" at once (followed below); then the
+            # registrar takes up to 3 minutes.
             max_time=330
             srv domain-buy --data-urlencode "domain=$p2" --data-urlencode "approval=$approval" --data-urlencode "years=${years:-1}" \
               --data-urlencode "no_dns=$no_dns"
@@ -1414,6 +1517,7 @@ extension SessionCLI {
     # of the shell history; values are never printed. local-env: overrides only local runs see.
     cmd_server_vars() {
       kind=$1; shift
+      follow_approval=1
       action=${1:-}; [ $# -gt 0 ] && shift
       case "$kind:$action" in
         env:get|env:set|env:rescan|env:rm|local-env:get|local-env:set|local-env:unset|server-env:get|server-env:set) ;;
@@ -1424,6 +1528,7 @@ extension SessionCLI {
       project=""; vars=""; keys=""; secrets=""; file=""; stdin=0; dry_run=0; env_id=""
       while [ $# -gt 0 ]; do
         case "$1" in
+          --no-wait) no_wait=1 ;;
           --json) json=1 ;;
           --dry-run) [ "$action" = rescan ] || die "$kind $action: unknown option $1"; dry_run=1 ;;
           --from-file) [ $# -ge 2 ] || die "$kind set: --from-file needs a file"; file=$2; shift ;;
@@ -1556,6 +1661,7 @@ extension SessionCLI {
       server) cmd_server "$@" ;;
       decide) cmd_decide "$@" ;;
       decision) cmd_decision "$@" ;;
+      approval) cmd_approval "$@" ;;
       decisions) cmd_decisions "$@" ;;
       account|accounts) cmd_account "$@" ;;
       sim) cmd_sim "$@" ;;
@@ -1885,6 +1991,20 @@ extension SessionCLI {
     claudedeck server domain check example.com     # available? price, renewal, the balance, may an agent buy it
     claudedeck server domain buy example.com --approval d_…   # only after the owner said yes in claudedeck decide
     claudedeck server balance [--refresh]          # Namecheap balance: available, account, threshold, LOW
+    ```
+
+    A server command the owner must approve (a ServerPlan gate, every purchase) doesn't block on a
+    2-minute window any more: the owner has up to 24 hours (their setting). The command prints
+    "waiting for the owner to approve a_…" and keeps waiting; with `--no-wait` it prints
+    `pending approval a_…` and exits 75 at once. Either way ClaudeDeck runs it itself once approved
+    and queues "[ClaudeDeck approval a_…] Owner approved: … → result" (or refused / expired) for
+    you, so you can move on and come back to it:
+
+    ```sh
+    claudedeck server container web api restart --no-wait   # exit 75: pending approval a_…
+    claudedeck approval status a_…    # pending (time left) / approved → result / refused / expired
+    claudedeck approval wait a_… --timeout 600   # its answer and exit code; 75 if still pending
+    claudedeck approval cancel a_…    # withdraw it
     ```
 
     - "purchase: not allowed: bakiye yetersiz" means the balance doesn't cover the first year:

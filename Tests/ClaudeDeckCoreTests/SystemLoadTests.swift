@@ -507,6 +507,36 @@ import Testing
         #expect(try JSONDecoder().decode(OldSnapshot.self, from: JSONEncoder().encode(snapshot)).hostName == "Mac")
     }
 
+    @Test func remoteLoadHistoryIsPerMinuteAndBounded() throws {
+        // An hour and a half at one sample every 12 s (5 a minute), starting on a minute.
+        let start = Date(timeIntervalSinceReferenceDate: 60 * 1_000_000)
+        let samples = (0..<450).map { i in
+            LoadSample(at: start.addingTimeInterval(Double(i) * 12), load1: Double(i % 5) * 4, cores: 20,
+                       memoryUsedPercent: 50, simulators: i % 5 == 2 ? 3 : 1, compilers: i % 5)
+        }
+        let history = RemoteLoad.history(from: samples)
+        #expect(history.count == RemoteLoad.maxHistory)
+        // Finished minutes only: the last sample's minute (89) is left out.
+        #expect(history.last?.at == start.addingTimeInterval(88 * 60))
+        #expect(history.first?.at == start.addingTimeInterval(29 * 60))
+        // Averages for load and memory, the highest for simulators and builds.
+        #expect(history.last?.loadPerCore == 0.4 && history.last?.memoryPercent == 50)
+        #expect(history.last?.simulators == 3 && history.last?.builds == 4)
+        #expect(RemoteLoad.history(from: Array(samples.prefix(3))).isEmpty)
+
+        // The new fields are optional: an older Mac's load decodes with them nil, and they round-trip.
+        var load = RemoteLoad(level: "ok", throttled: false, loadPerCore: 0.4, cores: 20, memoryPercent: 50, memoryPressure: "normal",
+                              simulators: 1, builds: 0, sessions: 2, slotsUsed: 0, slots: 3)
+        let old = try JSONDecoder().decode(RemoteLoad.self, from: JSONEncoder().encode(load))
+        #expect(old.history == nil && old.topProjects == nil && old.slotHolders == nil && old.runningBuilds == nil)
+        load.history = history
+        load.topProjects = [RemoteLoad.ProjectUse(name: "p", cpuPercent: 120, memoryMB: 900)]
+        load.slotHolders = [RemoteLoad.SlotHolder(id: "b_1", session: UUID(), name: "a", label: "xcodebuild", since: start)]
+        load.runningBuilds = [RemoteLoad.Build(pid: 42, name: "swift-frontend", session: nil, cpuPercent: 95)]
+        #expect(try JSONDecoder().decode(RemoteLoad.self, from: JSONEncoder().encode(load)) == load)
+        #expect(RemoteSnapshot.Feature.all.contains(RemoteSnapshot.Feature.loadHistory))
+    }
+
     // MARK: The script (a stand-in curl)
 
     private struct Run {

@@ -16,11 +16,12 @@ enum MacScreen {
     static let agenda = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000006")!
     static let agents = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000007")!
     static let approvals = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000008")!
+    static let load = UUID(uuidString: "5C4EE000-5C4E-5C4E-5C4E-5C4EE0000009")!
 
     /// Not a session: the Mac never has it, and it mustn't be cleared as one it lost.
     static func isScreen(_ id: UUID) -> Bool {
         id == ScreenTab.id || id == dashboard || id == servers || id == simulators || id == decisions || id == agenda || id == agents
-            || id == approvals
+            || id == approvals || id == load
     }
 
     @MainActor @ViewBuilder
@@ -33,6 +34,7 @@ enum MacScreen {
         case agenda: AgendaScreen()
         case agents: AgentTreeScreen()
         case approvals: ApprovalsScreen()
+        case load: LoadScreen()
         default: EmptyView()
         }
     }
@@ -224,13 +226,7 @@ private struct MacLoadCard: View {
     let load: RemoteLoad
     @State private var showDetail = false
 
-    private var color: Color {
-        switch load.level {
-        case "ok": .green
-        case "overloaded": .red
-        default: .orange
-        }
-    }
+    private var color: Color { MacLoadStyle.color(load.level) }
 
     private var title: LocalizedStringKey {
         switch load.level {

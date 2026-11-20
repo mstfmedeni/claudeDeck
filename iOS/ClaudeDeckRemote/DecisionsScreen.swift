@@ -7,6 +7,11 @@ import SwiftUI
 extension RemoteStore {
     /// Pending decisions and the recently answered ones, newest first (nil: the Mac doesn't send them).
     var decisions: [OwnerDecision]? { snapshot?.supports(RemoteSnapshot.Feature.decisions) == true ? snapshot?.decisions ?? [] : nil }
+    /// Answered or cancelled decisions of the last 7 days that `decisions` leaves out, newest first
+    /// (nil: the Mac doesn't send them).
+    var decisionHistory: [OwnerDecision]? {
+        snapshot?.supports(RemoteSnapshot.Feature.decisionHistory) == true ? snapshot?.decisionHistory ?? [] : nil
+    }
     var agendas: [RemoteAgenda]? { snapshot?.supports(RemoteSnapshot.Feature.agenda) == true ? snapshot?.agendas ?? [] : nil }
 
     /// The owner's answer; the Mac types it into the asking session at its next turn.
@@ -73,15 +78,17 @@ struct DecisionsScreen: View {
     @Environment(RemoteStore.self) private var store
     /// Answers sent and not yet in a snapshot (shown as sending; a lost one can be sent again).
     @State private var sent: [String: String] = [:]
-    @State private var showOtherToday = false
 
     var body: some View {
         let all = store.decisions ?? []
         let pending = all.filter(\.isPending)
-        // Cancelled ones never come from the Mac.
-        let (recent, otherToday) = DecisionSections.answered(all)
+        // The answered (and cancelled) ones of `decisions` plus the week's older history; the
+        // copy in `decisions` is the fresher one.
+        let resolved = all.filter { !$0.isPending }
+        let known = Set(all.map(\.id))
+        let history = HistoryDays.group(resolved + (store.decisionHistory ?? []).filter { !known.contains($0.id) }, date: \.resolvedAt)
         Group {
-            if all.isEmpty {
+            if pending.isEmpty, history.isEmpty {
                 ContentUnavailableView("Nothing to Decide", systemImage: "signpost.right.and.left",
                                        description: Text("Sessions on the Mac ask with claudedeck decide and keep working; their questions show up here."))
             } else {
@@ -108,18 +115,17 @@ struct DecisionsScreen: View {
                             Text("Your answer goes to the session as its next message.")
                         }
                     }
-                    if !recent.isEmpty {
-                        Section("Recently Answered") {
-                            ForEach(recent) { AnsweredDecisionPhoneRow(decision: $0) }
-                        }
-                    }
-                    if !otherToday.isEmpty {
+                    ForEach(history, id: \.day) { group in
                         Section {
-                            DisclosureGroup(isExpanded: $showOtherToday) {
-                                ForEach(otherToday) { AnsweredDecisionPhoneRow(decision: $0) }
-                            } label: {
-                                Text("Other decisions today · \(otherToday.count)")
+                            ForEach(group.items) { decision in
+                                if decision.isCancelled {
+                                    CancelledDecisionPhoneRow(decision: decision)
+                                } else {
+                                    AnsweredDecisionPhoneRow(decision: decision)
+                                }
                             }
+                        } header: {
+                            HistoryDayHeader(day: group.day)
                         }
                     }
                 }
@@ -274,7 +280,8 @@ struct AnsweredDecisionPhoneRow: View {
                         Text(decision.origin)
                         if let at = decision.answeredAt {
                             Text("·")
-                            Text(at, format: .relative(presentation: .named))
+                            // Under its day's header: the time is enough.
+                            Text(at, style: .time)
                         }
                     }
                     .font(.caption).foregroundStyle(.tertiary)
@@ -299,6 +306,35 @@ struct AnsweredDecisionPhoneRow: View {
     private func change(_ answer: String) {
         if store.changeDecisionAnswer(decision.id, answer: answer) { sentChange = answer }
         changing = false
+    }
+}
+
+/// A cancelled decision, muted: the question, why it was cancelled, who asked and when.
+struct CancelledDecisionPhoneRow: View {
+    let decision: OwnerDecision
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(decision.question).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+            Label {
+                if let reason = decision.cancelReason, !reason.isEmpty {
+                    Text("Cancelled: \(reason)")
+                } else {
+                    Text("Cancelled by the session")
+                }
+            } icon: {
+                Image(systemName: "xmark.circle")
+            }
+            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(decision.origin)
+                Text("·")
+                Text(decision.resolvedAt, style: .time)
+            }
+            .font(.caption).foregroundStyle(.tertiary)
+        }
+        .opacity(0.7)
+        .padding(.vertical, 2)
     }
 }
 

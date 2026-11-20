@@ -49,7 +49,7 @@ struct ApprovalsView: View {
                 }
                 Spacer()
             }
-            Text("A session waits for each of these. Without an answer in 2 minutes it's refused.")
+            Text("A session asked for each of these. Approved, ClaudeDeck runs the action and tells the session; without an answer in time it's refused.")
                 .font(.system(size: size * 0.95)).foregroundStyle(.secondary)
         }
         .padding(.bottom, 4)
@@ -90,11 +90,21 @@ struct ApprovalCard: View {
                     Text(approval.session)
                 }
                 Spacer()
-                VisibleTimeline(every: 1) { now in
-                    let left = max(0, Int(approval.expiresAt.timeIntervalSince(now).rounded(.up)))
-                    Text("Refused in \(left / 60):\(String(format: "%02d", left % 60))")
+                if approval.neverExpires {
+                    Text("No time limit")
+                } else {
+                    VisibleTimeline(every: 1) { now in
+                        let left = max(0, Int(approval.expiresAt.timeIntervalSince(now).rounded(.up)))
+                        Group {
+                            if left >= 3600 {
+                                Text("Refused in \(left / 3600) h \(left % 3600 / 60) min")
+                            } else {
+                                Text("Refused in \(left / 60):\(String(format: "%02d", left % 60))")
+                            }
+                        }
                         .monospacedDigit()
-                        .foregroundStyle(left <= 30 ? Color.red : Color.secondary)
+                        .foregroundStyle(left <= 60 ? Color.red : Color.secondary)
+                    }
                 }
             }
             .font(.system(size: size * 0.9))

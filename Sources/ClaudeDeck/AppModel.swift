@@ -112,6 +112,8 @@ final class AppModel {
     @ObservationIgnored var onDecisionsChanged: ((_ added: OwnerDecision?) -> Void)?
     /// Approvals sessions wait on (ServerPlan gates, domain purchases; AppModel+Approvals.swift).
     let approvals = ApprovalQueue()
+    /// The `claudedeck server` calls behind them and `approval wait`'s long polls.
+    let approvalCalls = ApprovalCalls()
     /// An agent signed itself up through the local API and waits for approval (a notification).
     @ObservationIgnored var onAgentRegistered: ((AgentRegistration) -> Void)?
     /// Last time the user looked at a session while it was idle (clears the yellow "unseen" badge).
@@ -262,6 +264,7 @@ final class AppModel {
         startStallWatch() // only checks while the setting is on
         loadAgentNotes()
         loadDecisions()
+        loadApprovals()
         usage.start()
         syncAccountMonitors() // nothing without other accounts
         trackMenuBarCounts()

@@ -44,6 +44,23 @@ struct AgentsSettingsSection: View {
         }
         .sheet(item: $editing) { agent in AgentEditor(agent: agent) }
         .sheet(isPresented: $showLog) { AgentActivityLog() }
+        Section {
+            Picker("Approval wait time", selection: Binding(
+                get: { model.deck.settings.approvalWait },
+                set: { wait in model.mutate(userInitiated: false) { $0.settings.approvalWait = wait } }
+            )) {
+                Text("15 min").tag(ApprovalWait.quarterHour)
+                Text("1 hour").tag(ApprovalWait.hour)
+                Text("4 hours").tag(ApprovalWait.fourHours)
+                Text("24 hours").tag(ApprovalWait.day)
+                Text("No limit").tag(ApprovalWait.never)
+            }
+        } header: {
+            Text("Approvals")
+        } footer: {
+            Text("How long a ServerPlan action or a domain purchase a session asks for waits for your answer before it's refused. The session doesn't wait on it: it hears the result once you answer, and approvals are kept when ClaudeDeck restarts.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         Section("Local API") {
             apiRows
         }

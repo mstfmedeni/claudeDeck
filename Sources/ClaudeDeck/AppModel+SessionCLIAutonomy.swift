@@ -240,48 +240,91 @@ extension AppModel {
 
     // MARK: ServerPlan
 
+    /// `claudedeck server …`. The call runs apart from this request (`ApprovalCallJob`): when it
+    /// needs the owner, this request answers "pending approval a_…" (202, exit 75) at once and the
+    /// call goes on here; the script long-polls `approval wait` for its answer.
     func cliServer(_ caller: UUID, command: String, method: String, form: [String: String], json: Bool) async -> AgentHTTPResponse {
         guard deck.settings.sessionsMayUseServerPlan else { return SessionCLI.failure(403, "setting_off", exit: .refused) }
+        guard ServerPlanController.shared.client != nil else { return SessionCLI.failure(403, "serverplan_off", exit: .refused) }
+        let job = ApprovalCallJob()
+        let replay = ApprovalReplay(caller: caller, command: command, method: method, form: form, json: json)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let (response, line) = await self.runServerCall(replay, job: job)
+            job.finish(response)
+            for id in job.approvalIDs { self.approvalCallFinished(id, response, line: line) }
+        }
+        await job.waitForAnswerOrApproval()
+        if let response = job.response {
+            approvalCalls.delivered.formUnion(job.approvalIDs)
+            return response
+        }
+        return approvalPendingResponse(job.approvalIDs[0], json: json)
+    }
+
+    /// Runs one `claudedeck server` call; returns its answer and a line for the approval message.
+    func runServerCall(_ call: ApprovalReplay, job: ApprovalCallJob) async -> (AgentHTTPResponse, String) {
+        let caller = call.caller, command = call.command
+        guard deck.settings.sessionsMayUseServerPlan else { return (SessionCLI.failure(403, "setting_off", exit: .refused), "failed: setting_off") }
         let controller = ServerPlanController.shared
-        guard let client = controller.client else { return SessionCLI.failure(403, "serverplan_off", exit: .refused) }
+        guard let client = controller.client else { return (SessionCLI.failure(403, "serverplan_off", exit: .refused), "failed: serverplan_off") }
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         var me = controller.me
         if me == nil || ServerPlanCLI.commands[command]?.v11 == true { me = (try? await client.me()) ?? me }
         let runner = ServerPlanCLI.Runner(client: client, me: me, approve: { [weak self] command, target, summary in
-            // A purchase spends money: its own dialog, whatever any setting says.
-            if command == "domain-buy" { return await self?.ownerApprovesPurchase(caller, domain: target, summary: summary) ?? false }
-            return await self?.ownerApproves(caller, command: command, target: target, summary: summary) ?? false
+            await self?.serverCallApproval(call, command: command, target: target, summary: summary, job: job) ?? false
         }, log: { [weak self] line in
             Task { @MainActor in self?.logAgent(callerName, inbound: true, "claudedeck server \(line)") }
         }, decision: { [weak self] id in
             await MainActor.run { self?.decisions.decision(id) }
         })
-        let outcome = await runner.run(command, method: method, form: form)
+        let outcome = await runner.run(command, method: call.method, form: call.form)
         if command == "domain-buy", (200..<300).contains(outcome.status) { domainBoughtNotice(outcome.json) }
         // Reads are many (`--wait` polls): only what changes something, or fails, is logged.
         if ServerPlanCLI.commands[command]?.method != "GET" || outcome.exit != .ok && outcome.exit != .timeout {
             logAgent(callerName, inbound: true, "claudedeck server \(command)" + (outcome.status >= 300 ? ": \(outcome.text)" : ""), ok: outcome.status < 300)
         }
-        return outcome.response(json: json)
+        let text = Approvals.oneLine(outcome.text)
+        let line = outcome.status < 300 ? (text.isEmpty ? "done" : text) : "failed: \(text)"
+        return (outcome.response(json: call.json), line)
+    }
+
+    /// A gate the call hit. After a relaunch the owner's earlier yes covers the first gate that
+    /// matches it exactly (a purchase also needs the same price summary); everything else asks.
+    private func serverCallApproval(_ call: ApprovalReplay, command: String, target: String, summary: String?,
+                                    job: ApprovalCallJob) async -> Bool {
+        if let approved = job.preApproved {
+            job.preApproved = nil
+            let text = summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if approved.command == command, approved.target == target, !approved.isPurchase || approved.summary == text {
+                logAgent(approved.session, inbound: true, "approval \(approved.id) \(command) \(target): sent with the confirm after the relaunch")
+                return true
+            }
+        }
+        // A purchase spends money: its own card, whatever any setting says.
+        if command == "domain-buy" { return await ownerApprovesPurchase(call.caller, domain: target, summary: summary, call: call, job: job) }
+        return await ownerApproves(call.caller, command: command, target: target, summary: summary, call: call, job: job)
     }
 
     /// The owner's approval for a gated ServerPlan action: a card in the Approvals tab (and a
-    /// notification), never a modal dialog; no answer in 2 minutes is a no.
-    func ownerApproves(_ caller: UUID, command: String, target: String, summary: String?) async -> Bool {
+    /// notification), never a modal dialog; no answer within the approval wait time is a no.
+    func ownerApproves(_ caller: UUID, command: String, target: String, summary: String?,
+                       call: ApprovalReplay? = nil, job: ApprovalCallJob? = nil) async -> Bool {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         let approval = makeApproval(caller, kind: .serverPlan, command: command, target: target, summary: summary,
                                     title: String(localized: "\(callerName) wants to run “\(command)” on \(target)"))
-        return await awaitApproval(approval)
+        return await awaitApproval(approval, replay: call, job: job)
     }
 
     /// The owner's approval for `server domain buy`: a card with the panel's price summary and a
     /// plain "this is a real purchase". Only the card's Buy button on the Mac says yes (not the
-    /// notification, not a phone); no answer in 2 minutes is a no.
-    func ownerApprovesPurchase(_ caller: UUID, domain: String, summary: String?) async -> Bool {
+    /// notification, not a phone); no answer within the approval wait time is a no.
+    func ownerApprovesPurchase(_ caller: UUID, domain: String, summary: String?,
+                               call: ApprovalReplay? = nil, job: ApprovalCallJob? = nil) async -> Bool {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         let approval = makeApproval(caller, kind: .domainPurchase, command: "domain-buy", target: domain, summary: summary,
                                     title: String(localized: "\(callerName) wants to buy the domain \(domain)"))
-        return await awaitApproval(approval)
+        return await awaitApproval(approval, replay: call, job: job)
     }
 
     /// A Mac (and phone) notification once a session bought a domain.

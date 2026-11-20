@@ -113,6 +113,7 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             switch change {
             case .added(let approval): self?.approvalAsked(approval)
             case .resolved(let resolved): self?.center?.removeDeliveredNotifications(withIdentifiers: ["approval-\(resolved.id)"])
+            case .updated: break
             }
         }
         ServerPlanController.shared.onNotice = { [weak self, weak model] notice in
@@ -189,15 +190,15 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// A session waits for an approval: shown whatever the notification setting (nothing else
-    /// asks; the owner has 2 minutes). Clicking opens the Approvals tab.
+    /// asks; it waits up to the approval wait time). Clicking opens the Approvals tab.
     private func approvalAsked(_ approval: OwnerApproval) {
         guard let center else { return }
         let content = UNMutableNotificationContent()
         content.title = approval.isPurchase ? String(localized: "Purchase waiting for your approval") : String(localized: "Approval needed")
         content.subtitle = approval.title
         content.body = (approval.summary.isEmpty ? "" : approval.summary + "\n")
-            + (approval.isPurchase ? String(localized: "Buy it from the card in ClaudeDeck. Without an answer in 2 minutes it's refused.")
-                                   : String(localized: "Without an answer in 2 minutes it's refused."))
+            + (approval.isPurchase ? String(localized: "Buy it from the card in ClaudeDeck.")
+                                   : String(localized: "Approve or refuse it in ClaudeDeck."))
         content.sound = .default
         content.interruptionLevel = .timeSensitive
         content.categoryIdentifier = approval.isPurchase ? Self.purchaseCategory : Self.approvalCategory

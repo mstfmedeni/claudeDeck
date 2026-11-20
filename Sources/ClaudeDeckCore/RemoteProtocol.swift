@@ -378,6 +378,12 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// Approvals a session waits on (ServerPlan gates, domain purchases), the one expiring first
     /// on top (hosts with `Feature.approvals`).
     public var approvals: [OwnerApproval]?
+    /// Approvals answered, refused, expired or cancelled in the last 7 days, newest first, at
+    /// most 50 (hosts with `Feature.approvalHistory`).
+    public var approvalHistory: [ResolvedApproval]?
+    /// Decisions answered or cancelled in the last 7 days that `decisions` leaves out (it keeps
+    /// only a day of answered ones), newest first, at most 50 (hosts with `Feature.decisionHistory`).
+    public var decisionHistory: [OwnerDecision]?
     /// The Mac's load level and numbers (hosts with `Feature.load`; only while a remote is connected).
     public var load: RemoteLoad?
 
@@ -444,10 +450,17 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let closedTerminals = "closedTerminals"
         /// `approvals` in the snapshot, `answerApproval`.
         public static let approvals = "approvals"
+        /// `approvalHistory` in the snapshot; approvals wait up to the Mac's setting (24 hours by
+        /// default, or with no limit: `OwnerApproval.neverExpires`) and stay across its restarts.
+        public static let approvalHistory = "approvalHistory"
+        /// `decisionHistory` in the snapshot (a week of answered and cancelled decisions).
+        public static let decisionHistory = "decisionHistory"
         /// `load` in the snapshot (read-only): the Mac's load level, memory, simulators, builds.
         public static let load = "load"
         /// `RemoteLoad.top`, `bootedSimulators` and `fired` (read-only; nil while not measured).
         public static let loadDetail = "loadDetail"
+        /// `RemoteLoad.history`, `topProjects`, `slotHolders` and `runningBuilds` (read-only).
+        public static let loadHistory = "loadHistory"
         /// `serverPlanContainersRequest` / `serverPlanContainerAction` (restart with the Mac's approval).
         public static let serverPlanContainers = "serverPlanContainers"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
@@ -455,7 +468,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
-                                              closedTerminals, approvals, load, loadDetail, serverPlanContainers]
+                                              closedTerminals, approvals, load, loadDetail, serverPlanContainers,
+                                              approvalHistory, decisionHistory, loadHistory]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -1198,8 +1212,52 @@ public struct OwnerApproval: Codable, Sendable, Equatable, Identifiable {
 
     public var isPurchase: Bool { kind == .domainPurchase }
 
+    /// No expiry ("No limit" in Settings): `expiresAt` is this far out (older phones decode it
+    /// as a plain date; newer ones show "no limit").
+    public var neverExpires: Bool { expiresAt.timeIntervalSince(createdAt) > 5 * 365 * 24 * 3600 }
+
     /// An id as the Mac makes it: `a_` and letters or digits (checked before a phone's answer is used).
     public static func isValidID(_ id: String) -> Bool {
         id.hasPrefix("a_") && id.count > 2 && id.count <= 40 && id.dropFirst(2).allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+}
+
+/// How an approval ended.
+public enum ApprovalOutcome: String, Codable, Sendable, Equatable {
+    case approved
+    case refused
+    /// Nobody answered in time: the caller is told it was refused.
+    case expired
+    /// The asking session withdrew it (`claudedeck approval cancel`), or the app quit while a
+    /// request that can't be replayed (a phone's own) was waiting.
+    case cancelled
+
+    public var isApproved: Bool { self == .approved }
+
+    /// Outcomes a newer Mac sends that this side doesn't know read as `cancelled`.
+    public init(from decoder: Decoder) throws {
+        self = ApprovalOutcome(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .cancelled
+    }
+}
+
+/// One answered (or expired) approval, for the Recent section and the log.
+public struct ResolvedApproval: Codable, Sendable, Equatable, Identifiable {
+    public var approval: OwnerApproval
+    public var outcome: ApprovalOutcome
+    /// "mac", "notification", "phone", "timeout", "agent", "relaunch".
+    public var from: String
+    public var resolvedAt: Date
+    /// What the gated action did once approved (one line), or why it failed; nil while it runs,
+    /// and for refused, expired or cancelled ones.
+    public var result: String?
+
+    public var id: String { approval.id }
+
+    public init(approval: OwnerApproval, outcome: ApprovalOutcome, from: String, resolvedAt: Date, result: String? = nil) {
+        self.approval = approval
+        self.outcome = outcome
+        self.from = from
+        self.resolvedAt = resolvedAt
+        self.result = result
     }
 }

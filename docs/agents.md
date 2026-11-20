@@ -243,6 +243,7 @@ claudedeck skill setup [--user|--project] [--force]
 | 4 | Refused: the session's token doesn't allow it, the tool or the command's setting is off, too many requests, a rate limit or cap, the owner said no, or ServerPlan doesn't offer it |
 | 5 | Unknown id, project, server, container, deployment, skill, queue id, decision or account |
 | 6 | `wait`: the Claude session stopped on its plan's usage limit and waits for the reset (a session being moved to another account isn't this: it counts as running) |
+| 75 | an owner approval is still pending: `server … --no-wait` (prints `pending approval a_…`), or `approval wait --timeout` ran out. The command goes on in ClaudeDeck once the owner answers. |
 | 124 | `wait` timed out; still running; `close`: Claude was still there 15 s after `/exit` (`remove` on a running session is exit 1 `still_running`: close it) |
 
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
@@ -992,9 +993,8 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   the path is in and, for a project's own folder, prints that project.
 - **Deploys are autonomous:** if the panel asks for a confirmation (v1), the app sends it and logs
   "confirmed automatically". `deploy --wait` prints the deployment id, then new log lines and status
-  changes, and exits 0 on success or 1 on failure (with the error). Every other 428 shows the
-  owner a dialog in the app (and a notification); refused, or no answer within 2 minutes: `403
-  owner_refused`, exit 4. The command waits up to 150 s for it.
+  changes, and exits 0 on success or 1 on failure (with the error). Every other 428 asks the
+  owner (see **Owner approvals** below); refused, or no answer in time: `403 owner_refused`, exit 4.
 - **v1.1 commands** (`dirs`, `scan`, `ports`, `project`, `env`, `dockerfile`, `db`, `domain`,
   `dns`, `cloudflare`, `zone`, `ns`, `static`, `sync`): a panel whose `/me` lacks the command's
   scope (`projects_write`, `databases`, `domains`, `dns`, `deploy`) or says it's older than 1.1,
@@ -1063,8 +1063,8 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   - The panel's 428 (domain, years, price, renewal, currency) is always the owner's purchase
     dialog, whatever any setting says: it says plainly that it's a real purchase charged to the
     Namecheap balance; Cancel is the default (Return and Escape), only "Buy" ("Satın Al") says
-    yes; no answer in 2 minutes is a no (`403 owner_refused`, exit 4; nothing is bought). Only
-    then is it sent again with `confirm` = the domain.
+    yes; no answer within the approval wait time is a no (`403 owner_refused`, exit 4; nothing is
+    bought). Only then is it sent again with `confirm` = the domain.
   - The panel's refusals, with a hint: `400 no_approval_ref` (exit 2), `412 purchase_disabled`
     (turned off in ServerPlan › Entegrasyonlar › Namecheap) / `412 not_configured` (exit 4),
     `409 conflict` (already bought, or not available; exit 1), `403 premium_domain` / `price_cap`
@@ -1141,6 +1141,46 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   exit 0. Retrying is safe: the panel answers `409 conflict` for an FQDN it has.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
   Activity Log.
+
+### Owner approvals (`claudedeck approval …`)
+
+A `claudedeck server` command the owner must approve (a ServerPlan 428 gate, a domain purchase)
+puts a card in the Mac's **Approvals** tab (a sidebar tray, a notification, and the **Approvals**
+row on the iPhone and iPad, which also lists the last 7 days of answered, refused, expired and
+cancelled ones). Purchases are approved on the Mac only; nothing is ever approved automatically.
+
+- **How long:** Settings › Agents › **Approval wait time** ("Onay bekleme süresi"): 15 min, 1 hour,
+  4 hours, **24 hours** (default) or no limit. Purchases use the same setting. No answer by then:
+  refused (`expired`), and logged in the Activity Log like a refusal.
+- **Nothing holds a request open for that long.** The command's first request answers `202`, exit
+  `75`, `pending approval a_… (expires in …): TITLE` as soon as the approval is asked for. The
+  script then prints `claudedeck: waiting for the owner to approve a_… in ClaudeDeck` on stderr and
+  long-polls `GET /v1/cli/approvals/a_…/wait?timeout=25` (25 s rounds, like `claudedeck wait`)
+  until the command has answered; it ends with that command's own output and exit code (0, or 4
+  `owner_refused` / `approval_expired`). ClaudeDeck not answering is retried for up to 10
+  minutes; if a restart made the terminal's token invalid (401), the wait ends with exit 75 and a
+  notice: the approval stays pending and its result is queued for the session.
+- **`--no-wait`** (any `server` command): prints `pending approval a_…` (with `--json`: the
+  status object) and exits **75** at once.
+- **The command runs in ClaudeDeck, not in the script.** When the owner approves, ClaudeDeck sends
+  the gated request again with the panel's `confirm`, exactly as the waiting call would have, even
+  if the script is gone. The result goes to the asking Claude session as a queued one-line
+  message (unless a waiting script already printed it):
+  `[ClaudeDeck approval a_…] Owner approved: TITLE → RESULT`, or `… Owner refused: TITLE`, or
+  `… Expired with no answer from the owner: TITLE`.
+- **Kept across restarts:** pending approvals are saved in Application Support/`approvals.json`
+  and stay pending and answerable after a relaunch. Approved then, ClaudeDeck runs the command
+  again; the owner's yes covers the first gate with the same command and target (for a purchase,
+  also the same price summary), anything else asks again. Approvals a phone asked for itself
+  (container start/stop) are withdrawn at relaunch.
+
+| Command | Does |
+|---|---|
+| `claudedeck approval status ID [--json]` | `pending approval a_… (expires in 23 h 59 min): TITLE`, or `a_… approved: TITLE → RESULT` / `refused` / `expired` / `cancelled`. JSON: `{"id","status","title","command","target","session","created_at","expires_at","resolved_at","result"}` (`expires_at` absent: no limit). |
+| `claudedeck approval wait ID [--timeout S] [--json]` | waits for the command behind it and prints its answer with its exit code; `--timeout` ran out first: exit 75. |
+| `claudedeck approval cancel ID [--json]` | withdraws a pending one this session asked for (`403 not_yours` otherwise, `409 not_pending` once answered); no message follows. |
+
+Errors: `404 unknown_approval` (exit 5). Token scope: `server`.
 
 ## Agents signing themselves up
 
