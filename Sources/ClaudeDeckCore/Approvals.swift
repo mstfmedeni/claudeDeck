@@ -27,36 +27,6 @@ public enum Approvals {
     public static func isValidID(_ id: String) -> Bool { OwnerApproval.isValidID(id) }
 }
 
-/// How an approval ended.
-public enum ApprovalOutcome: String, Codable, Sendable, Equatable {
-    case approved
-    case refused
-    /// Nobody answered in time: the caller is told it was refused.
-    case expired
-    /// The asking call went away (its connection closed) before an answer.
-    case cancelled
-
-    public var isApproved: Bool { self == .approved }
-}
-
-/// One answered (or expired) approval, for the Recent section and the log.
-public struct ResolvedApproval: Codable, Sendable, Equatable, Identifiable {
-    public var approval: OwnerApproval
-    public var outcome: ApprovalOutcome
-    /// "mac", "notification", "phone", "timeout", "caller".
-    public var from: String
-    public var resolvedAt: Date
-
-    public var id: String { approval.id }
-
-    public init(approval: OwnerApproval, outcome: ApprovalOutcome, from: String, resolvedAt: Date) {
-        self.approval = approval
-        self.outcome = outcome
-        self.from = from
-        self.resolvedAt = resolvedAt
-    }
-}
-
 /// The pending and recently resolved approvals (pure value; `ApprovalQueue` drives it).
 public struct ApprovalBook: Sendable, Equatable {
     /// Waiting ones, the one that expires first on top (ties: the older first).
