@@ -278,7 +278,9 @@ final class PtydController {
     /// The connected helper is another build: one that can swap its code in place is asked to;
     /// one that can't is restarted at a quiet moment (or the banner offers it).
     private func upgradeOutdatedHelper() {
-        guard let client, client.isFull, client.welcome.build != Self.appBuild else { return }
+        guard let client, client.isFull, client.welcome.build != Self.appBuild,
+              // This app is the older one (the helper already took an update): nothing to ask.
+              !PtydUpgradeCheck.isNewer(client.welcome.build, than: Self.appBuild) else { return }
         guard client.supportsUpgrade else {
             scheduleQuietRestart()
             return
