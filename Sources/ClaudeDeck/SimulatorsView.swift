@@ -77,6 +77,11 @@ final class SimulatorsController {
     private(set) var busy: [String: String] = [:]
     var actionError: String?
     private(set) var simslimPath: String?
+    /// UDID → simslim's view of it (`simslim list --json`): slim state and memory. Read with the
+    /// samples (only while this tab, the load tab or the phone look), at most every `slimInterval`.
+    private(set) var slimStatus: [String: SimSlim.DeviceStatus] = [:]
+    @ObservationIgnored private var slimReadAt: Date = .distantPast
+    static let slimInterval: TimeInterval = 15
     var filter = ""
 
     @ObservationIgnored private let sampler = SimulatorSampler()
@@ -129,6 +134,11 @@ final class SimulatorsController {
 
     private func sample(model: AppModel) async {
         sampledAt = Date()
+        if simslimPath == nil { simslimPath = Self.simslimExecutable }
+        if simslimPath != nil, !booted.isEmpty, Date().timeIntervalSince(slimReadAt) >= Self.slimInterval {
+            slimReadAt = Date()
+            slimStatus = await Self.readSlimStatus()
+        }
         let sample = await sampler.sample(roots: model.sessionProcessRoots(), devices: devices)
         memory = sample.memory
         launchdPIDs = sample.launchdSims
@@ -258,6 +268,28 @@ final class SimulatorsController {
         group.wait()
         let message = String(decoding: errData.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return CommandResult(status: process.terminationStatus, stdout: String(decoding: data, as: UTF8.self), message: message)
+    }
+
+    /// simslim's path, looked up once (a restart notices a new install; the Settings row looks again).
+    nonisolated static let simslimExecutable: String? = locateSimslim()
+    nonisolated static var simslimInstalled: Bool { simslimExecutable != nil }
+
+    /// Runs simslim for SimSlim (nil when it isn't installed).
+    nonisolated static func simslimRunner() -> SimSlim.Runner? {
+        guard let path = simslimExecutable ?? locateSimslim() else { return nil }
+        return { args, timeout in
+            let result = run(path, args, timeout: timeout)
+            return SimSlim.CommandResult(status: result.status, stdout: result.stdout, message: result.message)
+        }
+    }
+
+    /// `simslim list --json` (read only; every device it sees, filtered by the callers).
+    nonisolated static func readSlimStatus() async -> [String: SimSlim.DeviceStatus] {
+        guard let runner = simslimRunner() else { return [:] }
+        return await Task.detached(priority: .utility) {
+            let result = runner(["list", "--json"], SimSlim.shortTimeout)
+            return result.status == 0 ? SimSlim.parseList(Data(result.stdout.utf8)) : [:]
+        }.value
     }
 
     /// simslim (github.com/MobAI-App/simslim) on PATH or in the usual install places.
@@ -442,10 +474,14 @@ private struct SimulatorRow: View {
     }
 
     @ViewBuilder private var memory: some View {
+        let slim = device.isBooted ? controller.slimStatus[device.udid]?.text : nil
         if let memory = controller.memory[device.udid] {
-            Text(SimulatorsView.format(memory.bytes))
-                .monospacedDigit()
-                .help("\(memory.processes) processes")
+            HStack(spacing: 6) {
+                if let slim { Text(slim).font(.caption).foregroundStyle(.secondary) }
+                Text(SimulatorsView.format(memory.bytes))
+                    .monospacedDigit()
+            }
+            .help(String(localized: "\(memory.processes) processes") + (slim.map { " · simslim: \($0)" } ?? ""))
         } else {
             Text("—").foregroundStyle(.secondary)
         }
@@ -572,6 +608,20 @@ struct SimulatorSettingsSection: View {
             ))
             Text("Lists iOS, watchOS and visionOS simulators with their memory and the sessions using them, with Boot, Shut Down, Open and Erase. Nothing is read while the tab is closed or hidden.")
                 .font(.caption).foregroundStyle(.secondary)
+            if simslimInstalled == true {
+                Toggle("Slim agents' simulators (simslim)", isOn: Binding(
+                    get: { model.deck.settings.simulatorsSlim },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.simulatorsSlim = on } }
+                ))
+                Text("claudedeck sim acquire turns off the background services a simulator doesn't need, so it uses about a quarter of the memory. StoreKit and iCloud Keychain stay on; an app lists what else it needs in simslim.json. Only simulators ClaudeDeck holds are changed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if simslimInstalled == false {
+                Text("Install simslim (brew install mobai-app/tap/simslim) and agents' simulators use about a quarter of the memory.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
+        .task { simslimInstalled = await Task.detached { SimulatorsController.locateSimslim() != nil }.value }
     }
+
+    @State private var simslimInstalled: Bool?
 }

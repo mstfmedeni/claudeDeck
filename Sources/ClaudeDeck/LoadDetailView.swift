@@ -228,6 +228,10 @@ struct LoadDetailView: View {
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
+                    if let slim = sim.slim {
+                        Text(slim).font(.caption).foregroundStyle(.secondary)
+                            .help(String(localized: "simslim: background services turned off of those it manages"))
+                    }
                     if let bytes = sim.memoryBytes {
                         Text(LoadStyle.bytes(bytes)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }

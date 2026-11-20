@@ -89,7 +89,15 @@ extension AppModel {
         if json || detail, usage == nil || Date().timeIntervalSince(usage!.at) > 10 {
             usage = await systemLoad.measureUsage()
         }
-        let report = loadReport(usage: usage)
+        var report = loadReport(usage: usage)
+        if json || detail {
+            // Memory per booted simulator (measured now unless sampled in the last 10 s) and simslim's state.
+            await SimulatorsController.shared.sampleForRemote(model: self, every: .seconds(10))
+            report.bootedSimulators = systemLoad.bootedSimulators().map { sim in
+                LoadSimulator(udid: sim.udid, name: sim.name, holder: sim.holder == nil ? nil : (sim.holderName ?? "a closed session"),
+                              memoryBytes: sim.memoryBytes, slim: sim.slim)
+            }
+        }
         return SessionCLI.answer(200, report, text: report.text(detail: detail), exit: .ok, json: json)
     }
 
