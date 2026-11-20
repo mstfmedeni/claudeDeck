@@ -1941,6 +1941,20 @@ extension SessionCLI {
     claudedeck server balance [--refresh]          # Namecheap balance: available, account, threshold, LOW
     ```
 
+    A server command the owner must approve (a ServerPlan gate, every purchase) doesn't block on a
+    2-minute window any more: the owner has up to 24 hours (their setting). The command prints
+    "waiting for the owner to approve a_…" and keeps waiting; with `--no-wait` it prints
+    `pending approval a_…` and exits 75 at once. Either way ClaudeDeck runs it itself once approved
+    and queues "[ClaudeDeck approval a_…] Owner approved: … → result" (or refused / expired) for
+    you, so you can move on and come back to it:
+
+    ```sh
+    claudedeck server container web api restart --no-wait   # exit 75: pending approval a_…
+    claudedeck approval status a_…    # pending (time left) / approved → result / refused / expired
+    claudedeck approval wait a_… --timeout 600   # its answer and exit code; 75 if still pending
+    claudedeck approval cancel a_…    # withdraw it
+    ```
+
     - "purchase: not allowed: bakiye yetersiz" means the balance doesn't cover the first year:
       tell the owner to top up (Namecheap › Billing › Add Funds); don't try `domain buy`.
 
