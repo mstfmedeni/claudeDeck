@@ -222,6 +222,7 @@ struct DashboardScreen: View {
 /// The Mac's load (hosts with `Feature.load`): level, load per core, memory, simulators, builds.
 private struct MacLoadCard: View {
     let load: RemoteLoad
+    @State private var showDetail = false
 
     private var color: Color {
         switch load.level {
@@ -250,9 +251,46 @@ private struct MacLoadCard: View {
                  + String(localized: "\(load.sessions) sessions"))
                 .font(.callout).monospacedDigit().foregroundStyle(.secondary)
             if load.throttled {
-                Label("Agents are held back: no new sessions, simulators or extra builds until the Mac is back to normal.",
+                Label(load.level == "overloaded"
+                      ? "Agents are held back: no new sessions or simulators and fewer builds until the Mac is no longer overloaded."
+                      : "New agent sessions wait while the Mac is busy.",
                       systemImage: "tortoise.fill")
                     .font(.caption).foregroundStyle(.orange)
+            }
+            // Hosts with Feature.loadDetail: the heaviest sessions and the booted simulators.
+            if (load.top?.isEmpty == false) || (load.bootedSimulators?.isEmpty == false) {
+                DisclosureGroup(isExpanded: $showDetail) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let top = load.top, !top.isEmpty {
+                            ForEach(top) { entry in
+                                HStack(spacing: 6) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(entry.name).font(.callout).lineLimit(1)
+                                        Text(entry.agent ? String(localized: "\(entry.project) · agent") : entry.project)
+                                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Text("\(entry.cpuPercent)% · \(entry.memoryMB) MB")
+                                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        if let sims = load.bootedSimulators, !sims.isEmpty {
+                            Text("Booted simulators").font(.caption.weight(.semibold)).padding(.top, 4)
+                            ForEach(sims) { sim in
+                                HStack {
+                                    Text(sim.name).font(.callout).lineLimit(1)
+                                    Spacer()
+                                    Text((sim.holder ?? String(localized: "user")) + (sim.memoryMB.map { " · \($0) MB" } ?? ""))
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                } label: {
+                    Text("What is using the Mac").font(.subheadline)
+                }
             }
         }
     }

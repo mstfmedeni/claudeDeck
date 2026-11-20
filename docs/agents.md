@@ -335,47 +335,79 @@ ClaudeDeck samples the system every 12 seconds off the main thread (load average
 pressure and use, swap, booted simulators counted as `launchd_sim` processes, compiler and linker
 processes, the process count, its own running Claude sessions) and derives a level:
 
-| Level | When (defaults, Settings › Resources) |
+The rule is **"only prevent freezes"**: `overloaded` means a real risk of the Mac locking up, and
+only `overloaded` holds anything back. Each overload trigger has its own switch and value in
+Settings › Resources ("Ne zaman fren yapılsın?"), shown there with its live value (red while it
+fires):
+
+| Trigger (`triggers[].trigger`) | Default |
 |---|---|
-| `overloaded` | the 1-minute load above **2 × cores** for a minute, macOS memory pressure **critical**, or more than **60 % of the cores** in compiler processes (12 on a 20-core Mac) |
-| `busy` | the load above **1 × cores**, memory pressure warning, more than half that many compilers, or the simulator cap reached |
+| `pressure` | macOS memory pressure **critical** (or, by the setting, high/warning) |
+| `swap_growth` | swap grows by more than **2 GB within 5 minutes** while memory pressure is warning or worse |
+| `swap_size` | swap above 64 GB (**off** by default: a big swap alone doesn't freeze the Mac) |
+| `compilers` | more than **60 % of the cores** in compiler and linker processes (12 on a 20-core Mac) |
+| `load` | the 1-minute load above **10 × cores** (200 on a 20-core Mac) for **3 minutes** |
+| `processes` | more than **3,000** processes |
+
+| Level | When |
+|---|---|
+| `overloaded` | any switched-on trigger fires |
+| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit. **Informational**: it holds nothing back unless Settings › Resources › "Meşgulken" is set to hold new agent sessions (then only `new` and the start queue wait). Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
 | `ok` | otherwise |
 
-Hysteresis: overloaded ends only after the numbers stay under 80 % of their thresholds for a
-minute; busy after 30 seconds. An **episode** starts when the level becomes `overloaded` and ends
-only when it is back to `ok` (a Mac swinging between busy and overloaded is one episode). Per
-episode, once: a notification on the Mac (with "Show Agents") and on paired phones listing what's
-behind it ("11 simülatör açık, 30 derleme, 37 oturum"), and a note beside every running session
-another session started: `[ClaudeDeck] Mac aşırı yüklü: ağır işleri (derleme, simülatör) ertele,
-bitmiş simülatörleri bırak.` (a note, never typed into Claude).
+Hysteresis: overloaded ends once no trigger fires and the load and process count have stayed
+under 80–90 % of their limits for a minute (its own margins, not busy's); busy ends after 30 calm
+seconds. Throttling follows the level: it stops the moment the Mac leaves `overloaded`, even while
+it is still busy. An **episode** starts when the level becomes `overloaded` and ends when it is back
+to `ok` (a Mac swinging between busy and overloaded is one episode). Per episode, once: a
+notification on the Mac and on paired phones listing what's behind it ("11 simülatör açık, 30
+derleme, 37 oturum"), and a **message queued for every running Claude session another session
+started**: `[ClaudeDeck] Mac aşırı yüklü: ağır işleri (derleme, simülatör) ertele, bitmiş
+simülatörleri bırak.` It goes through the session's message queue, so it is typed only once the
+session is idle (between turns, never interrupting one), and not again while a copy still waits.
 
-With **"Mac yüklüyken ajanları yavaşlat"** (Settings › Resources, on by default), during an episode:
+Settings saved by 0.6.12 or earlier with the first defaults (overloaded at 2 × cores, busy at
+1 × cores) move to the new ones when read; values the owner had changed are kept.
+
+With **"Ajanlara fren yap"** (Settings › Resources, on by default), while overloaded:
 
 - `claudedeck new` answers `429 overloaded` (exit 4, checked before the rate limit, so it costs no
-  start); `new --queue` queues instead (reason `overloaded`). The queue doesn't drain until the
-  Mac is back to `ok`, then resumes on its own.
+  start); `new --queue` queues instead (reason `overloaded`). The queue drains again as soon as the
+  Mac is no longer overloaded.
 - `claudedeck sim acquire` answers `429 overloaded`. It also answers `429 too_many_booted` whenever
-  booting would exceed **"En fazla açık simülatör"** (a fifth of the cores, 2–10: 4 on a 20-core
-  Mac; booted simulators are counted at that moment, the user's own included).
-- Only one build slot is handed out.
+  booting would exceed **"Simülatör"** (a fifth of the cores, 2–10: 4 on a 20-core Mac; booted
+  simulators are counted at that moment, the user's own included), at any level.
+- Build slots drop to **"Fren varken aynı anda derleme"** (1 by default).
 
 ```sh
-claudedeck load [--json]
-# level: overloaded (new sessions, simulators and builds are held back)
+claudedeck load [--json] [--detail]
+# level: overloaded (new sessions and simulators are held back; 1 build slot)
 # load: 120.4 on 20 cores (6.02 per core), 5 min 98.1
 # memory: 92% used, pressure warning, swap 6144 MB
 # simulators: 11 booted (sim acquire allows 4)
-# compilers: 30 (overloaded above 12)
-# sessions: 37 Claude sessions, 3400 processes
-# build slots: 1/1 used, 2 waiting
+# compilers: 30
+# sessions: 37 Claude sessions (5/8 agent-started), 3400 processes
+# build slots: 1/1 used, 2 waiting (3 when not overloaded)
 #   b_1a2b3c4d  iOS build bot  12m  xcodebuild -scheme App build
+# overloaded when:
+#   ok   memory pressure >= critical (now warning)
+#   ok   swap +2.0 GB in 5 min under pressure (now +0.4)
+#   off  swap > 64.0 GB (now 6.0)
+#   FIRE compilers > 12 (now 30)
+#   ok   load > 10.0 x cores for 3.0 min (now 6.02)
+#   FIRE processes > 3000 (now 3400)
+# --detail adds:
+# top sessions (CPU, memory, processes):
+#     85.0%    2140 MB    14 procs  Wakeroo / backend  [agent]  (node 40%, claude 30%)
+# top projects:
+#    120.0%    4100 MB    31 procs  Wakeroo
 claudedeck heavy [--wait SECONDS] [--label TEXT] -- COMMAND...
 claudedeck slot acquire build [--wait SECONDS] [--label TEXT]     # prints b_…
 claudedeck slot release build [SLOT_ID]
 ```
 
-- **Build slots** are a global semaphore: **"Aynı anda en fazla derleme"** (a sixth of the
-  cores, 1–8: 3 on a 20-core Mac; 1 during an episode). `slot acquire --wait` waits in line,
+- **Build slots** are a global semaphore: **"Aynı anda derleme"** (a sixth of the cores, 1–8: 3
+  on a 20-core Mac; 1 while overloaded, by its own setting). `slot acquire --wait` waits in line,
   first come first served: the command asks again every 25 s with the same ticket and keeps its
   place; a ticket not seen for 45 s gives it up. No slot in time: `429 no_slot`, exit 124.
 - `heavy` waits for a slot (default up to 3600 s), runs the command, releases the slot (also on
@@ -386,13 +418,32 @@ claudedeck slot release build [SLOT_ID]
   and after the longest hold (Settings, 60 minutes). They live in memory: a restart of the app
   frees them. Terminals a session opened (`claudedeck open`) may take slots too (scope `slots`).
 - `claudedeck status ID` lists the slots a session holds; `load --json` has `level`,
-  `throttled`, `throttle`, `load1`, `load5`, `cores`, `load_per_core`, `memory_pressure`,
+  `throttled` (something is held back now), `holds_starts`, `throttle`, `busy_action`
+  (`nothing` / `hold_starts`), `load1`, `load5`, `cores`, `load_per_core`, `memory_pressure`,
   `memory_used_percent`, `swap_used_mb`, `simulators`, `max_simulators`, `compilers`, `max_compilers`,
-  `processes`, `sessions`, `build_slots`, `slots_available`, `slots_waiting`, `slots`
-  (`id`, `session`, `session_name`, `label`, `since`), `sampled_at`, `contributors`.
-- On screen: a row in the sidebar footer while busy or overloaded (or always, by a setting), a
-  "Mac Load" card on the Dashboard with the last 30 minutes, and on the phone's dashboard
-  (snapshot field `load`, hosts with the `load` feature; older phones ignore it).
+  `processes`, `sessions`, `build_slots` (handed out now), `slots_available`, `slots_waiting`, `slots`
+  (`id`, `session`, `session_name`, `label`, `since`), `sampled_at`, `contributors`, `triggers`
+  (each `trigger`, `enabled`, `threshold`, `current`, `unit`, `firing`, and `minutes` /
+  `above_for` where they apply), `fired` (the trigger names firing now), `limits` (`build_slots`,
+  `build_slots_overloaded`, `max_simulators`, `max_started_sessions`, `running_started_sessions`),
+  `top` (per session: `kind`, `session`, `name`, `project`, `cpu_percent` with 100 = one core,
+  `memory_mb`, `processes`, `agent`, `top_processes`) and `top_projects` (the same summed per
+  project). `top` comes from one look at every process (libproc), measured on the spot (about a
+  second) unless the load tab measured it moments ago; a session's figures include all its child
+  processes (MCP servers, node, browsers it started, shells, builds).
+- On screen: a row in the sidebar footer while busy or overloaded (or always, by a setting) and a
+  "Mac Load" card on the Dashboard; both open the **"Mac Yükü"** tab: per project and session CPU
+  and memory (each session with its child processes, heaviest first, with Show and, for sessions
+  agents started, Close), booted simulators (holder: a ClaudeDeck hold or "kullanıcı", uptime,
+  memory; Shut Down, with confirmation, only for ClaudeDeck-held ones), running builds and build
+  slot holders, agent sessions idle for 15 minutes with "Boşta olanları kapat" (agent-started
+  sessions only, never the owner's), the last hour as charts (load per core, memory, swap,
+  simulators, compilers) and the ten heaviest processes outside ClaudeDeck. Processes are only
+  measured while that tab is on screen (every 3 s), while a phone is connected, or on `load
+  --detail`/`--json`; the 12-second background sample stays a few sysctls.
+- Phone: the dashboard's load card (snapshot field `load`, hosts with the `load` feature); with
+  `loadDetail`, `load.top` (heaviest sessions), `load.booted_simulators` and `load.fired` add an
+  optional "What is using the Mac" list. Older phones ignore the new fields.
 - Testing: in demo mode with `CLAUDEDECK_SNAPSHOT_DIR`, a file `load.inject` containing
   `overloaded`, `busy`, `ok`, a JSON sample, or `real` replaces the measured numbers.
 
@@ -415,7 +466,9 @@ never one the owner started (`403 not_yours`, exit 4).
   on the owner: `409 blocked` (exit 3); still there after `/exit`: `409 still_running` (exit
   124). `--force` ends the process in each of those cases. `close self` answers at once
   (`closing: after this turn`, `"pending":true`) and ends once the current turn is over (`--force`:
-  right away). The session that started the closed one gets a note.
+  right away). The close is in the Activity Log; the session that started the closed one is told
+  only with **Tell the starter when a session it started is closed** on (off by default): a
+  one-line message in its queue, typed once it is idle. Never an owner note.
 - **Removing after the close:** with **Closed sessions are removed from the list too** (under the
   close setting; **on** by default) every close by a session also removes the closed session from
   the deck, the way the owner's **End and Remove** does; `--keep` overrides it for one call and
@@ -431,8 +484,8 @@ never one the owner started (`403 not_yours`, exit 4).
   work tree are kept: the owner can still reopen the conversation from the project's **Resume
   Previous Conversation…** menu. Sessions the removed one had started now count as started by
   its own starter, so that one can still close them.
-- Every close and removal is in the agent Activity Log, and the starter gets a note ("X closed
-  and removed Y, a session this one started").
+- Every close and removal is in the agent Activity Log. The starter gets a queued message about it
+  only with the setting above on ("X closed and removed Y, a session this one started").
 - **Agents:** remove the sessions you no longer need once their work is merged and handed off
   (`close ID`, which removes by default; `remove ID` for ones that already stopped), and close
   yourself with `close self` when you are done. Idle leftover sessions crowd the owner's sidebar.

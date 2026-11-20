@@ -54,6 +54,11 @@ enum DebugSnapshot {
             try? FileManager.default.removeItem(atPath: path)
             LoadController.shared.inject(text)
         }
+        // `load.tab`: opens the "Mac Yükü" tab.
+        for file in files where file == "load.tab" {
+            try? FileManager.default.removeItem(atPath: (dir as NSString).appendingPathComponent(file))
+            model.showMacLoad()
+        }
         for file in files where file == "settings.scroll" {
             let path = (dir as NSString).appendingPathComponent(file)
             let y = Double(contents(path).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0

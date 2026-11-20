@@ -6,7 +6,8 @@ import Foundation
 /// the loops, and `apply` leaves the fields out. With one, the dashboard is rebuilt at most every
 /// `dashboardInterval`, today's line counts are read every `pulseInterval` (only what the
 /// transcripts gained), simulators are sampled every `simulatorInterval` while the Simulators
-/// setting is on, and ServerPlan's lists are fetched every `serverPlanInterval` while it's set up.
+/// setting is on, ServerPlan's lists are fetched every `serverPlanInterval` while it's set up, and
+/// the per-session load figures are measured every `loadDetailInterval`.
 @MainActor
 final class RemotePhoneFeeds {
     static let shared = RemotePhoneFeeds()
@@ -15,6 +16,7 @@ final class RemotePhoneFeeds {
     static let pulseInterval: Duration = .seconds(30)
     static let simulatorInterval: Duration = .seconds(10)
     static let serverPlanInterval: Duration = .seconds(60)
+    static let loadDetailInterval: Duration = .seconds(30)
 
     private var connected = false
     private var loops: [Task<Void, Never>] = []
@@ -57,6 +59,15 @@ final class RemotePhoneFeeds {
                 guard !Task.isCancelled else { return }
                 changed()
                 try? await Task.sleep(for: Self.simulatorInterval)
+            }
+        })
+        // The load card's "what is using the Mac" list: per-session use, measured while a phone looks.
+        loops.append(Task { @MainActor in
+            while !Task.isCancelled {
+                await LoadController.shared.measureUsage()
+                guard !Task.isCancelled else { return }
+                changed()
+                try? await Task.sleep(for: Self.loadDetailInterval)
             }
         })
         loops.append(Task { @MainActor in

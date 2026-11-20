@@ -32,32 +32,15 @@ enum LoadStyle {
         return parts.joined(separator: " · ")
     }
 
-    static func triggerTitle(_ trigger: LoadTrigger) -> String {
-        switch trigger {
-        case .pressure: String(localized: "Memory pressure")
-        case .swapGrowth: String(localized: "Swap growing fast")
-        case .swapSize: String(localized: "Swap size")
-        case .compilers: String(localized: "Compiler processes")
-        case .load: String(localized: "Extreme load average")
-        case .processes: String(localized: "Process count")
-        }
-    }
-
-    /// The live value next to a trigger: "now: normal", "now: +0.3 GB", "now: 1.4× (12 s above)".
-    static func triggerNow(_ state: LoadTriggerState) -> String {
+    /// Why the brake is on, in plain words: "memory is critical", "too many builds".
+    static func reason(_ state: LoadTriggerState) -> String {
         switch state.trigger {
-        case .pressure:
-            return String(localized: "now: \(pressureName(state.current))")
-        case .swapGrowth:
-            return String(localized: "now: +\(String(format: "%.1f", state.current)) GB")
-        case .swapSize:
-            return String(localized: "now: \(String(format: "%.1f", state.current)) GB")
-        case .compilers, .processes:
-            return String(localized: "now: \(Int(state.current))")
-        case .load:
-            let value = String(format: "%.2f×", state.current)
-            guard let above = state.aboveFor else { return String(localized: "now: \(value)") }
-            return String(localized: "now: \(value), above for \(Int(above / 60)) min")
+        case .pressure: state.current >= 2 ? String(localized: "memory is critical") : String(localized: "memory is tight")
+        case .swapGrowth: String(localized: "the swap file grows fast")
+        case .swapSize: String(localized: "the swap file is very large")
+        case .compilers: String(localized: "too many builds")
+        case .load: String(localized: "extreme system load")
+        case .processes: String(localized: "too many programs")
         }
     }
 
@@ -65,9 +48,9 @@ enum LoadStyle {
         value >= 2 ? LoadDetails.pressure(.critical) : value >= 1 ? LoadDetails.pressure(.warning) : LoadDetails.pressure(.normal)
     }
 
-    /// "Compiler processes, Memory pressure" for the triggers firing now.
-    static func firedText(_ fired: [LoadTrigger]) -> String {
-        fired.map(triggerTitle).joined(separator: ", ")
+    /// "too many builds, memory is critical" for the triggers firing now.
+    static func firedText(_ triggers: [LoadTriggerState]) -> String {
+        triggers.filter(\.firing).map(reason).joined(separator: ", ")
     }
 
     static func bytes(_ bytes: UInt64) -> String {
@@ -164,9 +147,8 @@ struct LoadDetails: View {
                     }
                 }
                 .font(.callout)
-                let fired = load.monitor.fired
-                if !fired.isEmpty {
-                    Label(String(localized: "Overloaded by: \(LoadStyle.firedText(fired))"), systemImage: "flame.fill")
+                if !load.monitor.fired.isEmpty {
+                    Label(String(localized: "Overloaded: \(LoadStyle.firedText(load.monitor.triggers))"), systemImage: "flame.fill")
                         .font(.caption).foregroundStyle(.red)
                 }
                 if load.isThrottling {
@@ -229,8 +211,10 @@ struct LoadChart: View {
     }
 }
 
-/// Settings › Resources: every overload trigger with its switch, value and live reading, what
-/// busy does, and the limits.
+/// Settings › Resources, written for the owner rather than for engineers: a status line in plain
+/// words, then "when to brake" (the overload triggers, each with its switch, limit and live value,
+/// orange when close and red when it is the reason), "what braking does", the limits and the
+/// notifications. Load is shown as the plain number macOS reports, not as a factor of the cores.
 struct ResourcesSettingsSection: View {
     @Environment(AppModel.self) private var model
 
@@ -248,6 +232,15 @@ struct ResourcesSettingsSection: View {
                 set: { value in model.mutate(userInitiated: false) { $0.settings.load[keyPath: path] = min(max(value, range.lowerBound), range.upperBound) } })
     }
 
+    /// A load-average factor edited as the plain load number (factor × cores), in steps of half the cores.
+    private func loadNumber(_ path: WritableKeyPath<LoadSettings, Double>, cores: Int) -> Binding<Double> {
+        Binding(get: { model.deck.settings.load[keyPath: path] * Double(cores) },
+                set: { value in
+                    model.mutate(userInitiated: false) { $0.settings.load[keyPath: path] = value / Double(max(1, cores)) }
+                    model.drainCLIQueueSoon()
+                })
+    }
+
     private func enabled(_ trigger: LoadTrigger) -> Binding<Bool> {
         Binding(get: { model.deck.settings.load.isEnabled(trigger) },
                 set: { on in
@@ -261,85 +254,103 @@ struct ResourcesSettingsSection: View {
         let t = load.thresholds
         let settings = model.deck.settings.load
         let states = Dictionary(uniqueKeysWithValues: load.monitor.triggers.map { ($0.trigger, $0) })
-        Section("Now") {
-            LoadDetails()
+        let sample = load.latest
+        let cores = Double(t.cores)
+        let loadRange = (LoadSettings.overloadRange.lowerBound * cores)...(LoadSettings.overloadRange.upperBound * cores)
+        let busyRange = (LoadSettings.busyRange.lowerBound * cores)...(LoadSettings.busyRange.upperBound * cores)
+        Section {
+            LoadStatusLine()
         }
         Section {
-            TriggerRow(trigger: .pressure, state: states[.pressure], isOn: enabled(.pressure)) {
-                Picker("At", selection: binding(\.pressureLevel)) {
-                    Text("high (warning)").tag(MemoryPressure.warning)
+            TriggerRow(title: String(localized: "Memory is about to run out"), state: states[.pressure], isOn: enabled(.pressure),
+                       now: states[.pressure].map { LoadStyle.pressureName($0.current) }) {
+                Picker("Brake when memory pressure is", selection: binding(\.pressureLevel)) {
                     Text("critical").tag(MemoryPressure.critical)
+                    Text("high").tag(MemoryPressure.warning)
                 }
-                .labelsHidden()
                 .fixedSize()
             }
-            TriggerRow(trigger: .swapGrowth, state: states[.swapGrowth], isOn: enabled(.swapGrowth)) {
+            TriggerRow(title: String(localized: "The swap file grows fast"), state: states[.swapGrowth], isOn: enabled(.swapGrowth),
+                       now: states[.swapGrowth].map { String(localized: "+\(String(format: "%.1f", $0.current)) GB") }) {
                 Stepper(value: binding(\.swapGrowthGB), in: LoadSettings.swapGBRange, step: 0.5) {
-                    Text("+\(String(format: "%.1f", settings.swapGrowthGB)) GB")
+                    Text("more than \(String(format: "%.1f", settings.swapGrowthGB)) GB")
                 }
                 Stepper(value: binding(\.swapGrowthMinutes), in: LoadSettings.swapMinutesRange) {
-                    Text("in \(settings.swapGrowthMinutes) min")
+                    Text("within \(settings.swapGrowthMinutes) minutes")
                 }
+            } caption: {
+                Text("Only while memory is tight: the Mac is writing memory to disk faster and faster.")
             }
-            TriggerRow(trigger: .swapSize, state: states[.swapSize], isOn: enabled(.swapSize)) {
+            TriggerRow(title: String(localized: "The swap file is very large"), state: states[.swapSize], isOn: enabled(.swapSize),
+                       now: sample.map { String(localized: "\(String(format: "%.1f", Double($0.swapUsedBytes) / 1_073_741_824)) GB") }) {
                 Stepper(value: binding(\.swapSizeGB), in: LoadSettings.swapGBRange, step: 4) {
                     Text("above \(String(format: "%.0f", settings.swapSizeGB)) GB")
                 }
+            } caption: {
+                Text("Off by default: a large swap file on its own doesn't freeze the Mac.")
             }
-            TriggerRow(trigger: .compilers, state: states[.compilers], isOn: enabled(.compilers)) {
+            TriggerRow(title: String(localized: "Too many builds at once"), state: states[.compilers], isOn: enabled(.compilers),
+                       now: sample.map { "\($0.compilers)" }) {
                 Stepper(value: count(\.maxCompilers, current: t.overloadCompilers, range: LoadSettings.compilerRange), in: LoadSettings.compilerRange) {
-                    Text("more than \(t.overloadCompilers)")
+                    Text("more than \(t.overloadCompilers) build processes")
                 }
+            } caption: {
+                Text("Every app build runs several of these (compiler, linker).")
             }
-            TriggerRow(trigger: .load, state: states[.load], isOn: enabled(.load)) {
-                Stepper(value: binding(\.overloadFactor), in: LoadSettings.overloadRange, step: 0.5) {
-                    Text("above \(String(format: "%.1f", settings.overloadFactor))× the cores (\(Int(t.overloadLoad)))")
+            TriggerRow(title: String(localized: "System load stays extreme"), state: states[.load], isOn: enabled(.load),
+                       now: sample.map { String(format: "%.0f", $0.load1) }) {
+                Stepper(value: loadNumber(\.overloadFactor, cores: t.cores), in: loadRange, step: cores / 2) {
+                    Text("above \(Int(t.overloadLoad.rounded()))")
                 }
                 Stepper(value: binding(\.overloadMinutes), in: LoadSettings.overloadMinutesRange, step: 0.5) {
-                    Text("for \(String(format: "%.1f", settings.overloadMinutes)) min")
+                    Text("for \(String(format: "%g", settings.overloadMinutes)) minutes")
                 }
+            } caption: {
+                Text("The number macOS reports as the load: how many tasks want to run at once. This Mac has \(t.cores) cores, so \(Int(t.overloadLoad.rounded())) is \(String(format: "%g", settings.overloadFactor)) per core. A high load alone rarely freezes it.")
             }
-            TriggerRow(trigger: .processes, state: states[.processes], isOn: enabled(.processes)) {
+            TriggerRow(title: String(localized: "Too many programs running"), state: states[.processes], isOn: enabled(.processes),
+                       now: sample.map { "\($0.processes)" }) {
                 Stepper(value: binding(\.maxProcesses), in: LoadSettings.processRange, step: 250) {
-                    Text("more than \(settings.maxProcesses)")
+                    Text("more than \(settings.maxProcesses) processes")
                 }
             }
         } header: {
-            Text("When is the Mac overloaded?")
+            Text("When should ClaudeDeck brake?")
         } footer: {
-            Text("Only real freeze risks count: any switched-on trigger makes the Mac overloaded. Swap growth counts only while memory pressure is high or critical. Back to normal once every trigger stays well clear for a minute. The live value is next to each; a red one is firing now.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text("Only when the Mac risks freezing. Any switched-on row is enough; the brake comes off by itself once every row has stayed clear for a minute.")
         }
-        Section("Busy") {
-            Stepper(value: binding(\.busyFactor), in: LoadSettings.busyRange, step: 0.25) {
-                Text("Busy above \(String(format: "%.2f", settings.busyFactor))× the cores for a minute (\(Int(t.busyLoad)))")
+        Section {
+            Toggle("Brake agents", isOn: binding(\.throttle))
+            Text("While braking, new agent sessions wait in line, agents can't open simulators, and fewer apps are built at once. Each agent session gets one message to put heavy work off. Your own sessions are never held.")
+                .font(.caption).foregroundStyle(.secondary)
+            Stepper(value: binding(\.overloadedBuildSlots), in: LoadSettings.slotRange) {
+                Text("Builds at once while braking: \(t.overloadedBuildSlots)")
+            }
+            Stepper(value: loadNumber(\.busyFactor, cores: t.cores), in: busyRange, step: cores / 4) {
+                Text("Busy when the system load stays above \(Int(t.busyLoad.rounded())) for a minute (now: \(sample.map { String(format: "%.0f", $0.load1) } ?? "–"))")
             }
             Picker("While busy", selection: binding(\.busyAction)) {
-                Text("Nothing").tag(LoadBusyAction.nothing)
-                Text("Hold new starts").tag(LoadBusyAction.holdStarts)
+                Text("Do nothing (only show it)").tag(LoadBusyAction.nothing)
+                Text("Hold new agent sessions").tag(LoadBusyAction.holdStarts)
             }
-            Text("Busy (a high load average, high memory pressure, or half the compiler limit) is shown in the sidebar. With \"Hold new starts\", claudedeck new and the start queue wait while busy; simulators and builds go on.")
+            Text("Busy means the Mac is working hard but isn't at risk. By default it is only shown in the sidebar.")
                 .font(.caption).foregroundStyle(.secondary)
+        } header: {
+            Text("What happens when braking?")
         }
         Section("Limits") {
-            Toggle("Slow down agents while the Mac is overloaded", isOn: binding(\.throttle))
-            Text("While overloaded: claudedeck new is refused (with --queue it waits in the queue), the queue holds, claudedeck sim acquire is refused, fewer build slots are handed out, and agent sessions get a message (once per episode, when idle) to postpone heavy work. It all resumes as soon as the Mac is no longer overloaded.")
-                .font(.caption).foregroundStyle(.secondary)
             Stepper(value: count(\.buildSlots, current: t.buildSlots, range: LoadSettings.slotRange), in: LoadSettings.slotRange) {
-                Text("Most builds at once: \(t.buildSlots)")
+                Text("Builds at once: \(t.buildSlots)")
             }
-            Stepper(value: binding(\.overloadedBuildSlots), in: LoadSettings.slotRange) {
-                Text("Builds at once while overloaded: \(t.overloadedBuildSlots)")
-            }
-            Stepper(value: binding(\.maxSlotHoldMinutes), in: LoadSettings.holdRange, step: 5) {
-                Text("A build slot goes back after \(settings.maxSlotHoldMinutes) minutes at most")
-            }
-            Text("Agents run builds with claudedeck heavy -- COMMAND (or claudedeck slot acquire build): they wait for one of these slots. A slot also goes back when its session ends.")
+            Text("At most \(t.buildSlots) apps are built at the same time; the rest wait in line.")
                 .font(.caption).foregroundStyle(.secondary)
-            Stepper(value: count(\.maxSimulators, current: t.maxSimulators, range: LoadSettings.simulatorRange), in: LoadSettings.simulatorRange) {
-                Text("Most booted simulators: \(t.maxSimulators)")
+            Stepper(value: binding(\.maxSlotHoldMinutes), in: LoadSettings.holdRange, step: 5) {
+                Text("A build keeps its place for at most \(settings.maxSlotHoldMinutes) minutes")
             }
-            Text("claudedeck sim acquire is refused once this many simulators are booted (yours count too). Reaching it doesn't make the Mac busy.")
+            Stepper(value: count(\.maxSimulators, current: t.maxSimulators, range: LoadSettings.simulatorRange), in: LoadSettings.simulatorRange) {
+                Text("Simulators: \(t.maxSimulators)")
+            }
+            Text("Agents can open at most \(t.maxSimulators) iPhone simulators; the ones you opened count too. Reaching it doesn't brake anything else.")
                 .font(.caption).foregroundStyle(.secondary)
             Stepper(value: Binding(get: { model.deck.settings.maxStartedSessions },
                                    set: { value in
@@ -347,57 +358,117 @@ struct ResourcesSettingsSection: View {
                                        model.drainCLIQueueSoon()
                                    }),
                     in: 1...40) {
-                Text("Most agent-started sessions running at once: \(model.deck.settings.maxStartedSessions) (now \(model.cliRunningStarted))")
+                Text("Agent sessions at once: \(model.deck.settings.maxStartedSessions) (now \(model.cliRunningStarted))")
             }
-            Text("Also in Settings › Agents.")
-                .font(.caption).foregroundStyle(.secondary)
-            Button("Restore Default Limits") {
-                model.mutate(userInitiated: false) { deck in
-                    deck.settings.load = deck.settings.load.restoringDefaults()
-                    deck.settings.maxStartedSessions = SessionCLI.maxRunningStarted
-                }
-                model.drainCLIQueueSoon()
-            }
-            Text("Every trigger, value and limit on this page goes back to its default (the defaults follow this Mac's \(t.cores) cores).")
+            Text("Sessions that agents start; more wait in line. Your own sessions don't count.")
                 .font(.caption).foregroundStyle(.secondary)
         }
-        Section("Showing") {
-            Toggle("Notify when the Mac becomes overloaded", isOn: binding(\.notify))
-            Text("Once per episode, on this Mac and on paired phones, with what's behind it (simulators, builds, sessions).")
+        Section("Notifications") {
+            Toggle("Notify me when the brake comes on", isOn: binding(\.notify))
+            Text("Once each time, on this Mac and on your phone, with what's behind it.")
                 .font(.caption).foregroundStyle(.secondary)
             Toggle("Always show the load in the sidebar", isOn: binding(\.alwaysShowInSidebar))
-            Text("Otherwise it shows only while the Mac is busy or overloaded.")
+            Text("Otherwise it shows only while the Mac is busy or braking.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+        Section {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Button("Restore Default Limits") {
+                        model.mutate(userInitiated: false) { deck in
+                            deck.settings.load = deck.settings.load.restoringDefaults()
+                            deck.settings.maxStartedSessions = SessionCLI.maxRunningStarted
+                        }
+                        model.drainCLIQueueSoon()
+                    }
+                    Text("Flexible settings that only brake to keep the Mac from freezing.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("What Is Using the Mac?") { model.showMacLoad() }
+            }
         }
     }
 }
 
-/// One overload trigger in Settings: switch, value controls, the live value (red while firing).
-private struct TriggerRow<Controls: View>: View {
-    let trigger: LoadTrigger
-    let state: LoadTriggerState?
-    @Binding var isOn: Bool
-    @ViewBuilder var controls: () -> Controls
+/// "Durum: Normal — fren yok" / "Durum: Aşırı yüklü — yeni ajan oturumları bekletiliyor (sebep: bellek kritik)".
+struct LoadStatusLine: View {
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        let firing = state?.firing == true
+        let load = LoadController.shared
+        HStack(spacing: 8) {
+            Circle().fill(LoadStyle.color(load.level)).frame(width: 10, height: 10)
+            Text(Self.text(load)).font(.callout.weight(.medium))
+        }
+    }
+
+    static func text(_ load: LoadController) -> String {
+        guard load.latest != nil else { return String(localized: "Status: measuring…") }
+        switch load.level {
+        case .ok:
+            return String(localized: "Status: Normal, no brake")
+        case .busy:
+            return load.holdsStarts ? String(localized: "Status: Busy, new agent sessions wait")
+                : String(localized: "Status: Busy, no brake (only shown)")
+        case .overloaded:
+            let why = load.monitor.triggers.filter(\.firing).map(LoadStyle.reason).joined(separator: ", ")
+            if !load.settings.throttle { return String(localized: "Status: Overloaded, brake switched off (reason: \(why))") }
+            return String(localized: "Status: Overloaded, new agent sessions wait (reason: \(why))")
+        }
+    }
+}
+
+/// One overload trigger in Settings: its switch, the live value ("now: 28"), orange when close
+/// to the limit and red when it is why the brake is on; its limit controls below while on.
+private struct TriggerRow<Controls: View, Caption: View>: View {
+    let title: String
+    let state: LoadTriggerState?
+    @Binding var isOn: Bool
+    let now: String?
+    @ViewBuilder var controls: () -> Controls
+    @ViewBuilder var caption: () -> Caption
+
+    init(title: String, state: LoadTriggerState?, isOn: Binding<Bool>, now: String?, @ViewBuilder controls: @escaping () -> Controls,
+         @ViewBuilder caption: @escaping () -> Caption = { EmptyView() }) {
+        self.title = title
+        self.state = state
+        self._isOn = isOn
+        self.now = now
+        self.controls = controls
+        self.caption = caption
+    }
+
+    private var tint: Color? {
+        guard let state, state.enabled else { return nil }
+        if state.firing { return .red }
+        if state.threshold > 0, state.current >= state.threshold * 0.75, state.unit != "pressure" { return .orange }
+        if state.unit == "pressure", state.current >= 1, state.current < state.threshold { return .orange }
+        return nil
+    }
+
+    var body: some View {
+        let tint = tint
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Toggle(LoadStyle.triggerTitle(trigger), isOn: $isOn)
+                Toggle(title, isOn: $isOn)
                 Spacer()
-                if let state {
-                    Text(LoadStyle.triggerNow(state))
-                        .font(.caption.weight(firing ? .semibold : .regular)).monospacedDigit()
-                        .foregroundStyle(firing ? .red : .secondary)
-                    if firing { Image(systemName: "flame.fill").foregroundStyle(.red).font(.caption) }
+                if let now {
+                    Text("now: \(now)")
+                        .font(.callout.weight(tint == nil ? .regular : .semibold)).monospacedDigit()
+                        .foregroundStyle(tint ?? .secondary)
                 }
+                if state?.firing == true { Image(systemName: "flame.fill").foregroundStyle(.red) }
             }
             if isOn {
                 HStack(spacing: 16) { controls() }
                     .padding(.leading, 20)
             }
+            caption()
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.leading, 20)
         }
         .padding(.vertical, 2)
-        .listRowBackground(firing ? Color.red.opacity(0.10) : nil)
+        .listRowBackground(tint.map { $0.opacity(0.10) })
     }
 }

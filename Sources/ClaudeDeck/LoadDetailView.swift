@@ -56,9 +56,8 @@ struct LoadDetailView: View {
                 Text(LoadStyle.numbers(sample) + " · " + String(localized: "\(sample.processes) processes"))
                     .font(.callout).monospacedDigit().foregroundStyle(.secondary)
             }
-            let fired = load.monitor.fired
-            if !fired.isEmpty {
-                Label(String(localized: "Overloaded by: \(LoadStyle.firedText(fired))"), systemImage: "flame.fill")
+            if !load.monitor.fired.isEmpty {
+                Label(String(localized: "Overloaded: \(LoadStyle.firedText(load.monitor.triggers))"), systemImage: "flame.fill")
                     .foregroundStyle(.red)
             } else if load.level == .busy {
                 Text(load.holdsStarts ? "Busy: new agent sessions wait; everything else goes on."

@@ -21703,6 +21703,1086 @@
           }
         }
       }
+    },
+    "memory is critical": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bellek kritik"
+          }
+        }
+      }
+    },
+    "memory is tight": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bellek sıkışık"
+          }
+        }
+      }
+    },
+    "the swap file grows fast": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "takas alanı hızla büyüyor"
+          }
+        }
+      }
+    },
+    "the swap file is very large": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "takas alanı çok büyük"
+          }
+        }
+      }
+    },
+    "too many builds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "çok fazla derleme"
+          }
+        }
+      }
+    },
+    "extreme system load": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aşırı sistem yükü"
+          }
+        }
+      }
+    },
+    "too many programs": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "çok fazla program"
+          }
+        }
+      }
+    },
+    "The Mac's load: click for what is using it": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yükü: neyin kullandığını görmek için tıkla"
+          }
+        }
+      }
+    },
+    "Click for what is using the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'i neyin kullandığını görmek için tıkla"
+          }
+        }
+      }
+    },
+    "Overloaded: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aşırı yüklü: %@"
+          }
+        }
+      }
+    },
+    "Agents are held back: no new sessions or simulators and fewer build slots until the Mac is no longer overloaded.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar bekletiliyor: Mac'in aşırı yükü geçene kadar yeni oturum ve simülatör yok, daha az derleme yapılır."
+          }
+        }
+      }
+    },
+    "Busy: new agent sessions wait; everything else goes on.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meşgul: yeni ajan oturumları bekliyor, gerisi devam ediyor."
+          }
+        }
+      }
+    },
+    "Busy is informational: nothing is held back.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meşgul sadece bilgi: hiçbir şey bekletilmiyor."
+          }
+        }
+      }
+    },
+    "Details": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntılar"
+          }
+        }
+      }
+    },
+    "Limits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sınırlar"
+          }
+        }
+      }
+    },
+    "Memory is about to run out": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek tükenmek üzereyse"
+          }
+        }
+      }
+    },
+    "The swap file grows fast": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takas alanı hızla büyürse"
+          }
+        }
+      }
+    },
+    "The swap file is very large": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takas alanı çok büyükse"
+          }
+        }
+      }
+    },
+    "Too many builds at once": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aynı anda çok fazla derleme varsa"
+          }
+        }
+      }
+    },
+    "System load stays extreme": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem yükü uzun süre aşırı kalırsa"
+          }
+        }
+      }
+    },
+    "Too many programs running": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çok fazla program çalışıyorsa"
+          }
+        }
+      }
+    },
+    "Brake when memory pressure is": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek baskısı şu olunca fren"
+          }
+        }
+      }
+    },
+    "+%@ GB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%@ GB"
+          }
+        }
+      }
+    },
+    "more than %@ GB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ GB'tan fazla"
+          }
+        }
+      }
+    },
+    "within %lld minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dakika içinde"
+          }
+        }
+      }
+    },
+    "Only while memory is tight: the Mac is writing memory to disk faster and faster.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sadece bellek sıkışıkken: Mac belleği giderek daha hızlı diske yazıyor demektir."
+          }
+        }
+      }
+    },
+    "%@ GB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ GB"
+          }
+        }
+      }
+    },
+    "above %@ GB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ GB'ı aşarsa"
+          }
+        }
+      }
+    },
+    "Off by default: a large swap file on its own doesn't freeze the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsayılan olarak kapalı: büyük takas alanı tek başına Mac'i kilitlemez."
+          }
+        }
+      }
+    },
+    "more than %lld build processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld derleme işleminden fazla"
+          }
+        }
+      }
+    },
+    "Every app build runs several of these (compiler, linker).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her uygulama derlemesi bunlardan birkaçını çalıştırır."
+          }
+        }
+      }
+    },
+    "above %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld'ı aşarsa"
+          }
+        }
+      }
+    },
+    "for %@ minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ dakika boyunca"
+          }
+        }
+      }
+    },
+    "The number macOS reports as the load: how many tasks want to run at once. This Mac has %lld cores, so %lld is %@ per core. A high load alone rarely freezes it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS'un yük olarak gösterdiği sayı: aynı anda kaç işin çalışmak istediği. Bu Mac'te %lld çekirdek var; %lld, çekirdek başına %@ demek. Yüksek yük tek başına Mac'i nadiren kilitler."
+          }
+        }
+      }
+    },
+    "more than %lld processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld işlemden fazla"
+          }
+        }
+      }
+    },
+    "When should ClaudeDeck brake?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne zaman fren yapılsın?"
+          }
+        }
+      }
+    },
+    "Only when the Mac risks freezing. Any switched-on row is enough; the brake comes off by itself once every row has stayed clear for a minute.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sadece Mac kilitlenme riskindeyken. Açık satırlardan biri yeter; hepsi bir dakika boyunca normale dönünce fren kendiliğinden kalkar."
+          }
+        }
+      }
+    },
+    "While braking, new agent sessions wait in line, agents can't open simulators, and fewer apps are built at once. Each agent session gets one message to put heavy work off. Your own sessions are never held.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fren varken yeni ajan oturumları sırada bekler, ajanlar simülatör açamaz ve aynı anda daha az uygulama derlenir. Her ajan oturumuna ağır işleri ertelemesi için bir kez mesaj gider. Senin oturumların hiç bekletilmez."
+          }
+        }
+      }
+    },
+    "Busy means the Mac is working hard but isn't at risk. By default it is only shown in the sidebar.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meşgul, Mac'in yoğun çalıştığı ama risk olmadığı anlamına gelir. Varsayılan olarak sadece kenar çubuğunda gösterilir."
+          }
+        }
+      }
+    },
+    "Brake agents": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlara fren yap"
+          }
+        }
+      }
+    },
+    "While busy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meşgulken"
+          }
+        }
+      }
+    },
+    "Builds at once while braking: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fren varken aynı anda derleme: %lld"
+          }
+        }
+      }
+    },
+    "Busy when the system load stays above %lld for a minute (now: %@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem yükü bir dakika boyunca %lld'ı aşarsa meşgul (şu an: %@)"
+          }
+        }
+      }
+    },
+    "Do nothing (only show it)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir şey yapma (sadece göster)"
+          }
+        }
+      }
+    },
+    "Hold new agent sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni ajan oturumlarını beklet"
+          }
+        }
+      }
+    },
+    "What happens when braking?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fren yapılınca ne olur?"
+          }
+        }
+      }
+    },
+    "At most %lld apps are built at the same time; the rest wait in line.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aynı anda en fazla %lld uygulama derlenir; fazlası sırada bekler."
+          }
+        }
+      }
+    },
+    "Agents can open at most %lld iPhone simulators; the ones you opened count too. Reaching it doesn't brake anything else.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar en fazla %lld iPhone simülatörü açabilir; senin açtıkların da sayılır. Bu sınıra ulaşmak başka hiçbir şeyi frenlemez."
+          }
+        }
+      }
+    },
+    "Sessions that agents start; more wait in line. Your own sessions don't count.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanların başlattığı oturumlar; fazlası sırada bekler. Senin oturumların sayılmaz."
+          }
+        }
+      }
+    },
+    "Builds at once: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aynı anda derleme: %lld"
+          }
+        }
+      }
+    },
+    "A build keeps its place for at most %lld minutes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir derleme sırasını en fazla %lld dakika tutar"
+          }
+        }
+      }
+    },
+    "Simulators: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatör: %lld"
+          }
+        }
+      }
+    },
+    "Agent sessions at once: %lld (now %lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aynı anda ajan oturumu: %lld (şu an %lld)"
+          }
+        }
+      }
+    },
+    "Once each time, on this Mac and on your phone, with what's behind it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her seferinde bir kez, bu Mac'te ve telefonunda, sebebiyle birlikte."
+          }
+        }
+      }
+    },
+    "Otherwise it shows only while the Mac is busy or braking.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aksi halde sadece Mac meşgulken veya fren varken görünür."
+          }
+        }
+      }
+    },
+    "Notify me when the brake comes on": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fren devreye girince bildir"
+          }
+        }
+      }
+    },
+    "What Is Using the Mac?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'i Ne Kullanıyor?"
+          }
+        }
+      }
+    },
+    "Flexible settings that only brake to keep the Mac from freezing.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PC kilitlenmeyecek kadar esnek ayarlar."
+          }
+        }
+      }
+    },
+    "Restore Default Limits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsayılanlara dön"
+          }
+        }
+      }
+    },
+    "Status: Normal, no brake": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Normal — fren yok"
+          }
+        }
+      }
+    },
+    "Status: Busy, new agent sessions wait": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Meşgul — yeni ajan oturumları bekletiliyor"
+          }
+        }
+      }
+    },
+    "Status: Busy, no brake (only shown)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Meşgul — fren yok (sadece bilgi)"
+          }
+        }
+      }
+    },
+    "Status: Overloaded, brake switched off (reason: %@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Aşırı yüklü — fren kapalı (sebep: %@)"
+          }
+        }
+      }
+    },
+    "Status: Overloaded, new agent sessions wait (reason: %@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Aşırı yüklü — yeni ajan oturumları bekletiliyor (sebep: %@)"
+          }
+        }
+      }
+    },
+    "Status: measuring…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: ölçülüyor…"
+          }
+        }
+      }
+    },
+    "now: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "şu an: %@"
+          }
+        }
+      }
+    },
+    "Load per core": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çekirdek başına yük"
+          }
+        }
+      }
+    },
+    "Memory used": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılan bellek"
+          }
+        }
+      }
+    },
+    "Swap": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takas alanı"
+          }
+        }
+      }
+    },
+    "Compilers": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleyiciler"
+          }
+        }
+      }
+    },
+    "Last hour": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son bir saat"
+          }
+        }
+      }
+    },
+    "Projects and sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projeler ve oturumlar"
+          }
+        }
+      }
+    },
+    "Booted simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açık simülatörler"
+          }
+        }
+      }
+    },
+    "Idle agent sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boştaki ajan oturumları"
+          }
+        }
+      }
+    },
+    "Heaviest other processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En ağır diğer işlemler"
+          }
+        }
+      }
+    },
+    "No running sessions.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan oturum yok."
+          }
+        }
+      }
+    },
+    "agent": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ajan"
+          }
+        }
+      }
+    },
+    "Close…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat…"
+          }
+        }
+      }
+    },
+    "None booted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açık simülatör yok."
+          }
+        }
+      }
+    },
+    "Shut Down…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat…"
+          }
+        }
+      }
+    },
+    "ClaudeDeck: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck: %@"
+          }
+        }
+      }
+    },
+    "user": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kullanıcı"
+          }
+        }
+      }
+    },
+    "Shut down \"%@\"?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"%@\" kapatılsın mı?"
+          }
+        }
+      }
+    },
+    "%@ holds it through ClaudeDeck. The hold is released and the simulator shuts down; the session gets an error if it is still using it.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ bunu ClaudeDeck üzerinden tutuyor. Tutma bırakılır ve simülatör kapanır; oturum hâlâ kullanıyorsa hata alır."
+          }
+        }
+      }
+    },
+    "a closed session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kapanmış bir oturum"
+          }
+        }
+      }
+    },
+    "A session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturum"
+          }
+        }
+      }
+    },
+    "No compiler running.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışan derleme yok."
+          }
+        }
+      }
+    },
+    "Build slots: %lld/%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleme sırası: %lld/%lld"
+          }
+        }
+      }
+    },
+    "outside ClaudeDeck": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck dışında"
+          }
+        }
+      }
+    },
+    "No agent session has been idle for %lld minutes.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dakikadır boşta olan ajan oturumu yok."
+          }
+        }
+      }
+    },
+    "Only sessions another session started with claudedeck new; never yours.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sadece başka bir oturumun claudedeck new ile başlattığı oturumlar; seninkiler asla."
+          }
+        }
+      }
+    },
+    "idle %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ boşta"
+          }
+        }
+      }
+    },
+    "Close Idle Ones…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boşta Olanları Kapat…"
+          }
+        }
+      }
+    },
+    "End and remove %lld idle agent sessions?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Boştaki %lld ajan oturumu kapatılıp listeden kaldırılsın mı?"
+          }
+        }
+      }
+    },
+    "Their Claude conversations are kept and can be reopened from each project's \"Resume Previous Conversation…\" menu.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude konuşmaları saklanır; her projenin \"Önceki Konuşmayı Sürdür…\" menüsünden yeniden açılabilir."
+          }
+        }
+      }
+    },
+    "%lld processes · %@%% CPU in all (100%% = one core)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld işlem · toplam %%%@ CPU (%%100 = bir çekirdek)"
+          }
+        }
+      }
+    },
+    "Outside every session and outside ClaudeDeck. Another user's processes (root) show no CPU or memory.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir oturuma ve ClaudeDeck'e ait olmayanlar. Başka kullanıcının (root) işlemlerinin CPU ve belleği görünmez."
+          }
+        }
+      }
+    },
+    "%lld proc": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld işlem"
+          }
+        }
+      }
+    },
+    "swap %@ GB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "takas %@ GB"
+          }
+        }
+      }
+    },
+    "A one-line message queued for the starting Claude session, typed once it is idle. Off: only the activity log (the starter usually closed it itself).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatan Claude oturumuna tek satırlık bir mesaj sıraya konur, boşta kalınca yazılır. Kapalıyken sadece etkinlik günlüğüne yazılır (başlatan genelde kendisi kapatmıştır)."
+          }
+        }
+      }
+    },
+    "Tell the starter when a session it started is closed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlattığı oturum kapanınca başlatana haber ver"
+          }
+        }
+      }
+    },
+    "Tell the session that started it (a message once it is idle)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatan oturuma haber ver (boşta kalınca mesaj)"
+          }
+        }
+      }
+    },
+    "What is using the Mac: sessions, simulators, builds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'i ne kullanıyor: oturumlar, simülatörler, derlemeler"
+          }
+        }
+      }
+    },
+    "Agents are held back: no new sessions or simulators and fewer builds until the Mac is no longer overloaded.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar bekletiliyor: Mac'in aşırı yükü geçene kadar yeni oturum ve simülatör yok, daha az derleme yapılır."
+          }
+        }
+      }
+    },
+    "New agent sessions wait while the Mac is busy.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac meşgulken yeni ajan oturumları bekler."
+          }
+        }
+      }
+    },
+    "What is using the Mac": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'i ne kullanıyor"
+          }
+        }
+      }
+    },
+    "%@ · agent": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · ajan"
+          }
+        }
+      }
+    },
+    "%lld%% · %lld MB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%%%lld · %lld MB"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
