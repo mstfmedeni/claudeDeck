@@ -135,10 +135,16 @@ extension SessionCLI {
     ServerPlan (Settings > Agents: "Sessions may use ServerPlan"):
       claudedeck server list | projects | dirs | features | cloudflare | deployments [--project P]
       claudedeck server health|containers|ports SERVER
-      claudedeck server logs SERVER CONTAINER [--tail N] [--follow]
+      claudedeck server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since 10m|TIME]
       claudedeck server deploy PROJECT [--server S] [--force] [--wait]
       claudedeck server deploy-status DEPLOYMENT [--wait]
       claudedeck server container SERVER CONTAINER start|stop|restart   (the owner confirms)
+      claudedeck server container SERVER CONTAINER status|inspect|env|stats|logs [--tail N] [--follow] [--grep TEXT]
+      claudedeck server container SERVER CONTAINER recreate|pull|remove   (the owner confirms; newer panels)
+      claudedeck server stats SERVER | disk SERVER   (CPU, memory, disk; per container and docker's disk on newer panels)
+      claudedeck server prune SERVER [--images dangling|unused|none] [--volumes] [--no-build-cache] [--no-containers]   (the owner confirms)
+      claudedeck server ratelimit show HOST | ratelimit clear HOST   (Cloudflare rate limiting; clear: the owner confirms)
+      claudedeck server ratelimit set HOST [--paths /init,/v1/*] [--rate 20/10s]   (replacing the zone's rule: the owner confirms)
       claudedeck server scan DIR-ID|PATH
       claudedeck server project show PROJECT
       claudedeck server project set PROJECT [--server S] [--port N] [--volume PATH] [--dockerfile PATH]
@@ -1077,6 +1083,7 @@ extension SessionCLI {
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
       approval=""; years=""; no_dns=0; refresh=0
+      since=""; grep_text=""; images=""; volumes=0; no_build_cache=0; no_containers=0; rl_paths=""; rl_rate=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
@@ -1096,14 +1103,19 @@ extension SessionCLI {
           --revoke) revoke=1 ;;
           --no-dns) no_dns=1 ;;
           --refresh) refresh=1 ;;
+          --volumes) volumes=1 ;;
+          --no-build-cache) no_build_cache=1 ;;
+          --no-containers) no_containers=1 ;;
           --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
           -) stdin=1 ;;
-          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years)
+          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years|--since|--grep|--images|--paths|--rate)
             [ $# -ge 2 ] || die "server $sub: $1 needs a value"
             case "$1" in
               --tail) tail=$2 ;; --server) server=$2 ;; --project) sproject=$2 ;; --name) sname=$2 ;;
               --port) port=$2 ;; --volume) volume=$2 ;; --dockerfile) dockerfile=$2 ;; --target) target=$2 ;;
               --database) database=$2 ;; --approval) approval=$2 ;; --years) years=$2 ;;
+              --since) since=$2 ;; --grep) grep_text=$2 ;; --images) images=$2 ;;
+              --paths) rl_paths=$2 ;; --rate) rl_rate=$2 ;;
             esac
             shift ;;
           -*) die "server $sub: unknown option $1" ;;
@@ -1120,7 +1132,7 @@ extension SessionCLI {
       args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
       case "$sub" in
         list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns|static|sync) ;;
-        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg|balance) ;;
+        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg|balance|stats|disk|prune|ratelimit) ;;
         *) die "server: unknown command $sub (claudedeck help)" ;;
       esac
       case "$sub" in
@@ -1138,12 +1150,17 @@ extension SessionCLI {
         pg) case "$p1" in databases|users) args 2 "pg $p1 SERVER" ;; user-add) args 4 "pg user-add SERVER USERNAME PROJECT" ;;
           grant) args 4 "pg grant SERVER USER DB" ;; clone) args 4 "pg clone SERVER DB TARGET" ;;
           *) die "server pg: databases, users, user-add, grant or clone" ;; esac ;;
-        health|containers|ports) args 1 "which server?" ;;
+        health|containers|ports|stats|disk) args 1 "which server?" ;;
+        prune) args 1 "which server?"
+          case "$images" in ""|dangling|unused|none) ;; *) die "server prune: --images is dangling, unused or none" ;; esac ;;
+        ratelimit) case "$p1" in show|set|clear) args 2 "ratelimit $p1 HOST" ;; *) die "server ratelimit: show, set or clear HOST" ;; esac
+          [ "$p1" = set ] || [ -z "$rl_paths$rl_rate" ] || die "server ratelimit: --paths and --rate go with set" ;;
         logs) args 2 "logs SERVER CONTAINER" ;;
         deploy) args 1 "which project?" ;;
         deploy-status) args 1 "which deployment?"; case "$p1" in *[!0-9]*) die "server deploy-status: a deployment id" ;; esac ;;
-        container) args 3 "container SERVER CONTAINER start|stop|restart"
-          case "$p3" in start|stop|restart) ;; *) die "server container: start, stop or restart" ;; esac ;;
+        container) args 3 "container SERVER CONTAINER ACTION"
+          case "$p3" in start|stop|restart|logs|stats|inspect|status|env|recreate|pull|remove) ;;
+            *) die "server container: logs, stats, inspect, status, env, start, stop, restart, recreate, pull or remove" ;; esac ;;
         scan) args 1 "which folder?" ;;
         project) case "$p1" in show|set) args 2 "project $p1 PROJECT" ;; *) die "server project: show or set PROJECT" ;; esac ;;
         dockerfile) case "$p1" in template) args 2 "dockerfile template PROJECT" ;;
@@ -1170,6 +1187,9 @@ extension SessionCLI {
         zone) [ "$p1" = add ] || die "server zone: try server zone add NAME"; args 2 "zone add NAME" ;;
         ns) [ "$p1" = set ] || die "server ns: try server ns set DOMAIN"; args 2 "ns set DOMAIN" ;;
       esac
+      case "$since" in ""|*[!0-9A-Za-z:.+-]*) [ -z "$since" ] || die "server $sub: --since is a time (2026-11-20T10:00:00Z) or a duration (10m, 2h)" ;; esac
+      # `container SERVER CONTAINER logs` is `logs SERVER CONTAINER`.
+      if [ "$sub" = container ] && [ "$p3" = logs ]; then sub=logs; fi
       need_session
       case "$sub" in
         cloudflare)
@@ -1184,20 +1204,36 @@ extension SessionCLI {
         deployments) srv deployments GET --data-urlencode "project=$sproject" ;;
         health|containers) srv "$sub" GET --data-urlencode "server=$p1" ;;
         ports) srv ports GET --data-urlencode "server=$p1" ;;
+        ratelimit)
+          case "$p1" in
+            show) max_time=75; srv ratelimit-show GET --data-urlencode "host=$p2" ;;
+            # The owner has 2 minutes to answer (an existing rule is replaced; a clear always asks).
+            set) max_time=240; srv ratelimit-set --data-urlencode "host=$p2" --data-urlencode "paths=$rl_paths" --data-urlencode "rate=$rl_rate" ;;
+            clear) max_time=240; srv ratelimit-clear --data-urlencode "host=$p2" ;;
+          esac ;;
+        stats) max_time=75; srv stats GET --data-urlencode "server=$p1" ;;
+        disk) max_time=75; srv disk GET --data-urlencode "server=$p1" ;;
+        prune)
+          # The owner has 2 minutes to answer, then docker may take a while.
+          max_time=330
+          srv prune --data-urlencode "server=$p1" --data-urlencode "images=${images:-dangling}" --data-urlencode "volumes=$volumes" \
+            --data-urlencode "build_cache=$((1 - no_build_cache))" --data-urlencode "containers=$((1 - no_containers))" ;;
         logs)
           if [ "$follow" = 1 ]; then
             first=${tail:-100}
             while :; do
               max_time=45
-              srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$first" --data-urlencode "follow=25"
+              srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$first" --data-urlencode "follow=25" \
+                --data-urlencode "since=$since" --data-urlencode "grep=$grep_text"
               case "$http" in 2??) ;; *) finish ;; esac
               [ -n "$body" ] && printf '%s\n' "$body"
-              first=0
+              first=0; since=""
               [ "$code" = 124 ] && continue
               exit "$code"
             done
           fi
-          srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$tail" ;;
+          srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$tail" \
+            --data-urlencode "since=$since" --data-urlencode "grep=$grep_text" ;;
         deploy)
           was_json=$json; json=0
           srv deploy --data-urlencode "project=$p1" --data-urlencode "server=$server" --data-urlencode "force=$force"
@@ -1210,11 +1246,21 @@ extension SessionCLI {
           [ "$wait" = 1 ] && deploy_wait "$p1"
           srv deploy-status GET --data-urlencode "id=$p1" ;;
         container)
-          # The owner has 2 minutes to answer in ClaudeDeck.
-          max_time=150
-          srv container --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "action=$p3" ;;
+          case "$p3" in
+            inspect|status) srv container-inspect GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" ;;
+            env) srv container-env GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" ;;
+            stats) srv container-stats GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" ;;
+            recreate|pull|remove)
+              # The owner has 2 minutes to answer, then docker may pull or start for a while.
+              max_time=330
+              srv "container-$p3" --data-urlencode "server=$p1" --data-urlencode "container=$p2" ;;
+            *)
+              # The owner has 2 minutes to answer in ClaudeDeck.
+              max_time=150
+              srv container --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "action=$p3" ;;
+          esac ;;
         scan) case "$p1" in *[!0-9]*) dir=$(abs_path "$p1") ;; *) dir=$p1 ;; esac
-          srv scan --data-urlencode "dir=$dir" ;;
+          max_time=210; srv scan --data-urlencode "dir=$dir" ;;
         project)
           if [ "$p1" = show ]; then srv project-show GET --data-urlencode "project=$p2"
           else srv project-set --data-urlencode "project=$p2" --data-urlencode "server=$server" --data-urlencode "port=$port" \
@@ -1228,8 +1274,9 @@ extension SessionCLI {
           fi ;;
         db)
           case "$p1" in
-            create) srv db-create --data-urlencode "project=$p2" ;;
+            create) max_time=210; srv db-create --data-urlencode "project=$p2" ;;
             clone-for-local)
+              max_time=210
               srv db-clone-local --data-urlencode "project=$p2" --data-urlencode "server=$server" \
                 --data-urlencode "database=$database" --data-urlencode "target=$target"
               case "$http" in 2??) ;; *) finish ;; esac
@@ -1289,19 +1336,21 @@ extension SessionCLI {
             grant) max_time=75; srv pg-grant --data-urlencode "server=$p2" --data-urlencode "username=$p3" --data-urlencode "database=$p4" \
                 --data-urlencode "revoke=$revoke" ;;
             clone)
-              max_time=75
+              max_time=210
               srv pg-clone --data-urlencode "server=$p2" --data-urlencode "database=$p3" --data-urlencode "target=$p4" \
                 --data-urlencode "project=$sproject"
               case "$http" in 2??) ;; *) finish ;; esac
               if [ "$wait" = 1 ] && [ -n "$next" ]; then printf '%s\n' "$body"; poll_wait clone-status id "$next"; fi ;;
           esac ;;
         domain)
-          if [ "$p1" = set ]; then max_time=220
+          # Domain writes apply Traefik / nginx / Cloudflare on the panel synchronously: the app
+          # waits up to 180 s for them (ServerPlanCLI.slowCallTimeout), plus the owner's 2 minutes.
+          if [ "$p1" = set ]; then max_time=330
             srv domain-set --data-urlencode "domain=$p2" --data-urlencode "server=$server" --data-urlencode "port=$port" \
               --data-urlencode "target=$target" --data-urlencode "project=$sproject" --data-urlencode "websocket=$ws" \
               --data-urlencode "clean_urls=$clean_set" --data-urlencode "ssl=$ssl"
-          elif [ "$p1" = apply ]; then max_time=150; srv domain-apply --data-urlencode "domain=$p2"
-          elif [ "$p1" = nginx ]; then max_time=150; srv domain-nginx --data-urlencode "domain=$p2"
+          elif [ "$p1" = apply ]; then max_time=210; srv domain-apply --data-urlencode "domain=$p2"
+          elif [ "$p1" = nginx ]; then max_time=210; srv domain-nginx --data-urlencode "domain=$p2"
           elif [ "$p1" = purge ]; then max_time=150; srv domain-purge --data-urlencode "domain=$p2"
           elif [ "$p1" = list ]; then srv domain-list GET --data-urlencode "server=$server"
           elif [ "$p1" = check ]; then max_time=75; srv domain-check GET --data-urlencode "domain=$p2"
@@ -1310,17 +1359,17 @@ extension SessionCLI {
             max_time=330
             srv domain-buy --data-urlencode "domain=$p2" --data-urlencode "approval=$approval" --data-urlencode "years=${years:-1}" \
               --data-urlencode "no_dns=$no_dns"
-          elif [ "$static" = 1 ]; then max_time=150
+          elif [ "$static" = 1 ]; then max_time=210
             srv domain-add --data-urlencode "static=1" --data-urlencode "server=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
               --data-urlencode "clean_urls=$clean" --data-urlencode "target=$target"
-          else max_time=150
+          else max_time=330
             srv domain-add --data-urlencode "project=$p2" --data-urlencode "subdomain=$p3" --data-urlencode "base=$p4" \
               --data-urlencode "server=$server" --data-urlencode "port=$port" --data-urlencode "websocket=$websocket" --data-urlencode "target=$target"
           fi ;;
         dns) max_time=150; srv dns-sync --data-urlencode "domain=$p2" ;;
         zone) srv zone-add --data-urlencode "name=$p2" ;;
         ns) max_time=150; srv ns-set --data-urlencode "domain=$p2" ;;
-        static) max_time=150; srv static-add --data-urlencode "server=$p2" --data-urlencode "base=$p3" ;;
+        static) max_time=210; srv static-add --data-urlencode "server=$p2" --data-urlencode "base=$p3" ;;
         sync) max_time=600; srv sync --data-urlencode "domain=$p1" --data-urlencode "path=$folder" ;;
       esac
       finish
@@ -1709,13 +1758,28 @@ extension SessionCLI {
     claudedeck server projects                     # ServerPlan projects (not ClaudeDeck's)
     claudedeck server health SERVER
     claudedeck server containers SERVER
-    claudedeck server logs SERVER CONTAINER [--tail N] [--follow]
+    claudedeck server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT]
     claudedeck server deploy PROJECT [--server S] [--wait]   # prints the deployment id
     claudedeck server deploy-status ID [--wait]
     claudedeck server deployments [--project P]
+    claudedeck server container SERVER CONTAINER status   # state, health, uptime, image, ports, domains, project
+    claudedeck server container SERVER CONTAINER env      # its project's deploy env (secrets hidden)
+    claudedeck server stats SERVER                 # CPU, memory, disk, load (and per container on newer panels)
     claudedeck server container SERVER CONTAINER start|stop|restart   # the user must approve
     claudedeck server features                     # which commands this panel offers
     ```
+
+    For a misbehaving container: `container … status` first, then `logs … --tail 300 --grep error`
+    (the filter applies to the fetched tail), then fix the code and deploy; restart only when a
+    restart is the fix (the user approves it). Newer panels also offer `logs --since 10m`,
+    `container … stats|inspect|recreate|pull|remove`, `disk SERVER` and `prune SERVER`
+    (recreate, pull, remove and prune: the user approves; `server features` lists what this panel has).
+
+    Rate limiting an app's API on Cloudflare (ServerPlan 1.5): `server ratelimit set HOST` limits
+    `/init` to 20 requests per 10 s per IP (`--paths /init,/v1/*`, `--rate 100/1m`); `ratelimit show
+    HOST` prints the zone's rule. Cloudflare Free allows one rule per zone, so replacing an existing
+    rule, and `ratelimit clear HOST`, need the user's approval. Don't limit webhook paths
+    (RevenueCat and Apple send from shared IPs; webhooks have their own auth).
 
     Newer panels (v1.1; see `server features`, otherwise exit 4 "ServerPlan doesn't offer this yet"):
 

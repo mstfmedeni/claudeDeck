@@ -7,9 +7,11 @@ import Foundation
 /// keys; this Mac only ever holds a single-use, 60-second ticket.
 extension AppModel {
     /// A terminal on `server` (or Claude Code there), reusing a closed one of the same kind.
-    func openServerPlanTerminal(serverID: Int, serverName: String, runClaude: Bool) {
+    /// `container`: a shell inside it (ServerPlan's `container_exec`) instead of the server's.
+    func openServerPlanTerminal(serverID: Int, serverName: String, runClaude: Bool, container: String? = nil) {
         let existing = deck.sessions.first {
             $0.serverPlanTerminal?.serverID == serverID && $0.serverPlanTerminal?.runClaude == runClaude
+                && $0.serverPlanTerminal?.container == container
         }
         if let existing {
             if !terminals.isRunning(existing.id) { launch(existing.id, resume: false) }
@@ -18,12 +20,15 @@ extension AppModel {
             return
         }
         guard let projectID = serverPlanHomeProject(serverID: serverID) else { NSSound.beep(); return }
-        let name = runClaude ? "claude@\(serverName)" : serverName
+        let name = container.map { "\($0)@\(serverName)" } ?? (runClaude ? "claude@\(serverName)" : serverName)
         var created: DeckSession?
         mutate {
             created = $0.addSession(to: projectID, kind: .shell, name: name)
             if let id = created?.id {
-                $0.updateSession(id) { $0.serverPlanTerminal = ServerPlanTerminalTarget(serverID: serverID, serverName: serverName, runClaude: runClaude) }
+                $0.updateSession(id) {
+                    $0.serverPlanTerminal = ServerPlanTerminalTarget(serverID: serverID, serverName: serverName, runClaude: runClaude && container == nil,
+                                                                     container: container)
+                }
             }
         }
         guard let id = created?.id else { return }
@@ -53,7 +58,7 @@ extension AppModel {
             if let client {
                 do {
                     let url = try await client.terminalURL(serverID: target.serverID, cols: grid.cols, rows: grid.rows,
-                                                           command: target.runClaude ? .claude : .shell)
+                                                           command: target.command, container: target.container)
                     environment[ServerPlanTerminalBridge.urlVariable] = url.absoluteString
                 } catch {
                     environment[ServerPlanTerminalBridge.errorVariable] = error.localizedDescription

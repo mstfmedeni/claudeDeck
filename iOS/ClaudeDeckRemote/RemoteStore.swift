@@ -91,6 +91,19 @@ final class RemoteStore {
     var serverPlanError: String?
     /// Failed deploys cleared here: hidden at once, before the Mac's next snapshot leaves them out.
     private(set) var clearedDeploys: Set<Int> = []
+    /// A server's containers as the Mac last sent them (Macs with `Feature.serverPlanContainers`).
+    struct ServerContainers {
+        var containers: [RemoteServerPlan.Container] = []
+        var logsOf: String?
+        var logs: [String]?
+        var error: String?
+        var loading = false
+    }
+    private(set) var serverContainers: [Int: ServerContainers] = [:]
+    /// Container actions waiting for the owner's approval on the Mac ("serverID/name" → what's
+    /// pending), and how the last ones ended.
+    private(set) var containerActions: [String: String] = [:]
+    private(set) var containerActionResults: [String: String] = [:]
 
     // Windows (iPad): each keeps its own selection; the store only routes "show this session".
     struct OpenRequest: Equatable {
@@ -571,6 +584,9 @@ final class RemoteStore {
         next.onServerPlanRepairResult = { [weak self] deploymentID, sessionID, error in
             MainActor.assumeIsolated { self?.serverPlanRepaired(deploymentID, sessionID: sessionID, error: error) }
         }
+        next.onServerPlanContainers = { [weak self] message in
+            MainActor.assumeIsolated { self?.containersArrived(message) }
+        }
         hostConnection = next
         next.start()
     }
@@ -876,6 +892,60 @@ final class RemoteStore {
     func clearDeploys(_ ids: [Int], all: Bool = false) {
         guard canClearServerErrors, send(.dismissServerIssues(deploymentIDs: ids, all: all)) else { return }
         clearedDeploys.formUnion(ids)
+    }
+
+    /// Whether the Mac lists containers and takes container actions.
+    var canShowContainers: Bool { snapshot?.supports(RemoteSnapshot.Feature.serverPlanContainers) == true }
+
+    static func containerKey(_ serverID: Int, _ name: String) -> String { "\(serverID)/\(name)" }
+
+    /// Asks the Mac for a server's containers (and the last log lines of `logsOf`).
+    func loadContainers(_ serverID: Int, logsOf: String? = nil) {
+        guard canShowContainers, send(.serverPlanContainersRequest(serverID: serverID, logsOf: logsOf)) else { return }
+        serverContainers[serverID, default: ServerContainers()].loading = true
+    }
+
+    /// Start / stop / restart: the Mac asks the owner first (its Approvals), then answers.
+    func containerAction(_ serverID: Int, _ name: String, verb: String) {
+        let key = Self.containerKey(serverID, name)
+        guard canShowContainers, containerActions[key] == nil,
+              send(.serverPlanContainerAction(serverID: serverID, container: name, verb: verb)) else { return }
+        containerActions[key] = String(localized: "Waiting for your approval on the Mac…")
+        containerActionResults[key] = nil
+        // The Mac's approval expires after 2 minutes; a Mac that never answers frees the button.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(200))
+            if self?.containerActions.removeValue(forKey: key) != nil {
+                self?.containerActionResults[key] = String(localized: "The Mac didn't answer.")
+            }
+        }
+    }
+
+    private func containersArrived(_ message: RemoteMessage) {
+        switch message {
+        case .serverPlanContainers(let serverID, let containers, let logsOf, let logs, let error):
+            var state = serverContainers[serverID] ?? ServerContainers()
+            state.loading = false
+            state.error = error
+            if error == nil || !containers.isEmpty { state.containers = containers }
+            if let logsOf {
+                state.logsOf = logsOf
+                state.logs = logs
+            }
+            serverContainers[serverID] = state
+        case .serverPlanContainerActionResult(let serverID, let container, let verb, let error):
+            let key = Self.containerKey(serverID, container)
+            containerActions[key] = nil
+            let done: String = switch verb {
+            case "start": String(localized: "Started.")
+            case "stop": String(localized: "Stopped.")
+            default: String(localized: "Restarted.")
+            }
+            containerActionResults[key] = error ?? done
+            loadContainers(serverID, logsOf: serverContainers[serverID]?.logsOf)
+        default:
+            break
+        }
     }
 
     private func serverPlanRepaired(_ deploymentID: Int, sessionID: UUID?, error: String?) {

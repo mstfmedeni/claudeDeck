@@ -156,6 +156,17 @@ public struct ServerPlanHealth: Decodable, Sendable, Equatable {
     /// Why the server couldn't be measured (with `reachable: false`).
     public var error: String?
     public var checkedAt: Date?
+    /// 1.5 `server_stats`: the same as numbers (nil from 1.4 panels; `ServerPlanStats` reads
+    /// the strings above then). Net counters are cumulative since boot.
+    public var cpuPercentValue: Double?
+    public var cores: Int?
+    public var memUsedBytes: Double?
+    public var memTotalBytes: Double?
+    public var diskUsedBytes: Double?
+    public var diskTotalBytes: Double?
+    public var load1: Double?
+    public var netRxBytes: Double?
+    public var netTxBytes: Double?
 
     public init(cpu: String? = nil, memory: String? = nil, disk: String? = nil, uptime: String? = nil, loadAverage: String? = nil,
                 reachable: Bool? = nil, dockerOK: Bool? = nil, error: String? = nil, checkedAt: Date? = nil) {
@@ -173,6 +184,8 @@ public struct ServerPlanHealth: Decodable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case cpu, cpuUsage = "cpu_usage", mem, memory, memoryUsage = "memory_usage", disk, diskUsage = "disk_usage", uptime
         case loadAvg = "load_avg", reachable, dockerOK = "docker_ok", error, checkedAt = "checked_at"
+        case cpuPercent = "cpu_percent", cores, memUsed = "mem_used_bytes", memTotal = "mem_total_bytes"
+        case diskUsed = "disk_used_bytes", diskTotal = "disk_total_bytes", load1, netRx = "net_rx_bytes", netTx = "net_tx_bytes"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -189,6 +202,16 @@ public struct ServerPlanHealth: Decodable, Sendable, Equatable {
         dockerOK = try? c.decodeIfPresent(Bool.self, forKey: .dockerOK)
         error = text(.error)
         checkedAt = (try? c.decodeIfPresent(FlexibleDate.self, forKey: .checkedAt))?.value
+        func number(_ key: CodingKeys) -> Double? { (try? c.decodeIfPresent(FlexibleDouble.self, forKey: key))?.value }
+        cpuPercentValue = number(.cpuPercent)
+        cores = number(.cores).map { Int($0) }
+        memUsedBytes = number(.memUsed)
+        memTotalBytes = number(.memTotal)
+        diskUsedBytes = number(.diskUsed)
+        diskTotalBytes = number(.diskTotal)
+        load1 = number(.load1)
+        netRxBytes = number(.netRx)
+        netTxBytes = number(.netTx)
     }
 }
 
@@ -278,26 +301,54 @@ public struct ServerPlanContainer: Decodable, Sendable, Equatable, Identifiable 
     public var state: String?
     public var status: String?
     public var ports: String?
+    /// 1.5 `container_details` (nil from 1.4 panels): docker's short id, its creation time as
+    /// docker prints it, `healthy|unhealthy|starting|none`, the project and the domains.
+    public var containerID: String?
+    public var created: String?
+    public var healthField: String?
+    public var projectID: Int?
+    public var projectName: String?
+    public var domains: [String]?
     public var id: String { name }
 
-    public init(name: String, image: String? = nil, state: String? = nil, status: String? = nil, ports: String? = nil) {
+    public init(name: String, image: String? = nil, state: String? = nil, status: String? = nil, ports: String? = nil,
+                containerID: String? = nil, created: String? = nil, health: String? = nil, projectID: Int? = nil,
+                projectName: String? = nil, domains: [String]? = nil) {
         self.name = name
         self.image = image
         self.state = state
         self.status = status
         self.ports = ports
+        self.containerID = containerID
+        self.created = created
+        self.healthField = health
+        self.projectID = projectID
+        self.projectName = projectName
+        self.domains = domains
     }
 
     public var isRunning: Bool { state?.lowercased() == "running" }
 
-    enum CodingKeys: String, CodingKey { case name, image, state, status, ports }
+    enum CodingKeys: String, CodingKey {
+        case name, image, state, status, ports, id, created, health, projectID = "project_id", projectName = "project_name", domains
+    }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
-        image = try? c.decodeIfPresent(String.self, forKey: .image)
-        state = try? c.decodeIfPresent(String.self, forKey: .state)
-        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        func text(_ key: CodingKeys) -> String? {
+            guard let value = try? c.decodeIfPresent(String.self, forKey: key), !value.isEmpty else { return nil }
+            return value
+        }
+        name = text(.name) ?? ""
+        image = text(.image)
+        state = text(.state)
+        status = text(.status)
         ports = (try? c.decodeIfPresent(FlexibleString.self, forKey: .ports))?.value
+        containerID = text(.id)
+        created = text(.created)
+        healthField = text(.health)
+        projectID = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .projectID))?.value
+        projectName = text(.projectName)
+        domains = try? c.decodeIfPresent([String].self, forKey: .domains)
     }
 }
 
@@ -551,6 +602,8 @@ public struct ServerPlanTicket: Decodable, Sendable, Equatable {
 /// What the remote terminal starts with.
 public enum ServerPlanTerminalCommand: String, Sendable, Codable {
     case shell, claude
+    /// 1.5 `container_exec`: a shell inside a container (`docker exec`).
+    case exec
 }
 
 /// `POST /projects/:id/deploy` → 202.
@@ -652,6 +705,21 @@ struct FlexibleInt: Decodable {
         if let v = try? c.decode(Int.self) { value = v; return }
         if let s = try? c.decode(String.self), let v = Int(s) { value = v; return }
         throw DecodingError.typeMismatch(Int.self, .init(codingPath: decoder.codingPath, debugDescription: "not an integer"))
+    }
+}
+
+/// A number that may come as a number or a numeric string ("12.5", "12.5%").
+struct FlexibleDouble: Decodable {
+    var value: Double
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let v = try? c.decode(Double.self) { value = v; return }
+        if let s = try? c.decode(String.self),
+           let v = Double(s.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "%"))) {
+            value = v
+            return
+        }
+        throw DecodingError.typeMismatch(Double.self, .init(codingPath: decoder.codingPath, debugDescription: "not a number"))
     }
 }
 

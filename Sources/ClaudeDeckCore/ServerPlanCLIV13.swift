@@ -78,7 +78,7 @@ extension ServerPlanCLI.Runner {
     }
 
     /// A request whose HTTP status is the answer (the purchase's 402, 403, 412 codes matter).
-    private func exchange(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil,
+    func exchange(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil,
                           timeout: TimeInterval) async throws -> (Int, Data) {
         let request = try client.request(path, method: method, query: query, json: json, timeout: timeout)
         do {

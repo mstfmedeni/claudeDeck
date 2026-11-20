@@ -293,17 +293,16 @@ struct ServerPlanSidebarSupport: ViewModifier {
             .sheet(item: $bindable.sheet) { sheet in
                 switch sheet {
                 case .deploy(let id, let title): ServerPlanDeploySheet(deploymentID: id, title: title)
-                case .logs(let serverID, let server, let container): ServerPlanLogsSheet(serverID: serverID, server: server, container: container)
+                case .container(let serverID, let server, let container, let tab):
+                    ServerPlanContainerSheet(serverID: serverID, server: server, name: container, tab: tab)
+                case .server(let serverID, let server): ServerPlanServerSheet(serverID: serverID, server: server)
                 }
             }
-            .alert(item: $bindable.pendingConfirm) { pending in
-                Alert(
-                    title: Text(ServerPlanActionText.title(pending.action)),
-                    message: Text(pending.preview.summary ?? ServerPlanActionText.fallbackSummary(pending.action)),
-                    primaryButton: .destructive(Text(ServerPlanActionText.button(pending.action))) { controller.confirm(pending) },
-                    secondaryButton: .cancel()
-                )
-            }
+            // With a sheet up, the sheet shows the confirmation itself.
+            .modifier(ServerPlanConfirmAlert(binding: Binding(
+                get: { controller.sheet == nil ? controller.pendingConfirm : nil },
+                set: { controller.pendingConfirm = $0 }
+            )))
     }
 }
 
@@ -346,6 +345,14 @@ enum ServerPlanActionText {
             case .stop: String(localized: "Stop \(name) on \(server)?")
             case .restart: String(localized: "Restart \(name) on \(server)?")
             }
+        case .containerOp(_, let server, let name, let op):
+            switch op {
+            case .recreate: String(localized: "Recreate \(name) on \(server)?")
+            case .pull: String(localized: "Update the image of \(name) on \(server)?")
+            case .remove: String(localized: "Remove \(name) from \(server)?")
+            }
+        case .prune(_, let server, _): String(localized: "Clean up Docker on \(server)?")
+        case .envDelete(_, let project, _, let key): String(localized: "Delete \(key) from the env of \(project)?")
         }
     }
 
@@ -358,6 +365,14 @@ enum ServerPlanActionText {
             case .stop: String(localized: "Stop")
             case .restart: String(localized: "Restart")
             }
+        case .containerOp(_, _, _, let op):
+            switch op {
+            case .recreate: String(localized: "Recreate")
+            case .pull: String(localized: "Update Image")
+            case .remove: String(localized: "Remove")
+            }
+        case .prune: String(localized: "Clean Up")
+        case .envDelete: String(localized: "Delete")
         }
     }
 
@@ -365,6 +380,10 @@ enum ServerPlanActionText {
         switch action {
         case .deploy: String(localized: "ServerPlan builds the image, transfers it and replaces the running container.")
         case .container: String(localized: "This changes a running server.")
+        case .containerOp(_, _, _, .remove): String(localized: "The container is deleted; its volumes stay.")
+        case .containerOp: String(localized: "The running container is replaced by a new one.")
+        case .prune(_, _, let options): String(localized: "Removes \(options.summary).")
+        case .envDelete: String(localized: "The key is gone from the deploy env at the next deploy.")
         }
     }
 }
@@ -453,6 +472,7 @@ private struct ServerPlanServerRow: View {
             Button("Clear Error") { controller.clearServerIssue(server) }
             Divider()
         }
+        Button("Show Details") { controller.sheet = .server(serverID: server.id, server: server.name) }
         if controller.canOpenTerminal {
             Button("Open Terminal") { model.openServerPlanTerminal(serverID: server.id, serverName: server.name, runClaude: false) }
             if controller.canRunClaude(on: server.id) {
@@ -606,38 +626,6 @@ struct DeployBadge: View {
     }
 }
 
-private struct ServerPlanContainerRow: View {
-    let server: ServerPlanServer
-    let container: ServerPlanContainer
-
-    var body: some View {
-        let controller = ServerPlanController.shared
-        HStack(spacing: 6) {
-            Image(systemName: "shippingbox.fill")
-                .sidebarFont(.caption)
-                .foregroundStyle(container.isRunning ? Color.green : Color.secondary)
-            Text(container.name).sidebarFont(.callout).lineLimit(1)
-            Spacer(minLength: 4)
-            Text(container.status ?? container.state ?? "").sidebarFont(.caption).foregroundStyle(.tertiary).lineLimit(1)
-        }
-        .help(container.image ?? container.name)
-        .contextMenu {
-            if controller.allows(.logs) {
-                Button("Logs") { controller.sheet = .logs(serverID: server.id, server: server.name, container: container.name) }
-            }
-            if controller.allows(.containers) {
-                Divider()
-                if container.isRunning {
-                    Button("Restart…") { controller.request(.container(serverID: server.id, serverName: server.name, name: container.name, verb: .restart)) }
-                    Button("Stop…") { controller.request(.container(serverID: server.id, serverName: server.name, name: container.name, verb: .stop)) }
-                } else {
-                    Button("Start…") { controller.request(.container(serverID: server.id, serverName: server.name, name: container.name, verb: .start)) }
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Sheets
 
 /// A deploy's log: replayed, then live while it runs (the stream only while the sheet is open).
@@ -725,87 +713,6 @@ private struct ServerPlanDeploySheet: View {
         if deployment == nil, let value = try? await client.deployment(id: deploymentID) {
             deployment = value
             if lines.isEmpty { lines = (value.log ?? "").components(separatedBy: "\n") }
-        }
-    }
-}
-
-/// A container's log: the tail, then followed while the sheet is open and a window visible.
-private struct ServerPlanLogsSheet: View {
-    let serverID: Int
-    let server: String
-    let container: String
-    @Environment(\.dismiss) private var dismiss
-    @State private var lines: [String] = []
-    @State private var follow = true
-    @State private var error: String?
-
-    static let maxLines = 2_000
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "shippingbox.fill")
-                Text("\(container) · \(server)").font(.headline)
-                Spacer()
-                Toggle("Follow", isOn: $follow).toggleStyle(.switch).controlSize(.small)
-            }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(lines.joined(separator: "\n"))
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                    Color.clear.frame(height: 1).id("end")
-                }
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
-                .onChange(of: lines.count) { if follow { proxy.scrollTo("end") } }
-            }
-            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
-            HStack {
-                Spacer()
-                Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
-            }
-        }
-        .padding()
-        .frame(minWidth: 680, minHeight: 440)
-        .task(id: follow) { await load() }
-    }
-
-    private func load() async {
-        guard let client = ServerPlanController.shared.client else { return }
-        if !follow || ServerPlanController.shared.me?.has(feature: ServerPlanContract.Feature.logStream) == false {
-            do {
-                lines = try await client.containerLogs(serverID: serverID, container: container, tail: 200).components(separatedBy: "\n")
-            } catch {
-                self.error = error.localizedDescription
-            }
-            return
-        }
-        // Follow: reconnects when a window shows again after the stream ended.
-        lines = []
-        var ended = false
-        while !Task.isCancelled, !ended {
-            await AppVisibility.shared.waitUntilVisible()
-            do {
-                for try await event in try await client.containerLogStream(serverID: serverID, container: container, tail: lines.isEmpty ? 200 : 0) {
-                    if let reason = ServerPlanLogLine.endReason(event) {
-                        lines.append("— " + (reason.isEmpty ? String(localized: "log ended") : reason) + " —")
-                        ended = true
-                        break
-                    }
-                    guard let line = ServerPlanLogLine(event) else { continue }
-                    lines.append(line.line)
-                    if lines.count > Self.maxLines { lines.removeFirst(lines.count - Self.maxLines) }
-                    // Hidden: stop reading; the stream is reopened (from now) once visible.
-                    if !AppVisibility.shared.windowsVisible { break }
-                }
-                error = nil
-            } catch {
-                self.error = error.localizedDescription
-                try? await Task.sleep(for: .seconds(10))
-            }
-            try? await Task.sleep(for: .seconds(2))
         }
     }
 }

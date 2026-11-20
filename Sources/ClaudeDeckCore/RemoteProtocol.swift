@@ -220,6 +220,17 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     /// shows, server and panel errors too. Hosts with `Feature.dismissServerIssues`; the next
     /// snapshot leaves them out.
     case dismissServerIssues(deploymentIDs: [Int], all: Bool)
+    /// Remote → host: a ServerPlan server's containers, and the last log lines of `logsOf`
+    /// (hosts with `Feature.serverPlanContainers`). Answered with `serverPlanContainers`.
+    case serverPlanContainersRequest(serverID: Int, logsOf: String?)
+    /// Host → remote: the containers (with their use on panels that send it) and the log tail.
+    case serverPlanContainers(serverID: Int, containers: [RemoteServerPlan.Container], logsOf: String?, logs: [String]?, error: String?)
+    /// Remote → host: start, stop or restart a container. The Mac asks the owner first (a card
+    /// in its Onaylar queue, approved on the Mac); answered with `serverPlanContainerActionResult`
+    /// once that's decided and done (hosts with `Feature.serverPlanContainers`).
+    case serverPlanContainerAction(serverID: Int, container: String, verb: String)
+    /// Host → remote: nil error: done.
+    case serverPlanContainerActionResult(serverID: Int, container: String, verb: String, error: String?)
     /// Remote → host: the owner's answer to a decision a session left (`decisions` in the
     /// snapshot; hosts with `Feature.decisions`). The next snapshot shows it answered; a decision
     /// answered elsewhere first keeps that answer.
@@ -437,12 +448,14 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let load = "load"
         /// `RemoteLoad.top`, `bootedSimulators` and `fired` (read-only; nil while not measured).
         public static let loadDetail = "loadDetail"
+        /// `serverPlanContainersRequest` / `serverPlanContainerAction` (restart with the Mac's approval).
+        public static let serverPlanContainers = "serverPlanContainers"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
-                                              closedTerminals, approvals, load, loadDetail]
+                                              closedTerminals, approvals, load, loadDetail, serverPlanContainers]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -525,6 +538,44 @@ public struct RemoteServerPlan: Codable, Sendable, Equatable {
             self.threshold = threshold
             self.low = low
         }
+    }
+
+    /// A container as the phone lists it (`serverPlanContainers`).
+    public struct Container: Codable, Sendable, Equatable, Identifiable {
+        public var name: String
+        /// running | starting | unhealthy | restarting | paused | stopped | failed
+        public var condition: String
+        /// docker's status line ("Up 2 hours (healthy)").
+        public var status: String?
+        public var image: String?
+        public var domains: [String]
+        /// On panels with per-container stats.
+        public var cpuPercent: Double?
+        public var memPercent: Double?
+        public var memBytes: Double?
+        public var id: String { name }
+
+        public init(name: String, condition: String, status: String?, image: String?, domains: [String] = [],
+                    cpuPercent: Double? = nil, memPercent: Double? = nil, memBytes: Double? = nil) {
+            self.name = name
+            self.condition = condition
+            self.status = status
+            self.image = image
+            self.domains = domains
+            self.cpuPercent = cpuPercent
+            self.memPercent = memPercent
+            self.memBytes = memBytes
+        }
+
+        public var isRunning: Bool { ["running", "starting", "unhealthy"].contains(condition) }
+    }
+
+    /// What a phone may ask for a container (`serverPlanContainerAction`).
+    public static let containerVerbs: Set<String> = ["start", "stop", "restart"]
+
+    /// Docker container names ServerPlan accepts (checked before a phone's request is used).
+    public static func isValidContainerName(_ name: String) -> Bool {
+        name.wholeMatch(of: /[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}/) != nil
     }
 
     public var servers: [Server]

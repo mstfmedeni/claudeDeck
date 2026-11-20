@@ -1,6 +1,8 @@
 [
   { "name": "payments-api", "image": "payments-api:207", "state": "exited", "status": "Exited (1) 29 minutes ago", "ports": "" },
-  { "name": "acme-storefront", "image": "acme-storefront:205", "state": "running", "status": "Up 2 hours", "ports": "0.0.0.0:3000->3000/tcp" },
+  { "name": "acme-storefront", "image": "acme-storefront:205", "state": "running", "status": "Up 2 hours (healthy)", "ports": "0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp",
+    "id": "3f2a9c1b7d4e", "created": "2026-11-18 07:58:10 +0000 UTC", "health": "healthy", "project_id": 12, "project_name": "acme-storefront",
+    "domains": ["shop.acme.example"] },
   { "name": "traefik", "image": "traefik:v3.1", "state": "running", "status": "Up 12 days", "ports": "0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp" },
-  { "name": "postgres", "image": "postgres:16", "state": "running", "status": "Up 12 days", "ports": "5432/tcp" }
+  { "name": "postgres", "image": "postgres:16", "state": "running", "status": "Up 12 days (unhealthy)", "ports": "5432/tcp" }
 ]

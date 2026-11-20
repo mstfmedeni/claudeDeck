@@ -30,16 +30,20 @@ public enum ServerPlanCLI {
         /// 1.`minMinor` (never on an unknown version: these spend money).
         public var feature: String?
         public var minMinor: Int
+        /// Offered only when `/me` lists `feature` (ServerPlan's proposed 1.5 additions:
+        /// whatever version ships them, the feature is what says they're there).
+        public var featureOnly: Bool
 
         init(_ name: String, _ method: String, v11: Bool = false, scope: String? = nil, gate: Gate = .none,
-             feature: String? = nil, minMinor: Int = 1) {
+             feature: String? = nil, minMinor: Int = 1, featureOnly: Bool = false) {
             self.name = name
             self.method = method
-            self.v11 = v11
+            self.v11 = v11 || featureOnly
             self.scope = scope
             self.gate = gate
             self.feature = feature
             self.minMinor = minMinor
+            self.featureOnly = featureOnly
         }
     }
 
@@ -118,6 +122,25 @@ public enum ServerPlanCLI {
             Command("domain-buy", "POST", v11: true, scope: "domains_buy", gate: .owner, feature: "domain_purchase", minMinor: 3),
             // v1.4: the Namecheap balance (read only).
             Command("balance", "GET", v11: true, scope: "read", feature: ServerPlanContract.Feature.registrarBalance, minMinor: 4),
+            // v1.5: Cloudflare rate limiting (ServerPlanCLIRateLimit.swift). Replacing a zone's rule
+            // and clearing it: the owner.
+            Command("ratelimit-show", "GET", v11: true, scope: "read", feature: "ratelimit", minMinor: 5),
+            Command("ratelimit-set", "POST", v11: true, scope: "dns", gate: .owner, feature: "ratelimit", minMinor: 5),
+            Command("ratelimit-clear", "POST", v11: true, scope: "dns", gate: .owner, feature: "ratelimit", minMinor: 5),
+            // Containers (ServerPlanCLIContainers.swift). Status and server stats work on any panel
+            // (the container list, health); env needs v1.1. The rest is ServerPlan's proposed
+            // 1.5 (docs/serverplan-containers.md §5): offered once `/me` lists the feature.
+            Command("container-inspect", "GET"),
+            Command("stats", "GET"),
+            Command("container-env", "GET", v11: true),
+            Command("container-stats", "GET", scope: "read", feature: ServerPlanContract.Feature.containerStats, featureOnly: true),
+            Command("container-recreate", "POST", scope: "containers", gate: .owner,
+                    feature: ServerPlanContract.Feature.containerRecreate, featureOnly: true),
+            Command("container-pull", "POST", scope: "containers", gate: .owner, feature: ServerPlanContract.Feature.imageUpdate, featureOnly: true),
+            Command("container-remove", "POST", scope: "containers", gate: .owner,
+                    feature: ServerPlanContract.Feature.containerRemove, featureOnly: true),
+            Command("disk", "GET", scope: "read", feature: ServerPlanContract.Feature.dockerPrune, featureOnly: true),
+            Command("prune", "POST", scope: "containers", gate: .owner, feature: ServerPlanContract.Feature.dockerPrune, featureOnly: true),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
@@ -130,6 +153,7 @@ public enum ServerPlanCLI {
         guard let me else { return command.feature == nil }
         if let scope = command.scope, !me.scopes.contains(scope) { return false }
         if let feature = command.feature, me.features.contains(feature) { return true }
+        if command.featureOnly { return false }
         guard let version = me.serverVersion, let major = Int(version.split(separator: ".").first ?? "") else { return command.feature == nil }
         let minor = version.split(separator: ".").dropFirst().first.flatMap { Int($0) } ?? 0
         return major > 1 || major == 1 && minor >= command.minMinor
@@ -213,6 +237,8 @@ public enum ServerPlanCLI {
         public let log: @Sendable (String) -> Void
         /// An owner decision by id (ClaudeDeck's decisions book): `domain buy --approval`.
         public let decision: @Sendable (String) async -> OwnerDecision?
+        /// Between looks at the domain list after a lost `domain add` answer (tests: zero).
+        var retryDelay: Duration = .seconds(5)
 
         public init(client: ServerPlanClient, me: ServerPlanMe?, approve: @escaping Approve, log: @escaping @Sendable (String) -> Void = { _ in },
                     decision: @escaping @Sendable (String) async -> OwnerDecision? = { _ in nil }) {
@@ -385,9 +411,10 @@ public enum ServerPlanCLI {
             case "domain-list":
                 var query: [URLQueryItem] = []
                 if let server = form["server"], !server.isEmpty { query.append(URLQueryItem(name: "server_id", value: String(try await serverID(server)))) }
-                let data = try await raw("GET", "/domains", query: query)
-                return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("SERVER", "server_id"), ("PORT", "port"), ("PROJECT", "project_name"),
-                                                                              ("FQDN", "fqdn|domain|name")]))
+                // The panel sends subdomain + base_domain ("@" or "" for the root): the FQDN is added here.
+                let data = ServerPlanCLI.withFQDN(try await raw("GET", "/domains", query: query))
+                return Outcome(json: data, text: ServerPlanCLI.listText(data, [("ID", "id"), ("SERVER", "server_id"), ("TYPE", "type"), ("PORT", "port"),
+                                                                              ("PROJECT", "project_name"), ("FQDN", "fqdn")]))
             case "domain-add" where form["static"] == "1":
                 // A static site: no project, no port, no owner's dialog (nothing is replaced).
                 let server = try await serverID(form["server"])
@@ -397,10 +424,11 @@ public enum ServerPlanCLI {
                 let target = given.isEmpty ? ServerPlanCLI.staticTarget(subdomain: sub, base: base) : given
                 let body: [String: Any] = ["type": "static", "server_id": server, "subdomain": sub, "base_domain": base, "target": target,
                                            "ssl_enabled": true, "clean_urls": form["clean_urls"] != "0"]
-                let fqdn = sub.isEmpty ? base : "\(sub).\(base)"
-                let data = try await raw("POST", "/domains", json: body)
-                log("domain add --static \(fqdn) → \(target)")
-                return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("added: \(fqdn) (\(target))"))
+                let fqdn = sub.isEmpty || sub == "@" ? base : "\(sub).\(base)"
+                let added = try await createDomain(fqdn: fqdn, server: server) { try await raw("POST", "/domains", json: body) }
+                log("domain add --static \(fqdn) → \(target)" + (added.slow ? " (the panel answered slowly)" : ""))
+                if added.slow { return ServerPlanCLI.slowCreateOutcome(fqdn, row: added.data) }
+                return Outcome(json: added.data, text: ServerPlanCLI.objectText(added.data).ifEmpty("added: \(fqdn) (\(target))"))
             case "static-add":
                 let server = try await serverID(form["server"])
                 let base = try ServerPlanCLI.baseDomain(form["base"])
@@ -443,9 +471,13 @@ public enum ServerPlanCLI {
                                            "ssl_enabled": true, "clean_urls": false, "websocket_enabled": form["websocket"] == "1",
                                            "project_name": project.name]
                 if let target = form["target"], !target.isEmpty { body["target"] = target }
-                let fqdn = sub.isEmpty ? base : "\(sub).\(base)"
-                let data = try await gated(command, "POST", "/domains", body: body, target: fqdn)
-                return Outcome(json: data, text: ServerPlanCLI.objectText(data).ifEmpty("added: \(fqdn)"))
+                let fqdn = sub.isEmpty || sub == "@" ? base : "\(sub).\(base)"
+                let added = try await createDomain(fqdn: fqdn, server: server) { try await gated(command, "POST", "/domains", body: body, target: fqdn) }
+                if added.slow {
+                    log("domain add \(fqdn): created; the panel answered slowly")
+                    return ServerPlanCLI.slowCreateOutcome(fqdn, row: added.data)
+                }
+                return Outcome(json: added.data, text: ServerPlanCLI.objectText(added.data).ifEmpty("added: \(fqdn)"))
             case "dns-sync":
                 let domain = try await domainID(form["domain"])
                 let data = try await gated(command, "POST", "/domains/\(domain.id)/dns-sync", target: domain.fqdn)
@@ -464,6 +496,11 @@ public enum ServerPlanCLI {
                 return Outcome(json: data, text: ServerPlanCLI.objectText(data))
             case "domain-check", "domain-buy", "balance":
                 return try await performV13(command, form: form)
+            case "container-inspect", "stats", "container-env", "container-stats", "container-recreate", "container-pull",
+                 "container-remove", "disk", "prune":
+                return try await performContainers(command, form: form)
+            case "ratelimit-show", "ratelimit-set", "ratelimit-clear":
+                return try await performRateLimit(command, form: form)
             default:
                 return try await performV12(command, form: form)
             }
@@ -473,7 +510,30 @@ public enum ServerPlanCLI {
 
         func raw(_ method: String, _ path: String, query: [URLQueryItem] = [], json: [String: Any]? = nil,
                  accept: String = "application/json", timeout: TimeInterval = 20) async throws -> Data {
-            try await client.raw(method, path, query: query, json: json, accept: accept, timeout: timeout)
+            let wait = max(timeout, ServerPlanCLI.slowCallTimeout(method: method, path: path) ?? 0)
+            return try await client.raw(method, path, query: query, json: json, accept: accept, timeout: wait)
+        }
+
+        /// Creates a domain. The panel applies Traefik / nginx / Cloudflare before it answers, so
+        /// the answer can be lost to a timeout after the row exists: then the domain list is asked
+        /// (a few times, the panel may still be writing) and a new row with that FQDN on that
+        /// server counts as created (`slow`). One that was already there before doesn't.
+        func createDomain(fqdn: String, server: Int, _ post: () async throws -> Data) async throws -> (data: Data, slow: Bool) {
+            func find() async -> [String: Any]? {
+                guard let rows = try? ServerPlanCLI.array(await raw("GET", "/domains", query: [URLQueryItem(name: "server_id", value: String(server))])) else { return nil }
+                return rows.first { ServerPlanCLI.fqdn($0)?.caseInsensitiveCompare(fqdn) == .orderedSame }
+            }
+            let existed = await find() != nil
+            do {
+                return (try await post(), false)
+            } catch let error as ServerPlanError {
+                guard case .transport = error, !existed else { throw error }
+                for attempt in 0..<3 {
+                    if attempt > 0 { try? await Task.sleep(for: retryDelay) }
+                    if let row = await find() { return (ServerPlanCLI.data(row), true) }
+                }
+                throw error
+            }
         }
 
         /// A request that may answer 428: sent again with the panel's `confirm` once the gate
@@ -553,11 +613,29 @@ public enum ServerPlanCLI {
             guard ServerPlanClient.isValidContainerName(name) else { throw Refusal(outcome: .error(400, "bad_container", exit: .usage)) }
             let tail = min(max(Int(form["tail"] ?? "") ?? 200, 0), 5000)
             let window = min(SessionCLI.maxWaitWindow, max(0, Int(form["follow"] ?? "") ?? 0))
-            guard window > 0 else {
-                let text = try await client.containerLogs(serverID: server, container: name, tail: tail)
-                return Outcome(json: ServerPlanCLI.data(["lines": text.split(separator: "\n").map(String.init)]), text: text.trimmingCharacters(in: .newlines))
+            // `--since` needs the panel (its log lines carry no time); `--grep` is the panel's with
+            // `log_query`, else applied here to the fetched tail.
+            let since = (form["since"] ?? "").trimmingCharacters(in: .whitespaces)
+            let grep = (form["grep"] ?? "").trimmingCharacters(in: .whitespaces)
+            let panelQuery = me?.has(feature: ServerPlanContract.Feature.logQuery) == true
+            if !since.isEmpty {
+                guard panelQuery else {
+                    throw Refusal(outcome: .error(501, "not_available", ServerPlanCLI.notAvailable + " (--since needs ServerPlan's log_query)", exit: .refused))
+                }
+                guard ServerPlanCLI.isValidSince(since) else {
+                    throw Refusal(outcome: .error(400, "bad_since", "an RFC 3339 time or a duration like 10m, 2h", exit: .usage))
+                }
             }
-            let stream = try await client.containerLogStream(serverID: server, container: name, tail: tail)
+            guard window > 0 else {
+                let text = panelQuery && (!since.isEmpty || !grep.isEmpty)
+                    ? try await client.containerLogs(serverID: server, container: name, tail: tail, since: since, grep: grep)
+                    : try await client.containerLogs(serverID: server, container: name, tail: tail)
+                var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                while lines.last?.isEmpty == true { lines.removeLast() }
+                if !panelQuery { lines = ServerPlanLogFilter.grep(lines, grep) }
+                return Outcome(json: ServerPlanCLI.data(["lines": lines]), text: lines.joined(separator: "\n"))
+            }
+            let stream = try await client.containerLogStream(serverID: server, container: name, tail: tail, since: panelQuery ? since : nil)
             let collector = Task { () -> ([String], Bool) in
                 var lines: [String] = []
                 do {
@@ -565,6 +643,7 @@ public enum ServerPlanCLI {
                         if event.event == "end" { return (lines, true) }
                         if event.event == "log" {
                             let line = (try? JSONDecoder().decode(ServerPlanLogLine.self, from: Data(event.data.utf8)))?.line ?? event.data
+                            if ServerPlanLogFilter.grep([line], grep).isEmpty { continue }
                             lines.append(line)
                         }
                         if Task.isCancelled || lines.count >= 2000 { break }
@@ -624,13 +703,55 @@ public enum ServerPlanCLI {
             let rows = ServerPlanCLI.array(try await raw("GET", "/domains")) ?? []
             let items = rows.compactMap { row -> (Int, String)? in
                 guard let id = ServerPlanCLI.value(row, "id").flatMap(Int.init) else { return nil }
-                return (id, ServerPlanCLI.value(row, "fqdn|domain|name") ?? "")
+                return (id, ServerPlanCLI.fqdn(row) ?? "")
             }
             let found = try pick(ref, items, what: "domain")
             let row = rows.first { ServerPlanCLI.value($0, "id") == String(found.id) } ?? [:]
             let base = ServerPlanCLI.value(row, "base_domain") ?? found.name.split(separator: ".").suffix(2).joined(separator: ".")
             return (found.id, found.name, base)
         }
+    }
+
+    // MARK: Domains
+
+    /// A domain row's FQDN: the panel's `fqdn` if it sends one, else `subdomain.base_domain`, and
+    /// just `base_domain` for the root (subdomain "@", which quick-static always uses, or "").
+    public static func fqdn(_ row: [String: Any]) -> String? {
+        if let given = value(row, "fqdn") { return given }
+        guard let base = value(row, "base_domain") else { return value(row, "domain|name") }
+        let sub = (row["subdomain"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        return sub.isEmpty || sub == "@" ? base : "\(sub).\(base)"
+    }
+
+    /// The domain list with each row's `fqdn` filled in (`domain list` prints and passes it).
+    static func withFQDN(_ data: Data) -> Data {
+        guard let rows = array(data) else { return data }
+        return ServerPlanCLI.data(rows.map { row in
+            var row = row
+            if let fqdn = fqdn(row) { row["fqdn"] = fqdn }
+            return row
+        })
+    }
+
+    /// `domain add` whose answer was lost to a timeout but whose row is there.
+    static func slowCreateOutcome(_ fqdn: String, row: Data) -> Outcome {
+        var object = ServerPlanCLI.object(row) ?? [:]
+        object["slow_answer"] = true
+        return Outcome(json: ServerPlanCLI.data(object),
+                       text: "added: \(fqdn) (created; the panel answered slowly, check it with: claudedeck server domain list)")
+    }
+
+    /// Calls the panel does synchronously over SSH, nginx and Cloudflare (domains, databases,
+    /// scans): they get 3 minutes instead of the default 20 s. The script's curl waits longer.
+    public static func slowCallTimeout(method: String, path: String) -> TimeInterval? {
+        let slow = method == "POST" && (
+            path == "/domains" || path == "/domains/quick-static" || path == "/domains/purchase"
+                || path.wholeMatch(of: /\/domains\/\d+\/(sync|apply|deploy-nginx)/) != nil
+                || path.wholeMatch(of: /\/projects\/\d+\/auto-create-db/) != nil
+                || path.wholeMatch(of: /\/servers\/\d+\/pg\/databases\/[^\/]+\/clone(-for-local)?/) != nil
+                || path.wholeMatch(of: /\/project-dirs\/\d+\/scan/) != nil
+        ) || method == "PUT" && path.wholeMatch(of: /\/domains\/\d+/) != nil
+        return slow ? 180 : nil
     }
 
     // MARK: Static sites

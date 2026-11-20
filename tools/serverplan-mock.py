@@ -158,6 +158,10 @@ def terminal_session(sock, server_name, command):
                "PS1": "deploy@%s:~$ " % server_name}
         if command == "claude" and args.claude:
             os.execve(args.claude, [args.claude], env)
+        if command.startswith("exec:"):
+            env["PS1"] = "root@%s:/app# " % command[5:]
+            os.write(1, ("Demo shell in container %s on %s (a local shell; no docker exec)\r\n" % (command[5:], server_name)).encode())
+            os.execve("/bin/sh", ["/bin/sh", "-i"], env)
         os.write(1, ("Demo terminal for %s (a local shell in %s; no SSH)\r\n" % (server_name, home)).encode())
         os.execve("/bin/sh", ["/bin/sh", "-i"], env)
     try:
@@ -220,6 +224,12 @@ MOCK_DOMAINS = [
     {"id": 6, "fqdn": "docs.example.com", "subdomain": "docs", "base_domain": "example.com", "type": "static",
      "target": "/opt/static/docs-example-com", "port": 0, "server_id": 2, "project_name": "", "ssl_enabled": True, "clean_urls": True,
      "websocket_enabled": False},
+    # A root static site as quick-static stores it: subdomain "@".
+    {"id": 7, "fqdn": "example.org", "subdomain": "@", "base_domain": "example.org", "type": "static",
+     "target": "/opt/static/example-org", "port": 0, "server_id": 2, "project_name": "", "ssl_enabled": True, "clean_urls": True,
+     "websocket_enabled": False},
+    {"id": 8, "fqdn": "shop.acme.example", "subdomain": "shop", "base_domain": "acme.example", "type": "go_app", "target": "acme-storefront",
+     "port": 3000, "server_id": 1, "project_name": "acme-storefront", "ssl_enabled": True, "clean_urls": False, "websocket_enabled": False},
 ]
 SECRET_WORDS = ("PASSWORD", "SECRET", "KEY", "TOKEN", "PRIVATE", "CREDENTIAL")
 
@@ -292,7 +302,8 @@ def v12_get(h, p, query):
     """GET routes; True when handled."""
     if p == "/domains":
         sid = (query.get("server_id") or [""])[0]
-        h.send_json(200, [d for d in MOCK_DOMAINS if not sid or str(d["server_id"]) == sid])
+        # Like the panel: the raw rows, without an `fqdn` (the client builds it; "@" is the root).
+        h.send_json(200, [{k: v for k, v in d.items() if k != "fqdn"} for d in MOCK_DOMAINS if not sid or str(d["server_id"]) == sid])
         return True
     m = re.fullmatch(r"/projects/(\d+)/(settings|env|branches|local-status|local-logs|local-env)", p)
     if m:
@@ -737,6 +748,243 @@ def domain_purchase(h, body):
                       "purchase_id": pid, "nameservers": ns, "cloudflare_zone": zone, "whois_privacy": True})
 
 
+# --- Containers (proposed for the next API version, `--containers`) ------------------------------
+# docs/serverplan-containers.md §5: numbers on health, container details / inspect / stats, logs
+# with since and grep, exec terminals, recreate / pull / remove, docker disk and prune.
+
+CONTAINER_FEATURES = ["container_details", "container_inspect", "container_stats", "server_stats", "log_query", "container_exec",
+                      "container_recreate", "image_update", "container_remove", "docker_prune"]
+removed_containers = set()   # (server id, name) removed with DELETE
+net_counters = {}            # server id or (server id, name) -> [rx, tx]
+PROTECTED = ("traefik", "postgres", "redis")
+
+
+def container_rows(sid):
+    name = "containers-%d.json" % sid
+    rows = fixture(name) if os.path.exists(os.path.join(FIXTURES, name)) else []
+    rows = [r for r in rows if (sid, r["name"]) not in removed_containers]
+    if not args.containers:
+        # What a 1.4 panel sends.
+        return [{k: r[k] for k in ("name", "image", "state", "status", "ports") if k in r} for r in rows]
+    projects = {p["display_name"].lower(): p for p in fixture("projects.json")}
+    for i, r in enumerate(rows):
+        r.setdefault("id", hashlib.sha1(("%d/%s" % (sid, r["name"])).encode()).hexdigest()[:12])
+        r.setdefault("created", "2026-11-18 07:58:10 +0000 UTC")
+        status = r.get("status", "")
+        r.setdefault("health", "unhealthy" if "(unhealthy)" in status else "healthy" if "(healthy)" in status else "none")
+        project = projects.get(r["name"].lower())
+        if project:
+            r.setdefault("project_id", project["id"])
+            r.setdefault("project_name", project["display_name"])
+        r.setdefault("domains", [d["fqdn"] for d in MOCK_DOMAINS if d["server_id"] == sid and d.get("target") == r["name"]])
+    return rows
+
+
+def counters(key, rx_rate, tx_rate):
+    with state_lock:
+        c = net_counters.setdefault(key, [10_000_000, 2_000_000])
+        c[0] += int(rx_rate * (0.5 + random_unit()))
+        c[1] += int(tx_rate * (0.5 + random_unit()))
+        return list(c)
+
+
+def random_unit():
+    return int.from_bytes(secrets.token_bytes(2), "big") / 65535.0
+
+
+def container_stats(sid, row):
+    rx, tx = counters((sid, row["name"]), 40_000, 15_000)
+    limit = 2 * 1024 ** 3
+    used = int((120 + 80 * random_unit()) * 1024 ** 2)
+    return {"name": row["name"], "cpu_percent": round(0.5 + 6 * random_unit(), 2), "mem_used_bytes": used, "mem_limit_bytes": limit,
+            "mem_percent": round(used / limit * 100, 2), "net_rx_bytes": rx, "net_tx_bytes": tx, "block_read_bytes": 4096,
+            "block_write_bytes": 1_048_576, "pids": 7, "checked_at": now()}
+
+
+def log_lines(name, count=40):
+    out = []
+    for i in range(count):
+        if i % 13 == 7:
+            out.append("2026-11-18T09:%02d:00Z %s | ERROR db query failed: connection refused" % (i % 60, name))
+        elif i % 11 == 5:
+            out.append("2026-11-18T09:%02d:00Z %s | WARN slow request 1.2s" % (i % 60, name))
+        else:
+            out.append("2026-11-18T09:%02d:00Z %s | request %d ok" % (i % 60, name, i))
+    return out
+
+
+def containers_get(h, p, query):
+    """GETs of the container additions; False when it isn't one."""
+    m = re.fullmatch(r"/servers/(\d+)/containers", p)
+    if m:
+        h.send_json(200, container_rows(int(m.group(1))))
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/logs", p)
+    if m:
+        lines = log_lines(unquote(m.group(2)))
+        grep = (query.get("grep") or [""])[0].lower()
+        if args.containers and grep:
+            lines = [l for l in lines if grep in l.lower()]
+        tail = int((query.get("tail") or ["200"])[0] or 200)
+        send_text(h, "\n".join(lines[-tail:] if tail else []))
+        return True
+    if not args.containers:
+        return False
+    m = re.fullmatch(r"/servers/(\d+)/health", p)
+    if m and int(m.group(1)) != 3:
+        sid = int(m.group(1))
+        rx, tx = counters(sid, 300_000, 120_000)
+        cpu = round(3 + 20 * random_unit(), 1)
+        mem_total = 4 * 1024 ** 3
+        mem_used = int(mem_total * (0.35 + 0.1 * random_unit()))
+        h.send_json(200, {"reachable": True, "docker_ok": True, "cpu": "%s%%" % cpu, "memory": "%.1fGi/4.0Gi" % (mem_used / 1024 ** 3),
+                          "disk": "9G/40G (22%)", "uptime": "up 3 days", "load_avg": "0.42 0.37 0.30", "checked_at": now(),
+                          "cpu_percent": cpu, "cores": 4, "mem_used_bytes": mem_used, "mem_total_bytes": mem_total,
+                          "disk_used_bytes": 9 * 1024 ** 3, "disk_total_bytes": 40 * 1024 ** 3, "load1": 0.42, "load5": 0.37,
+                          "load15": 0.30, "net_rx_bytes": rx, "net_tx_bytes": tx, "uptime_seconds": 259200})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/containers/stats", p)
+    if m:
+        sid = int(m.group(1))
+        h.send_json(200, [container_stats(sid, r) for r in container_rows(sid) if r.get("state") == "running"])
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/stats", p)
+    if m:
+        sid, name = int(m.group(1)), unquote(m.group(2))
+        row = next((r for r in container_rows(sid) if r["name"] == name), None)
+        if not row:
+            h.error(404, "not_found", "Container bulunamadi")
+        else:
+            h.send_json(200, container_stats(sid, row))
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)", p)
+    if m:
+        sid, name = int(m.group(1)), unquote(m.group(2))
+        row = next((r for r in container_rows(sid) if r["name"] == name), None)
+        if not row:
+            h.error(404, "not_found", "Container bulunamadi")
+            return True
+        exited = row.get("state") != "running"
+        h.send_json(200, dict(row, image_id="sha256:" + row["id"] * 5, exit_code=1 if exited else 0, started_at=ago(120),
+                              finished_at=ago(29) if exited else "0001-01-01T00:00:00Z", created_at=ago(125),
+                              restart_count=3 if exited else 0, restart_policy="unless-stopped", oom_killed=False,
+                              networks=["traefik-network"], mounts=[{"source": "/opt/volumes/" + name, "destination": "/data", "rw": True}],
+                              env_keys=["PORT", "DATABASE_URL", "DATA_PATH"]))
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/docker/disk", p)
+    if m:
+        h.send_json(200, {"images": {"count": 14, "active": 5, "size_bytes": 6_400_000_000, "reclaimable_bytes": 3_900_000_000},
+                          "containers": {"count": 6, "active": 4, "size_bytes": 120_000_000, "reclaimable_bytes": 40_000_000},
+                          "volumes": {"count": 4, "active": 3, "size_bytes": 2_100_000_000, "reclaimable_bytes": 300_000_000},
+                          "build_cache": {"count": 52, "active": 0, "size_bytes": 1_700_000_000, "reclaimable_bytes": 1_700_000_000}})
+        return True
+    return False
+
+
+def server_name(sid):
+    return next((s["name"] for s in fixture("servers.json") if s["id"] == sid), "server")
+
+
+def containers_post(h, p, body):
+    if not args.containers:
+        return False
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/(recreate|pull)", p)
+    if m:
+        sid, name, op = int(m.group(1)), unquote(m.group(2)), m.group(3)
+        if body.get("confirm") != name:
+            what = "yeniden olusturulur (mevcut imaj, guncel env)" if op == "recreate" else "imaji cekilir, degistiyse yeniden olusturulur"
+            confirm_required(h, "%s @ %s: container %s" % (name, server_name(sid), what), name)
+        elif op == "pull":
+            h.send_json(200, {"success": True, "updated": name != "postgres", "old_image_id": "sha256:aaa", "new_image_id": "sha256:bbb",
+                              "output": "Status: Downloaded newer image for %s" % name})
+        else:
+            h.send_json(200, {"success": True, "id": secrets.token_hex(6)})
+        return True
+    m = re.fullmatch(r"/servers/(\d+)/docker/prune", p)
+    if m:
+        sid = int(m.group(1))
+        name = server_name(sid)
+        if body.get("confirm") != name:
+            parts = []
+            if body.get("images", "dangling") != "none":
+                parts.append("imajlar (%s)" % body.get("images", "dangling"))
+            if body.get("containers", True):
+                parts.append("durmus containerlar")
+            if body.get("build_cache", True):
+                parts.append("build cache")
+            if body.get("volumes"):
+                parts.append("KULLANILMAYAN VOLUME'LAR VE VERILERI")
+            confirm_required(h, "%s: %s silinecek (~5.6 GB geri kazanilabilir)" % (name, ", ".join(parts) or "hicbir sey"), name)
+        else:
+            h.send_json(200, {"success": True, "reclaimed_bytes": 5_640_000_000, "output": "Total reclaimed space: 5.64GB"})
+        return True
+    return False
+
+
+def containers_delete(h, p, body):
+    if not args.containers:
+        return False
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)", p)
+    if not m:
+        return False
+    sid, name = int(m.group(1)), unquote(m.group(2))
+    if name in PROTECTED:
+        h.error(400, "bad_request", "%s silinemez" % name)
+    elif body.get("confirm") != name:
+        confirm_required(h, "%s @ %s: container silinir (docker rm -f; volume'lar kalir)" % (name, server_name(sid)), name)
+    else:
+        with state_lock:
+            removed_containers.add((sid, name))
+        h.send_json(200, {"success": True})
+    return True
+
+
+# --- Rate limiting (ServerPlan 1.5, `--v15`) ------------------------------------------------------
+
+rate_rules = {}   # base domain -> [rule]
+
+
+def rate_base(host):
+    return ".".join(host.lower().split(".")[-2:])
+
+
+def ratelimit_get(h, query):
+    host = (query.get("host") or [""])[0]
+    if args.cloudflare == "unconfigured":
+        return h.error(412, "not_configured", "Cloudflare token ayarli degil")
+    if not host.endswith(("example.com", "example.org", "acme.example")):
+        return h.error(404, "not_found", "Cloudflare zone bulunamadi: " + rate_base(host))
+    h.send_json(200, {"zone_rules": rate_rules.get(rate_base(host), [])})
+
+
+def ratelimit_post(h, p, body):
+    host = (body.get("host") or "").lower()
+    if args.cloudflare == "unconfigured":
+        return h.error(412, "not_configured", "Cloudflare token ayarli degil")
+    if p == "/ratelimit/clear":
+        if body.get("confirm") != host:
+            return confirm_required(h, "zone'daki rate-limit kurallari kaldirilacak (API korumasi kalkar)", host)
+        rate_rules.pop(rate_base(host), None)
+        return h.send_json(200, {"cleared": True})
+    paths = body.get("paths") or ["/init"]
+    if "." not in host or any(not re.fullmatch(r"/[A-Za-z0-9._~/-]*\*?", x) for x in paths):
+        return h.error(400, "bad_request", "gecersiz host veya path")
+    if not host.endswith(("example.com", "example.org", "acme.example")):
+        return h.error(404, "not_found", "Cloudflare zone bulunamadi: " + rate_base(host))
+    requests, period = body.get("requests") or 20, body.get("period") or 10
+    conds = " or ".join('starts_with(http.request.uri.path, "%s")' % x[:-1] if x.endswith("*") else 'http.request.uri.path eq "%s"' % x
+                        for x in paths)
+    rule = {"description": "serverplan: %s %s" % (host, ",".join(paths)), "expression": '(http.host eq "%s" and (%s))' % (host, conds),
+            "action": "block", "ratelimit": {"characteristics": ["ip.src", "cf.colo.id"], "period": period,
+                                             "requests_per_period": requests, "mitigation_timeout": period}}
+    existing = rate_rules.get(rate_base(host), [])
+    if existing and body.get("confirm") != host:
+        names = "; ".join("%s [%s]" % (r["description"], r["expression"]) for r in existing)
+        return confirm_required(h, "zone'daki mevcut rate-limit kurali degisecek: %s → %s" % (names, rule["description"]), host)
+    rate_rules[rate_base(host)] = [rule]
+    h.send_json(200, {"rule": rule})
+
+
 # --- HTTP ---------------------------------------------------------------------------------------
 
 class Handler(BaseHTTPRequestHandler):
@@ -804,7 +1052,16 @@ class Handler(BaseHTTPRequestHandler):
                               features=me["features"] + ["env_delete", "domain_check", "domain_purchase"])
                 if args.v14:
                     me.update(server_version="1.4", features=me["features"] + ["registrar_balance"])
+                if args.v15:
+                    me.update(server_version="1.5", features=me["features"] + ["ratelimit"],
+                              scopes=sorted(set(me["scopes"]) | {"dns"}))
+                if args.containers:
+                    me.update(features=me["features"] + CONTAINER_FEATURES)
                 return self.send_json(200, me)
+            if p == "/ratelimit" and args.v15:
+                return ratelimit_get(self, query)
+            if containers_get(self, p, query):
+                return
             if p == "/domains/check":
                 return domain_check(self, query)
             if p == "/registrar/balance" and args.v14:
@@ -909,7 +1166,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         i = 0
         while True:
-            self.sse("log", {"line": "%s %s | GET /health 200 %dms" % (now(), container, 2 + i % 5), "stream": "stdout"})
+            if i % 7 == 6:
+                self.sse("log", {"line": "%s %s | ERROR upstream timeout after 30s (GET /api/orders)" % (now(), container), "stream": "stderr"})
+            else:
+                self.sse("log", {"line": "%s %s | GET /health 200 %dms" % (now(), container, 2 + i % 5), "stream": "stdout"})
             i += 1
             time.sleep(2)
 
@@ -981,6 +1241,16 @@ class Handler(BaseHTTPRequestHandler):
             command = body.get("command", "shell")
             if command == "claude" and sid != 1:
                 return self.error(400, "bad_request", "Bu sunucuda claude yok")
+            if command == "exec":
+                name = body.get("container") or ""
+                if not args.containers:
+                    return self.error(400, "bad_request", "command sadece shell veya claude olabilir")
+                if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", name):
+                    return self.error(400, "bad_request", "Gecersiz container adi")
+                row = next((r for r in container_rows(sid) if r["name"] == name), None)
+                if not row or row.get("state") != "running":
+                    return self.error(400, "bad_request", "Container calismiyor")
+                command = "exec:" + name
             ticket = secrets.token_urlsafe(24)
             with state_lock:
                 tickets[ticket] = (sid, command, time.time() + 60)
@@ -1008,6 +1278,10 @@ class Handler(BaseHTTPRequestHandler):
                 deploy_done[dep_id] = False
             threading.Thread(target=play_deploy, args=(dep_id, name, server), daemon=True).start()
             return self.send_json(202, {"deployment_id": dep_id, "stream_url": "%s/deployments/%d/stream" % (BASE, dep_id)})
+        if p in ("/ratelimit", "/ratelimit/clear") and args.v15:
+            return ratelimit_post(self, p, body)
+        if containers_post(self, p, body):
+            return
         m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/(start|stop|restart)", p)
         if m:
             name, verb = unquote(m.group(2)), m.group(3)
@@ -1039,7 +1313,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         p = self.agent_path()
-        if p is not None and not v12_delete(self, p, self.body()):
+        if p is None:
+            return
+        body = self.body()
+        if not containers_delete(self, p, body) and not v12_delete(self, p, body):
             self.error(404, "not_found", "Bulunamadı")
 
 
@@ -1060,7 +1337,15 @@ def main():
     parser.add_argument("--low-threshold", type=float, default=0.0, help="the panel's low-balance threshold in USD (0: none, the panel's default)")
     parser.add_argument("--namecheap", choices=("configured", "unconfigured"), default="configured",
                         help="unconfigured: /registrar/balance and /domains/check answer 412 not_configured")
+    parser.add_argument("--v15", action="store_true", help="/me says 1.5 (implies --v14): GET/POST /ratelimit, POST /ratelimit/clear")
+    parser.add_argument("--cloudflare", choices=("configured", "unconfigured"), default="configured",
+                        help="unconfigured: /ratelimit answers 412 not_configured")
+    parser.add_argument("--containers", action="store_true",
+                        help="the proposed container additions (docs/serverplan-containers.md §5): stats, inspect, logs since/grep, "
+                             "exec terminals, recreate/pull/remove, docker disk/prune, numbers on health")
     args = parser.parse_args()
+    if args.v15:
+        args.v14 = True
     if args.v14:
         args.v13 = True
     registrar.update(available=args.balance, account=args.balance, threshold=max(0.0, args.low_threshold))

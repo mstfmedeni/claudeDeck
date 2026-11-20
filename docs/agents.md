@@ -802,10 +802,20 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 |---|---|---|
 | `server list` · `projects` · `deployments [--project P]` | `GET /servers` · `/projects` · `/deployments` | |
 | `server health SERVER` · `containers SERVER` | `GET /servers/:id/health` · `/containers` | |
-| `server logs SERVER CONTAINER [--tail N] [--follow]` | `GET …/logs`; `--follow` the log stream, 25 s per request | |
+| `server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since T]` | `GET …/logs`; `--follow` the log stream, 25 s per request. `--grep`: case-insensitive text, on the fetched tail (the panel's with `log_query`); `--since 10m`/RFC 3339: only with `log_query` (else 501) | |
 | `server deploy PROJECT [--server S] [--force] [--wait]` | `POST /projects/:id/deploy` | confirmed automatically, logged |
 | `server deploy-status ID [--wait]` | `GET /deployments/:id` (long poll with `--wait`) | |
 | `server container SERVER CONTAINER start\|stop\|restart` | `POST …/containers/:name/:verb` | the owner's dialog |
+| `server container SERVER CONTAINER status\|inspect` | `GET /servers/:id/containers` + `/domains` + `/projects` (+ `GET …/containers/:name` with `container_inspect`): state, health, uptime, exit code, image, ports, domains, project | |
+| `server container SERVER CONTAINER env` | the container's ServerPlan project (the panel's container ↔ domain ↔ project rule), then `GET /projects/:id/env` (secrets hidden) | |
+| `server container SERVER CONTAINER logs …` | the same as `server logs SERVER CONTAINER …` | |
+| `server container SERVER CONTAINER stats` | `GET …/containers/:name/stats` (`container_stats`) | |
+| `server container SERVER CONTAINER recreate\|pull\|remove` | `POST …/recreate` · `POST …/pull` · `DELETE …/containers/:name` (`container_recreate`, `image_update`, `container_remove`; scope `containers`) | the owner's dialog (confirm = the container) |
+| `server stats SERVER` | `GET /servers/:id/health` (CPU %, memory %, disk %, load) + `GET …/containers/stats` with `container_stats` | |
+| `server disk SERVER` · `prune SERVER [--images dangling\|unused\|none] [--volumes] [--no-build-cache] [--no-containers]` | `GET /servers/:id/docker/disk` · `POST /servers/:id/docker/prune` (`docker_prune`; prune: scope `containers`) | prune: the owner's dialog (confirm = the server) |
+| `server ratelimit show HOST` | `GET /ratelimit?host=` (1.5, `ratelimit`; scope `read`) → `{"zone_rules":[{"description","expression","action","ratelimit":{"characteristics","period","requests_per_period","mitigation_timeout"}}]}` | |
+| `server ratelimit set HOST [--paths /init,/v1/*] [--rate 20/10s]` | `POST /ratelimit` `{"host","paths","requests","period"}` (scope `dns`) → `{"rule"}` | the owner's dialog when the zone already has a rule (confirm = the host) |
+| `server ratelimit clear HOST` | `POST /ratelimit/clear` `{"host"}` (scope `dns`) → `{"cleared":true}` | always the owner's dialog (confirm = the host) |
 | `server features` | `GET /me` | |
 | `server dirs` · `scan DIR-ID\|PATH` | `GET /project-dirs` · `POST /project-dirs/:id/scan` | |
 | `server ports SERVER` | `GET /servers/:id/ports` | |
@@ -953,6 +963,40 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 - **Mock**: `tools/serverplan-mock.py --v14 [--balance N] [--low-threshold N] [--namecheap
   unconfigured]`; `POST /_demo/balance?value=N` moves the balance and emits the events on a crossing.
   In the demo: `CLAUDEDECK_SERVERPLAN_DEMO=1 CLAUDEDECK_SERVERPLAN_MOCK_ARGS="--v14 --balance 15" tools/demo.sh`.
+  `--v15` adds `/ratelimit` (`--cloudflare unconfigured`: 412); `--containers` adds the proposed
+  container features (stats, inspect, logs `since`/`grep`, exec terminals, recreate / pull /
+  remove, docker disk / prune, numbers on health). The mock's `/domains` rows carry no `fqdn`, like
+  the panel's, and include a root static site (`@`).
+- **Containers**: `container … status|inspect|env|logs` and `stats SERVER` work on any panel
+  (status and env are built from the container list, the domains and the projects with the
+  panel's own rule: an app domain's container is `lower(target)` or `lower(project_name)`, a static
+  site's `nginx-<sub>-<base with dashes>`). An unknown container is `404 unknown_container`, exit 5
+  (the message lists the server's containers); a container that isn't a ServerPlan project's has no
+  env (`404 no_project`). `container … stats|recreate|pull|remove`, `disk` and `prune` are offered
+  only when `/me` lists their feature (`container_stats`, `container_recreate`, `image_update`,
+  `container_remove`, `docker_prune`; proposed to ServerPlan in docs/serverplan-containers.md §5),
+  never on a version alone; otherwise `501 not_available`, exit 4. Recreate, pull, remove and prune
+  wait up to 330 s (the owner's 2 minutes, then docker). `logs --grep` filters the fetched tail (the
+  tail applies first) until the panel has `log_query`; `--since` needs `log_query`.
+- **Rate limiting (1.5, `ratelimit`)**: `ratelimit set HOST` limits `/init` to 20 requests per 10 s
+  per IP by default; `--paths` takes absolute paths (comma separated, `*` only at the end),
+  `--rate N/Ms` or `N/Mm`. Cloudflare Free allows one rule per zone: replacing the zone's rule is the
+  panel's 428 with both rules in the summary, which goes to the owner; `ratelimit clear` always is.
+  Refusals with hints: `412 not_configured` (the Cloudflare token isn't set in ServerPlan ›
+  Entegrasyonlar › Cloudflare; exit 4), `404 no_zone` (no Cloudflare zone for the base domain;
+  `server zone add BASE`; exit 5), `400` (bad host or path; exit 2), `502 cloudflare_error` (the
+  panel's token needs Zone › Zone WAF › Edit; exit 1). Webhook paths are better left unlimited
+  (RevenueCat and Apple send from shared IPs).
+- **Domain names**: the panel stores a root domain as subdomain `@` (quick-static) or `""`; it
+  resolves and lists as the bare base domain (`veilnum.com`), any other as `sub.base`. `domain
+  list` prints a TYPE and an FQDN column and `--json` adds `fqdn` to each row.
+- **Slow panel calls**: domain writes (`POST /domains`, `PUT /domains/:id`, `quick-static`,
+  `sync`, `apply`, `deploy-nginx`), `auto-create-db`, the database clones, `domains/purchase` and
+  `project-dirs/:id/scan` apply Traefik / nginx / Cloudflare or run SSH before they answer, so the app
+  waits 180 s for them (the command's curl longer). When `domain add`'s answer is lost to a timeout
+  anyway, the app looks for the FQDN on that server (three times, 5 s apart): a row that wasn't
+  there before counts as created ("created; the panel answered slowly", `"slow_answer": true`),
+  exit 0. Retrying is safe: the panel answers `409 conflict` for an FQDN it has.
 - Reads aren't logged one by one (`--wait` polls); every change and every refusal is in the
   Activity Log.
 

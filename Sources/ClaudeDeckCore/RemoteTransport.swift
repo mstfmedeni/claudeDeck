@@ -387,6 +387,12 @@ public final class RemoteServer: @unchecked Sendable {
     public var onAnswerApproval: ((_ id: String, _ approve: Bool) -> Void)?
     /// `dismissServerIssues` (ids capped at 200).
     public var onDismissServerIssues: ((_ deploymentIDs: [Int], _ all: Bool) -> Void)?
+    /// A server's containers (and a log tail); reply with `.serverPlanContainers`.
+    public var onServerPlanContainers: ((_ serverID: Int, _ logsOf: String?, _ reply: @escaping @Sendable (RemoteMessage) -> Void) -> Void)?
+    /// Start / stop / restart from a phone (names and verbs checked); reply once the owner
+    /// decided on the Mac and it's done (nil) or not (why).
+    public var onServerPlanContainerAction: ((_ serverID: Int, _ container: String, _ verb: String,
+                                              _ reply: @escaping @Sendable (String?) -> Void) -> Void)?
     /// `changeDecisionAnswer` (the answer cut to `Decisions.maxAnswer`).
     public var onChangeDecisionAnswer: ((_ id: String, _ answer: String) -> Void)?
     /// The set of sessions any remote watches changed (the host taps only those).
@@ -686,6 +692,15 @@ public final class RemoteServer: @unchecked Sendable {
                 onAnswerApproval?(approvalID, approve)
             case .dismissServerIssues(let ids, let all):
                 onDismissServerIssues?(Array(ids.prefix(200)), all)
+            case .serverPlanContainersRequest(let serverID, let logsOf) where logsOf.map(RemoteServerPlan.isValidContainerName) != false:
+                let channel = peer.channel
+                onServerPlanContainers?(serverID, logsOf) { [queue] answer in queue.async { channel.send(answer) } }
+            case .serverPlanContainerAction(let serverID, let container, let verb)
+                where RemoteServerPlan.isValidContainerName(container) && RemoteServerPlan.containerVerbs.contains(verb):
+                let channel = peer.channel
+                onServerPlanContainerAction?(serverID, container, verb) { [queue] error in
+                    queue.async { channel.send(.serverPlanContainerActionResult(serverID: serverID, container: container, verb: verb, error: error)) }
+                }
             case .changeDecisionAnswer(let decisionID, let answer) where Decisions.isValidID(decisionID):
                 onChangeDecisionAnswer?(decisionID, String(answer.prefix(Decisions.maxAnswer)))
             case .browseFolder(let path):
@@ -852,6 +867,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
     /// `.directory` / `.file` / `.fileChunk` / `.uploadAck` answers.
     public var onFileReply: ((RemoteMessage) -> Void)?
     public var onServerPlanRepairResult: ((_ deploymentID: Int, _ sessionID: UUID?, _ error: String?) -> Void)?
+    /// `.serverPlanContainers` and `.serverPlanContainerActionResult` answers.
+    public var onServerPlanContainers: ((RemoteMessage) -> Void)?
     /// Each way tried (or skipped), once it's decided (the phone's Connection Log), with the time
     /// it started. Doesn't change what happens.
     public var onAttemptEnded: ((_ address: String, _ route: RemoteRoute, _ startedAt: Date, _ outcome: RemoteConnectionLog.Outcome) -> Void)?
@@ -1269,6 +1286,8 @@ public final class RemoteHostConnection: @unchecked Sendable {
             if authenticated { self.onFileReply?(message) }
         case .serverPlanRepairResult(let id, let sessionID, let error) where authenticated:
             self.onServerPlanRepairResult?(id, sessionID, error)
+        case .serverPlanContainers, .serverPlanContainerActionResult:
+            if authenticated { self.onServerPlanContainers?(message) }
         case .refused(let reason):
             if authenticated {
                 self.end(.refused(reason))

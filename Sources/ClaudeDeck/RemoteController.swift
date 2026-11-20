@@ -362,6 +362,16 @@ final class RemoteController {
             server.onDismissServerIssues = { ids, all in
                 MainActor.assumeIsolated { ServerPlanController.shared.clearFromPhone(deploymentIDs: ids, all: all) }
             }
+            server.onServerPlanContainers = { serverID, logsOf, reply in
+                MainActor.assumeIsolated {
+                    _ = Task { @MainActor in reply(await ServerPlanController.shared.phoneContainers(serverID: serverID, logsOf: logsOf)) }
+                }
+            }
+            server.onServerPlanContainerAction = { serverID, container, verb, reply in
+                MainActor.assumeIsolated {
+                    _ = Task { @MainActor in reply(await ServerPlanController.shared.phoneContainerAction(serverID: serverID, container: container, verb: verb)) }
+                }
+            }
             server.onPermission = { [weak self] id, stamp, approve in
                 MainActor.assumeIsolated {
                     guard let model = self?.model else { return false }
