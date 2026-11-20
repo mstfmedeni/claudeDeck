@@ -602,7 +602,7 @@ public struct ServerPlanTicket: Decodable, Sendable, Equatable {
 /// What the remote terminal starts with.
 public enum ServerPlanTerminalCommand: String, Sendable, Codable {
     case shell, claude
-    /// 1.5 `container_exec`: a shell inside a container (`docker exec`).
+    /// 1.6 `container_exec`: a shell inside a running container (`docker exec`, bash else sh).
     case exec
 }
 

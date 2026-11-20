@@ -1,9 +1,10 @@
 import Foundation
 
 // Containers and server resources through ServerPlan's agent API: what a 1.4 panel gives
-// (the container list, health strings, logs, domains, project env) and the 1.5 additions
-// ClaudeDeck asked for (docs/serverplan-containers.md §5). Every 1.5 call is gated on its `/me`
-// feature, never on the version; the shapes below read both the proposed JSON and what 1.4 sends.
+// (the container list, health strings, logs, domains, project env), the additions ServerPlan
+// shipped in agent API 1.6 (container_details, container_inspect, container_stats, server_stats,
+// log_query) and the ones still proposed (docs/serverplan-containers.md §5). Every call is gated on
+// its `/me` feature, never on the version; the shapes below read what 1.6 sends and what 1.4 sends.
 
 extension ServerPlanContract.Feature {
     /// v1.1: project env (`GET/POST /projects/:id/env`).
@@ -12,7 +13,7 @@ extension ServerPlanContract.Feature {
     public static let envDelete = "env_delete"
     /// v1.1: `GET /domains`.
     public static let domains = "domains"
-    // Proposed for 1.5 (docs/serverplan-containers.md §5).
+    // Shipped in agent API 1.6 (ServerPlan internal/web/handlers/agent_containers.go).
     /// `id`, `created`, `health`, `project_id`, `project_name`, `domains` on the container list.
     public static let containerDetails = "container_details"
     /// `GET /servers/:id/containers/:name`.
@@ -21,8 +22,10 @@ extension ServerPlanContract.Feature {
     public static let containerStats = "container_stats"
     /// Numbers on `/servers/:id/health` (`cpu_percent`, `mem_used_bytes`, …, net counters).
     public static let serverStats = "server_stats"
-    /// `since` / `until` / `grep` / `timestamps` on container logs.
+    /// `since` / `until` / `grep` / `timestamps` on container logs (the stream takes only `since`
+    /// and `timestamps`; it answers 400 to `until` or `grep`).
     public static let logQuery = "log_query"
+    // Still proposed (docs/serverplan-containers.md §5.6–5.10); not in 1.6.
     /// `POST /ws-ticket` with `command: "exec"` and `container`.
     public static let containerExec = "container_exec"
     /// `POST …/containers/:name/recreate` (428).
@@ -58,7 +61,7 @@ extension ServerPlanContainer {
         guard let status = status?.lowercased() else { return .none }
         if status.contains("(unhealthy)") { return .unhealthy }
         if status.contains("(healthy)") { return .healthy }
-        if status.contains("health: starting") { return .starting }
+        if status.contains("health: starting") || status.contains("(starting)") { return .starting }
         return .none
     }
 
@@ -295,8 +298,9 @@ public struct ServerPlanServerSample: Sendable, Equatable {
 
 // MARK: - 1.5 shapes
 
-/// A container's resource use (`container_stats`). Reads the proposed numbers and docker's own
-/// display strings (`{"cpu":"1.85%","mem":"150MiB / 3.84GiB","net":"…","block":"…"}`).
+/// A container's resource use (`container_stats`). Reads 1.6's numbers (sizes in bytes; net and
+/// block are docker's cumulative counters) and docker's own display strings
+/// (`{"cpu":"1.85%","mem":"150MiB / 3.84GiB","net":"…","block":"…"}`).
 public struct ServerPlanContainerStats: Decodable, Sendable, Equatable {
     public var name: String
     public var cpuPercent: Double?
@@ -350,8 +354,30 @@ public struct ServerPlanContainerStats: Decodable, Sendable, Equatable {
     }
 }
 
-/// One container in detail (`container_inspect`; env values never, only the keys).
+/// One container in detail (`container_inspect`; env values never, only the keys). 1.6 builds
+/// `status` from inspect ("running (healthy)", "exited (1)", else the state), sends a 12-char
+/// `id`, `finished_at: null` when docker's time is zero, `public: null` for an unmapped port and
+/// `project_id` / `project_name: null` when the container matches no project.
 public struct ServerPlanContainerInspect: Decodable, Sendable, Equatable {
+    public struct Port: Decodable, Sendable, Equatable {
+        public var privatePort: Int
+        /// nil: exposed but not published.
+        public var publicPort: Int?
+        public var type: String
+        public var ip: String
+        enum CodingKeys: String, CodingKey { case privatePort = "private", publicPort = "public", type, ip }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            privatePort = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .privatePort))?.value ?? 0
+            publicPort = (try? c.decodeIfPresent(FlexibleInt.self, forKey: .publicPort))?.value
+            type = (try? c.decodeIfPresent(String.self, forKey: .type)) ?? "tcp"
+            ip = (try? c.decodeIfPresent(String.self, forKey: .ip)) ?? ""
+        }
+
+        /// "3000→3000/tcp", or "5432/tcp" when not published.
+        public var label: String { publicPort.map { "\($0)→\(privatePort)/\(type)" } ?? "\(privatePort)/\(type)" }
+    }
+
     public struct Mount: Decodable, Sendable, Equatable {
         public var source: String
         public var destination: String
@@ -366,7 +392,13 @@ public struct ServerPlanContainerInspect: Decodable, Sendable, Equatable {
     }
 
     public var name: String
+    public var containerID: String?
+    public var image: String?
     public var imageID: String?
+    public var state: String?
+    public var status: String?
+    public var ports: [Port]
+    public var labels: [String: String]
     public var startedAt: Date?
     public var finishedAt: Date?
     public var createdAt: Date?
@@ -383,7 +415,7 @@ public struct ServerPlanContainerInspect: Decodable, Sendable, Equatable {
     public var health: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, imageID = "image_id", startedAt = "started_at", finishedAt = "finished_at", createdAt = "created_at"
+        case name, containerID = "id", image, state, status, ports, labels, imageID = "image_id", startedAt = "started_at", finishedAt = "finished_at", createdAt = "created_at"
         case restartCount = "restart_count", restartPolicy = "restart_policy", oomKilled = "oom_killed", exitCode = "exit_code"
         case networks, mounts, envKeys = "env_keys", domains, projectID = "project_id", projectName = "project_name", health
     }
@@ -395,6 +427,12 @@ public struct ServerPlanContainerInspect: Decodable, Sendable, Equatable {
             return value.timeIntervalSince1970 < 0 ? nil : value
         }
         name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        containerID = try? c.decodeIfPresent(String.self, forKey: .containerID)
+        image = try? c.decodeIfPresent(String.self, forKey: .image)
+        state = try? c.decodeIfPresent(String.self, forKey: .state)
+        status = try? c.decodeIfPresent(String.self, forKey: .status)
+        ports = (try? c.decodeIfPresent([Port].self, forKey: .ports)) ?? []
+        labels = (try? c.decodeIfPresent([String: String].self, forKey: .labels)) ?? [:]
         imageID = try? c.decodeIfPresent(String.self, forKey: .imageID)
         startedAt = date(.startedAt)
         finishedAt = date(.finishedAt)
@@ -527,6 +565,34 @@ public struct ServerPlanEnvVar: Decodable, Sendable, Equatable, Identifiable {
         // Never keep a secret's value, even if a panel sent one.
         value = isSecret ? nil : (try? c.decodeIfPresent(String.self, forKey: .value)) ?? nil
         source = try? c.decodeIfPresent(String.self, forKey: .source)
+    }
+}
+
+// MARK: - Logs: the panel's query limits (log_query)
+
+/// What ServerPlan 1.6 accepts for `since` / `until` / `grep` (`parseAgentLogQuery`); anything
+/// else is its 400 `bad_request`.
+public enum ServerPlanLogQuery {
+    /// The longest `grep` the panel takes.
+    public static let grepMax = 200
+
+    /// An RFC 3339 time (digits, `T`, `Z`, `:`, `.`, `+`, `-`; no spaces) or a duration like
+    /// `10m`, `2h`, `30s`: `^[0-9TZ:.+-]{1,40}$|^[0-9]+[smh]$`.
+    public static func isValidTime(_ value: String) -> Bool {
+        value.wholeMatch(of: /[0-9TZ:.+\-]{1,40}/) != nil || value.wholeMatch(of: /[0-9]+[smh]/) != nil
+    }
+
+    /// At most 200 bytes, one line.
+    public static func isValidGrep(_ value: String) -> Bool {
+        value.utf8.count <= grepMax && !value.contains(where: { $0 == "\n" || $0 == "\r" || $0 == "\0" })
+    }
+
+    /// Why the panel would refuse these values, nil when it takes them.
+    public static func problem(since: String?, until: String?, grep: String?) -> String? {
+        if let since, !since.isEmpty, !isValidTime(since) { return "since: an RFC 3339 time or a duration like 10m, 2h" }
+        if let until, !until.isEmpty, !isValidTime(until) { return "until: an RFC 3339 time or a duration like 10m, 2h" }
+        if let grep, !grep.isEmpty, !isValidGrep(grep) { return "grep: one line of at most \(grepMax) characters" }
+        return nil
     }
 }
 
@@ -707,10 +773,12 @@ extension ServerPlanClient {
         try await get([ServerPlanContainerStats].self, "/servers/\(serverID)/containers/stats")
     }
 
-    /// `container_stats`: one container.
-    public func containerStats(serverID: Int, container: String) async throws -> ServerPlanContainerStats {
+    /// `container_stats`: one container. The panel answers with a list (`docker stats NAME`), like
+    /// the all-containers route; an empty one (a stopped container docker skipped) is nil.
+    public func containerStats(serverID: Int, container: String) async throws -> ServerPlanContainerStats? {
         try Self.checkContainer(container)
-        return try await get(ServerPlanContainerStats.self, "/servers/\(serverID)/containers/\(Self.pathComponent(container))/stats")
+        let list = try await get([ServerPlanContainerStats].self, "/servers/\(serverID)/containers/\(Self.pathComponent(container))/stats")
+        return list.first { $0.name == container } ?? list.first
     }
 
     /// `docker_prune`: what docker's images, containers, volumes and build cache take.
@@ -718,13 +786,20 @@ extension ServerPlanClient {
         try await get(ServerPlanDockerDisk.self, "/servers/\(serverID)/docker/disk")
     }
 
-    /// The last `tail` lines; `since` / `grep` only go to a panel with `log_query` (the caller
-    /// checks; an older panel would ignore them silently).
-    public func containerLogs(serverID: Int, container: String, tail: Int, since: String?, grep: String?) async throws -> String {
+    /// The last `tail` lines; `since` / `until` / `grep` / `timestamps` only go to a panel with
+    /// `log_query` (the caller checks; an older panel would ignore them silently). With `grep` the
+    /// panel applies `tail` after the filter. Values the panel would refuse (400) are refused here.
+    public func containerLogs(serverID: Int, container: String, tail: Int, since: String?, until: String? = nil, grep: String?,
+                              timestamps: Bool = false) async throws -> String {
         try Self.checkContainer(container)
+        if let problem = ServerPlanLogQuery.problem(since: since, until: until, grep: grep) {
+            throw ServerPlanError.http(status: 400, code: "bad_request", message: problem)
+        }
         var query = [URLQueryItem(name: "tail", value: String(tail))]
         if let since, !since.isEmpty { query.append(URLQueryItem(name: "since", value: since)) }
+        if let until, !until.isEmpty { query.append(URLQueryItem(name: "until", value: until)) }
         if let grep, !grep.isEmpty { query.append(URLQueryItem(name: "grep", value: grep)) }
+        if timestamps { query.append(URLQueryItem(name: "timestamps", value: "1")) }
         let request = try request(Self.logsPath(serverID: serverID, container: container), query: query, accept: "text/plain")
         let (data, _) = try await send(request)
         return String(decoding: data, as: UTF8.self)

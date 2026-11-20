@@ -3,7 +3,7 @@ import Foundation
 
 /// Control frames of ServerPlan's terminal WebSocket (text JSON; pty bytes travel as binary frames).
 /// CONTRACT: `{"type":"resize","cols","rows"}` from the client, `{"type":"exit","code"}` and
-/// (proposed) `{"type":"error","message"}` from the server.
+/// `{"type":"error","message"}` from the server (ServerPlan 1.6 `agent_streams.go`).
 public enum ServerPlanTerminalMessage: Equatable, Sendable {
     case resize(cols: Int, rows: Int)
     case exit(code: Int)

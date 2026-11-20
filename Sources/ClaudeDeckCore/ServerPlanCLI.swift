@@ -613,29 +613,54 @@ public enum ServerPlanCLI {
             guard ServerPlanClient.isValidContainerName(name) else { throw Refusal(outcome: .error(400, "bad_container", exit: .usage)) }
             let tail = min(max(Int(form["tail"] ?? "") ?? 200, 0), 5000)
             let window = min(SessionCLI.maxWaitWindow, max(0, Int(form["follow"] ?? "") ?? 0))
-            // `--since` needs the panel (its log lines carry no time); `--grep` is the panel's with
-            // `log_query`, else applied here to the fetched tail.
+            // `--since` / `--until` / `--timestamps` need the panel (its log lines carry no time);
+            // `--grep` is the panel's with `log_query`, else applied here to the fetched tail. The
+            // live stream takes only since / timestamps (ServerPlan answers 400 to until or grep),
+            // so a followed log is always filtered here.
             let since = (form["since"] ?? "").trimmingCharacters(in: .whitespaces)
+            let until = (form["until"] ?? "").trimmingCharacters(in: .whitespaces)
             let grep = (form["grep"] ?? "").trimmingCharacters(in: .whitespaces)
+            let timestamps = form["timestamps"] == "1"
             let panelQuery = me?.has(feature: ServerPlanContract.Feature.logQuery) == true
-            if !since.isEmpty {
+            for (flag, value) in [("--since", since), ("--until", until)] where !value.isEmpty {
                 guard panelQuery else {
-                    throw Refusal(outcome: .error(501, "not_available", ServerPlanCLI.notAvailable + " (--since needs ServerPlan's log_query)", exit: .refused))
+                    throw Refusal(outcome: .error(501, "not_available", ServerPlanCLI.notAvailable + " (\(flag) needs ServerPlan's log_query)", exit: .refused))
                 }
-                guard ServerPlanCLI.isValidSince(since) else {
-                    throw Refusal(outcome: .error(400, "bad_since", "an RFC 3339 time or a duration like 10m, 2h", exit: .usage))
+                guard ServerPlanCLI.isValidSince(value) else {
+                    throw Refusal(outcome: .error(400, "bad_since", "\(flag): an RFC 3339 time (no spaces) or a duration like 10m, 2h", exit: .usage))
                 }
             }
+            if timestamps, !panelQuery {
+                throw Refusal(outcome: .error(501, "not_available", ServerPlanCLI.notAvailable + " (--timestamps needs ServerPlan's log_query)", exit: .refused))
+            }
+            if !until.isEmpty, window > 0 {
+                throw Refusal(outcome: .error(400, "bad_until", "--until doesn't go with --follow (the live log has no end time)", exit: .usage))
+            }
+            if panelQuery, window == 0, !ServerPlanLogQuery.isValidGrep(grep) {
+                throw Refusal(outcome: .error(400, "bad_grep", "--grep: one line of at most \(ServerPlanLogQuery.grepMax) characters", exit: .usage))
+            }
             guard window > 0 else {
-                let text = panelQuery && (!since.isEmpty || !grep.isEmpty)
-                    ? try await client.containerLogs(serverID: server, container: name, tail: tail, since: since, grep: grep)
-                    : try await client.containerLogs(serverID: server, container: name, tail: tail)
+                let query = panelQuery && (!since.isEmpty || !until.isEmpty || !grep.isEmpty || timestamps)
+                let text: String
+                do {
+                    text = query
+                        ? try await client.containerLogs(serverID: server, container: name, tail: tail, since: since, until: until, grep: grep,
+                                                         timestamps: timestamps)
+                        : try await client.containerLogs(serverID: server, container: name, tail: tail)
+                } catch ServerPlanError.http(let status, _, _) where status == 502 {
+                    // ServerPlan answers 502 for docker's "No such container" on logs: say which.
+                    try await unknownContainer(server: server, name: name)
+                    throw ServerPlanError.http(status: 502, code: "server_unreachable", message: "docker logs failed on the server")
+                }
                 var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
                 while lines.last?.isEmpty == true { lines.removeLast() }
                 if !panelQuery { lines = ServerPlanLogFilter.grep(lines, grep) }
+                // With grep the panel's pipe hides docker's error: an empty answer may be an unknown container.
+                if lines.isEmpty, query, !grep.isEmpty { try await unknownContainer(server: server, name: name) }
                 return Outcome(json: ServerPlanCLI.data(["lines": lines]), text: lines.joined(separator: "\n"))
             }
-            let stream = try await client.containerLogStream(serverID: server, container: name, tail: tail, since: panelQuery ? since : nil)
+            let stream = try await client.containerLogStream(serverID: server, container: name, tail: tail, since: panelQuery ? since : nil,
+                                                             timestamps: timestamps)
             let collector = Task { () -> ([String], Bool) in
                 var lines: [String] = []
                 do {
@@ -656,6 +681,14 @@ public enum ServerPlanCLI {
             timer.cancel()
             return Outcome(json: ServerPlanCLI.data(["lines": lines, "ended": ended]), text: lines.joined(separator: "\n"),
                            exit: ended ? .ok : .timeout)
+        }
+
+        /// Throws the CLI's unknown-container refusal (exit 5) when `name` isn't on the server.
+        private func unknownContainer(server: Int, name: String) async throws {
+            guard let list = try? await client.containers(serverID: server), !list.contains(where: { $0.name == name }) else { return }
+            let known = list.map(\.name).joined(separator: ", ")
+            throw Refusal(outcome: .error(404, "unknown_container", "\(name) isn't on the server (\(known.isEmpty ? "no containers" : known))",
+                                          exit: .unknown))
         }
 
         private func container(_ form: [String: String]) async throws -> Outcome {

@@ -34,9 +34,10 @@ extension ServerPlanCLI.Runner {
         case "container-stats":
             let server = try await serverID(form["server"])
             let name = try containerName(form)
+            // A list, like the all-containers route (empty for a container docker stats skipped).
             let data = try await raw("GET", "/servers/\(server)/containers/\(ServerPlanClient.pathComponent(name))/stats")
-            let stats = try ServerPlanClient.decode(ServerPlanContainerStats.self, from: data)
-            return ServerPlanCLI.Outcome(json: data, text: ServerPlanCLI.statsText([stats]))
+            let stats = try ServerPlanClient.decode([ServerPlanContainerStats].self, from: data)
+            return ServerPlanCLI.Outcome(json: data, text: stats.isEmpty ? "\(name): no stats (not running?)" : ServerPlanCLI.statsText(stats))
         case "stats":
             return try await serverStats(form)
         case "container-recreate", "container-pull", "container-remove":
@@ -150,10 +151,9 @@ extension ServerPlanCLI.Runner {
 }
 
 extension ServerPlanCLI {
-    /// `--since`: an RFC 3339 time or a duration docker takes (`10m`, `2h`, `30s`).
-    public static func isValidSince(_ value: String) -> Bool {
-        value.wholeMatch(of: /[0-9]+[smh]/) != nil || value.wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9:.]+)?(Z|[+-][0-9:]+)?/) != nil
-    }
+    /// `--since` / `--until`: what ServerPlan's `log_query` takes, an RFC 3339 time without spaces
+    /// or a duration (`10m`, `2h`, `30s`).
+    public static func isValidSince(_ value: String) -> Bool { ServerPlanLogQuery.isValidTime(value) }
 
     static func percent(_ value: Double?) -> String { value.map { String(format: "%.1f%%", $0) } ?? "-" }
 
@@ -173,6 +173,8 @@ extension ServerPlanCLI {
         if let inspect {
             if let count = inspect.restartCount { lines.append("restarts: \(count)" + (inspect.restartPolicy.map { " (policy \($0))" } ?? "")) }
             if let started = inspect.startedAt { lines.append("started: \(started.formatted(.iso8601))") }
+            if let finished = inspect.finishedAt, container.isRunning == false { lines.append("finished: \(finished.formatted(.iso8601))") }
+            if !inspect.ports.isEmpty { lines.append("published: " + inspect.ports.map(\.label).joined(separator: ", ")) }
             if inspect.oomKilled == true { lines.append("oom killed: yes") }
             if !inspect.networks.isEmpty { lines.append("networks: " + inspect.networks.joined(separator: ", ")) }
             for mount in inspect.mounts { lines.append("mount: \(mount.source) → \(mount.destination)" + (mount.rw ? "" : " (ro)")) }

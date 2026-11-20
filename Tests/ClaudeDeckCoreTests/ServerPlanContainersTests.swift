@@ -411,4 +411,114 @@ import Testing
         #expect(transport.body(1)["images"] as? String == "unused" && transport.body(2)["confirm"] as? String == "staging"
             && transport.body(2)["volumes"] as? Bool == false)
     }
+
+    // MARK: ServerPlan agent API 1.6 as shipped (ee0f581, 96d770f)
+
+    /// The real 1.6 shapes: a list row with nulls, inspect with its own status and port objects.
+    @Test func agentAPI16Shapes() throws {
+        let rows = try ServerPlanClient.decode([ServerPlanContainer].self, from: Data(#"""
+        [{"name":"traefik","image":"traefik:v3.1","state":"running","status":"Up 12 days","ports":"0.0.0.0:80->80/tcp","id":"fa122816a8e5",
+          "created":"2026-11-18 07:58:10 +0000 UTC","health":"none","project_id":null,"project_name":null,"domains":[]}]
+        """#.utf8))
+        #expect(rows[0].projectID == nil && rows[0].projectName == nil && rows[0].domains == [] && rows[0].containerID == "fa122816a8e5")
+        #expect(ServerPlanContainerMatch.domains(for: rows[0], serverID: 1, in: []) == [])
+        let inspect = try ServerPlanClient.decode(ServerPlanContainerInspect.self, from: Data(#"""
+        {"name":"postgres","id":"0672e7f7eb64","image":"postgres:16","image_id":"sha256:abc","state":"exited","status":"exited (1)","health":"none",
+         "exit_code":1,"started_at":"2026-11-18T07:58:11.123456789Z","finished_at":null,"created_at":"2026-11-18T07:58:10.987654321Z",
+         "restart_count":0,"restart_policy":"unless-stopped","oom_killed":false,
+         "ports":[{"private":5432,"public":null,"type":"tcp","ip":""},{"private":3000,"public":3001,"type":"tcp","ip":"0.0.0.0"}],
+         "networks":[],"mounts":[],"env_keys":[],"labels":{},"project_id":null,"project_name":null,"domains":[]}
+        """#.utf8))
+        #expect(inspect.containerID == "0672e7f7eb64" && inspect.status == "exited (1)" && inspect.exitCode == 1 && inspect.finishedAt == nil)
+        #expect(inspect.ports.map(\.label) == ["5432/tcp", "3001→3000/tcp"] && inspect.ports[0].publicPort == nil)
+        #expect(inspect.labels.isEmpty && inspect.projectID == nil && inspect.createdAt != nil && inspect.domains == [])
+        // A field the panel couldn't read is null on its own; numbers are bytes.
+        let health = try ServerPlanClient.decode(ServerPlanHealth.self, from: Data(#"""
+        {"reachable":true,"docker_ok":true,"cpu":"6%","cpu_percent":null,"cores":4,"mem_used_bytes":1000,"mem_total_bytes":4000,
+         "disk_used_bytes":null,"disk_total_bytes":null,"disk":"9G/40G (22%)","load1":0.4,"net_rx_bytes":null,"net_tx_bytes":null,"uptime_seconds":259200}
+        """#.utf8))
+        let sample = ServerPlanServerSample(health)
+        #expect(sample.cpuPercent == 6 && sample.memPercent == 25 && sample.diskPercent == 22 && sample.netRxBytes == nil)
+        #expect(ServerPlanContainer(name: "x", state: "running", status: "Up 1 second (starting)").health == .starting)
+    }
+
+    /// `GET …/containers/:name/stats` answers a list, like the all-containers route.
+    @Test func singleContainerStatsIsAList() async throws {
+        let row = #"[{"name":"api","cpu_percent":1.5,"mem_used_bytes":1048576,"mem_limit_bytes":4194304,"mem_percent":25,"net_rx_bytes":10,"net_tx_bytes":20,"block_read_bytes":0,"block_write_bytes":0,"pids":3,"checked_at":"2026-11-20T11:00:00Z"}]"#
+        let transport = Transport(["GET /servers/1/containers/api/stats": [(200, row), (200, "[]")],
+                                   "GET /servers/1/containers/nope/stats": [(404, #"{"error":"not_found","message":"Container bulunamadi"}"#)]])
+        let stats = try await client(transport).containerStats(serverID: 1, container: "api")
+        #expect(stats?.cpuPercent == 1.5 && stats?.pids == 3)
+        #expect(try await client(transport).containerStats(serverID: 1, container: "api") == nil)
+        let r = try runner(Transport(["GET /servers/1/containers/api/stats": [(200, row)],
+                                      "GET /servers/1/containers/nope/stats": [(404, #"{"error":"not_found","message":"Container bulunamadi"}"#)]]),
+                           me: Self.me15)
+        let out = await r.run("container-stats", method: "GET", form: ["server": "1", "container": "api"])
+        #expect(out.exit == .ok && out.text.contains("api") && out.text.contains("25.0%"))
+        let missing = await r.run("container-stats", method: "GET", form: ["server": "1", "container": "nope"])
+        #expect(missing.status == 404)
+    }
+
+    /// log_query: the panel's own limits, until/timestamps, and docker's unknown container.
+    @Test func logQueryAsShipped() async throws {
+        #expect(!ServerPlanCLI.isValidSince("2026-11-20 10:00:00") && ServerPlanCLI.isValidSince("2026-11-20T10:00:00.5+03:00"))
+        #expect(!ServerPlanLogQuery.isValidTime(String(repeating: "1", count: 41)) && ServerPlanLogQuery.isValidTime("90s"))
+        #expect(ServerPlanLogQuery.isValidGrep(String(repeating: "x", count: 200)) && !ServerPlanLogQuery.isValidGrep(String(repeating: "x", count: 201)))
+        #expect(!ServerPlanLogQuery.isValidGrep("a\nb"))
+        let transport = Transport(["GET /servers/1/containers/api/logs": [(200, "2026-11-20T10:00:00Z ERROR db down\n")],
+                                   "GET /servers/1/containers/gone/logs": [(502, #"{"error":"server_unreachable","message":"Error response from daemon: No such container: gone"}"#), (200, "")],
+                                   "GET /servers/1/containers": [(200, Self.containers)]])
+        let r = try runner(transport, me: Self.me15)
+        let full = await r.run("logs", method: "GET", form: ["server": "1", "container": "api", "since": "1h", "until": "10m", "timestamps": "1", "grep": "db"])
+        let query = transport.requests.last?.url?.query ?? ""
+        #expect(full.exit == .ok && query.contains("until=10m") && query.contains("timestamps=1") && query.contains("grep=db"))
+        let tooLong = await r.run("logs", method: "GET", form: ["server": "1", "container": "api", "grep": String(repeating: "x", count: 201)])
+        #expect(tooLong.exit == .usage && tooLong.text.contains("bad_grep"))
+        let followUntil = await r.run("logs", method: "GET", form: ["server": "1", "container": "api", "until": "10m", "follow": "5"])
+        #expect(followUntil.exit == .usage)
+        let gone = await r.run("logs", method: "GET", form: ["server": "1", "container": "gone"])
+        #expect(gone.exit == .unknown && gone.text.contains("unknown_container"))
+        let goneGrep = await r.run("logs", method: "GET", form: ["server": "1", "container": "gone", "grep": "x"])
+        #expect(goneGrep.exit == .unknown)
+        // Older panels: --until and --timestamps need log_query.
+        let old = await (try runner(transport)).run("logs", method: "GET", form: ["server": "1", "container": "api", "until": "10m"])
+        #expect(old.status == 501)
+    }
+
+    /// The live stream never gets until or grep (ServerPlan answers 400); since/timestamps do go.
+    @Test func logStreamTakesOnlySinceAndTimestamps() async throws {
+        let transport = Transport(["GET /servers/1/containers/api/logs/stream": [(200, "event: end\ndata: {\"reason\":\"done\"}\n\n")]])
+        let r = try runner(transport, me: Self.me15)
+        _ = await r.run("logs", method: "GET", form: ["server": "1", "container": "api", "follow": "2", "since": "5m", "grep": "error", "timestamps": "1"])
+        let query = transport.requests.last?.url?.query ?? ""
+        #expect(query.contains("since=5m") && query.contains("timestamps=1") && !query.contains("grep") && !query.contains("until"))
+        await #expect(throws: ServerPlanError.self) {
+            _ = try await client(transport).containerLogStream(serverID: 1, container: "api", since: "yesterday")
+        }
+    }
+
+    /// container_exec (96d770f): the ticket's errors come back as they are (no 428 round).
+    @Test func execTicketErrors() async throws {
+        let transport = Transport(["POST /ws-ticket": [(400, #"{"error":"bad_request","message":"Container calismiyor"}"#),
+                                                       (404, #"{"error":"not_found","message":"Container bulunamadi"}"#),
+                                                       (403, #"{"error":"forbidden","message":"Bu islem icin yetkiniz yok (containers.control)"}"#)]])
+        let c = client(transport)
+        var seen: [String] = []
+        for _ in 0..<3 {
+            do {
+                _ = try await c.terminalTicket(serverID: 1, cols: 80, rows: 24, command: .exec, container: "api")
+                seen.append("ok")
+            } catch ServerPlanError.http(let status, _, _) {
+                seen.append("http \(status)")
+            } catch ServerPlanError.notFound {
+                seen.append("not found")
+            } catch ServerPlanError.forbidden {
+                seen.append("forbidden")
+            }
+        }
+        #expect(seen == ["http 400", "not found", "forbidden"])
+        #expect(transport.requests.count == 3 && transport.body(0)["container"] as? String == "api")
+        let me = try JSONDecoder().decode(ServerPlanMe.self, from: Data(Self.me15.utf8))
+        #expect(me.has(feature: ServerPlanContract.Feature.containerExec))
+    }
 }

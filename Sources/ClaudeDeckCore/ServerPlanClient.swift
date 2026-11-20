@@ -366,7 +366,8 @@ public struct ServerPlanClient: Sendable {
     // MARK: Terminal
 
     /// A single-use, 60 s ticket for a terminal on `serverID`; `claude` only where its capabilities say so.
-    /// `container` (with `.exec`, 1.5 `container_exec`): a shell inside that container.
+    /// `container` (with `.exec`, 1.6 `container_exec`): a shell inside that container. The panel answers 400
+    /// when it isn't running, 404 for an unknown server or container, 403 without containers.control; no 428.
     public func terminalTicket(serverID: Int, cols: Int, rows: Int, command: ServerPlanTerminalCommand = .shell,
                                container: String? = nil) async throws -> ServerPlanTicket {
         var body: [String: Any] = ["server_id": serverID, "cols": cols, "rows": rows, "command": command.rawValue]
@@ -453,11 +454,17 @@ public struct ServerPlanClient: Sendable {
     }
 
     /// Follows a container's log (`event: log`), starting with the last `tail` lines.
-    /// `since` only for a panel with `log_query` (the caller checks).
-    public func containerLogStream(serverID: Int, container: String, tail: Int = 100, since: String? = nil) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
+    /// `since` / `timestamps` only for a panel with `log_query` (the caller checks). The stream
+    /// never takes `until` or `grep` (ServerPlan answers 400): callers filter the lines themselves.
+    public func containerLogStream(serverID: Int, container: String, tail: Int = 100, since: String? = nil,
+                                   timestamps: Bool = false) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
         try Self.checkContainer(container)
+        if let since, !since.isEmpty, !ServerPlanLogQuery.isValidTime(since) {
+            throw ServerPlanError.http(status: 400, code: "bad_request", message: "since: an RFC 3339 time or a duration like 10m, 2h")
+        }
         var query = [URLQueryItem(name: "tail", value: String(tail))]
         if let since, !since.isEmpty { query.append(URLQueryItem(name: "since", value: since)) }
+        if timestamps { query.append(URLQueryItem(name: "timestamps", value: "1")) }
         return try await events(Self.logsPath(serverID: serverID, container: container) + "/stream", query: query)
     }
 

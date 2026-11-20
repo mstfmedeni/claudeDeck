@@ -135,7 +135,7 @@ extension SessionCLI {
     ServerPlan (Settings > Agents: "Sessions may use ServerPlan"):
       claudedeck server list | projects | dirs | features | cloudflare | deployments [--project P]
       claudedeck server health|containers|ports SERVER
-      claudedeck server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since 10m|TIME]
+      claudedeck server logs SERVER CONTAINER [--tail N] [--follow] [--grep TEXT] [--since 10m|TIME] [--until 5m|TIME] [--timestamps]
       claudedeck server deploy PROJECT [--server S] [--force] [--wait]
       claudedeck server deploy-status DEPLOYMENT [--wait]
       claudedeck server container SERVER CONTAINER start|stop|restart   (the owner confirms)
@@ -1083,7 +1083,7 @@ extension SessionCLI {
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
       approval=""; years=""; no_dns=0; refresh=0
-      since=""; grep_text=""; images=""; volumes=0; no_build_cache=0; no_containers=0; rl_paths=""; rl_rate=""
+      since=""; until_t=""; timestamps=0; grep_text=""; images=""; volumes=0; no_build_cache=0; no_containers=0; rl_paths=""; rl_rate=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
@@ -1108,13 +1108,14 @@ extension SessionCLI {
           --no-containers) no_containers=1 ;;
           --from-file) [ $# -ge 2 ] || die "server $sub: --from-file needs a file"; file=$2; shift ;;
           -) stdin=1 ;;
-          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years|--since|--grep|--images|--paths|--rate)
+          --timestamps) timestamps=1 ;;
+          --tail|--server|--project|--name|--port|--volume|--dockerfile|--target|--database|--approval|--years|--since|--until|--grep|--images|--paths|--rate)
             [ $# -ge 2 ] || die "server $sub: $1 needs a value"
             case "$1" in
               --tail) tail=$2 ;; --server) server=$2 ;; --project) sproject=$2 ;; --name) sname=$2 ;;
               --port) port=$2 ;; --volume) volume=$2 ;; --dockerfile) dockerfile=$2 ;; --target) target=$2 ;;
               --database) database=$2 ;; --approval) approval=$2 ;; --years) years=$2 ;;
-              --since) since=$2 ;; --grep) grep_text=$2 ;; --images) images=$2 ;;
+              --since) since=$2 ;; --until) until_t=$2 ;; --grep) grep_text=$2 ;; --images) images=$2 ;;
               --paths) rl_paths=$2 ;; --rate) rl_rate=$2 ;;
             esac
             shift ;;
@@ -1188,6 +1189,7 @@ extension SessionCLI {
         ns) [ "$p1" = set ] || die "server ns: try server ns set DOMAIN"; args 2 "ns set DOMAIN" ;;
       esac
       case "$since" in ""|*[!0-9A-Za-z:.+-]*) [ -z "$since" ] || die "server $sub: --since is a time (2026-11-20T10:00:00Z) or a duration (10m, 2h)" ;; esac
+      case "$until_t" in ""|*[!0-9A-Za-z:.+-]*) [ -z "$until_t" ] || die "server $sub: --until is a time (2026-11-20T10:00:00Z) or a duration (10m, 2h)" ;; esac
       # `container SERVER CONTAINER logs` is `logs SERVER CONTAINER`.
       if [ "$sub" = container ] && [ "$p3" = logs ]; then sub=logs; fi
       need_session
@@ -1224,7 +1226,8 @@ extension SessionCLI {
             while :; do
               max_time=45
               srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$first" --data-urlencode "follow=25" \
-                --data-urlencode "since=$since" --data-urlencode "grep=$grep_text"
+                --data-urlencode "since=$since" --data-urlencode "grep=$grep_text" --data-urlencode "timestamps=$timestamps" \
+                --data-urlencode "until=$until_t"
               case "$http" in 2??) ;; *) finish ;; esac
               [ -n "$body" ] && printf '%s\n' "$body"
               first=0; since=""
@@ -1233,7 +1236,8 @@ extension SessionCLI {
             done
           fi
           srv logs GET --data-urlencode "server=$p1" --data-urlencode "container=$p2" --data-urlencode "tail=$tail" \
-            --data-urlencode "since=$since" --data-urlencode "grep=$grep_text" ;;
+            --data-urlencode "since=$since" --data-urlencode "until=$until_t" --data-urlencode "grep=$grep_text" \
+            --data-urlencode "timestamps=$timestamps" ;;
         deploy)
           was_json=$json; json=0
           srv deploy --data-urlencode "project=$p1" --data-urlencode "server=$server" --data-urlencode "force=$force"

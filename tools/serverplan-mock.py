@@ -748,34 +748,53 @@ def domain_purchase(h, body):
                       "purchase_id": pid, "nameservers": ns, "cloudflare_zone": zone, "whois_privacy": True})
 
 
-# --- Containers (proposed for the next API version, `--containers`) ------------------------------
-# docs/serverplan-containers.md §5: numbers on health, container details / inspect / stats, logs
-# with since and grep, exec terminals, recreate / pull / remove, docker disk and prune.
+# --- Containers: ServerPlan agent API 1.6 (`--v16`) and the still-proposed rest (`--containers`) --
+# 1.6 (ServerPlan internal/web/handlers/agent_containers.go, agent_api.go): container_details,
+# container_inspect, container_stats, server_stats, log_query, container_exec. `--containers` adds
+# what ClaudeDeck still proposes (docs/serverplan-containers.md §5.7-5.10): recreate / pull /
+# remove, docker disk and prune.
 
-CONTAINER_FEATURES = ["container_details", "container_inspect", "container_stats", "server_stats", "log_query", "container_exec",
-                      "container_recreate", "image_update", "container_remove", "docker_prune"]
+V16_FEATURES = ["container_details", "container_inspect", "container_stats", "server_stats", "log_query"]
+PROPOSED_FEATURES = ["container_recreate", "image_update", "container_remove", "docker_prune"]
 removed_containers = set()   # (server id, name) removed with DELETE
 net_counters = {}            # server id or (server id, name) -> [rx, tx]
 PROTECTED = ("traefik", "postgres", "redis")
+LOG_TIME_RE = re.compile(r"^[0-9TZ:.+-]{1,40}$|^[0-9]+[smh]$")
+NAME_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}")
+
+
+def known_server(sid):
+    return any(s["id"] == sid for s in fixture("servers.json"))
+
+
+def parse_health(status):
+    """monitor.ParseHealth: the health part of docker's status column."""
+    s = (status or "").lower()
+    if "(unhealthy)" in s:
+        return "unhealthy"
+    if "(healthy)" in s:
+        return "healthy"
+    if "(health: starting)" in s or "(starting)" in s:
+        return "starting"
+    return "none"
 
 
 def container_rows(sid):
     name = "containers-%d.json" % sid
     rows = fixture(name) if os.path.exists(os.path.join(FIXTURES, name)) else []
     rows = [r for r in rows if (sid, r["name"]) not in removed_containers]
-    if not args.containers:
-        # What a 1.4 panel sends.
+    if not args.v16:
+        # What a 1.4/1.5 panel sends.
         return [{k: r[k] for k in ("name", "image", "state", "status", "ports") if k in r} for r in rows]
     projects = {p["display_name"].lower(): p for p in fixture("projects.json")}
-    for i, r in enumerate(rows):
+    for r in rows:
         r.setdefault("id", hashlib.sha1(("%d/%s" % (sid, r["name"])).encode()).hexdigest()[:12])
         r.setdefault("created", "2026-11-18 07:58:10 +0000 UTC")
-        status = r.get("status", "")
-        r.setdefault("health", "unhealthy" if "(unhealthy)" in status else "healthy" if "(healthy)" in status else "none")
+        r.setdefault("health", parse_health(r.get("status")))
         project = projects.get(r["name"].lower())
-        if project:
-            r.setdefault("project_id", project["id"])
-            r.setdefault("project_name", project["display_name"])
+        # Like the panel: always present, null without a match.
+        r.setdefault("project_id", project["id"] if project else None)
+        r.setdefault("project_name", project["display_name"] if project else None)
         r.setdefault("domains", [d["fqdn"] for d in MOCK_DOMAINS if d["server_id"] == sid and d.get("target") == r["name"]])
     return rows
 
@@ -801,35 +820,126 @@ def container_stats(sid, row):
             "block_write_bytes": 1_048_576, "pids": 7, "checked_at": now()}
 
 
-def log_lines(name, count=40):
-    out = []
-    for i in range(count):
-        if i % 13 == 7:
-            out.append("2026-11-18T09:%02d:00Z %s | ERROR db query failed: connection refused" % (i % 60, name))
-        elif i % 11 == 5:
-            out.append("2026-11-18T09:%02d:00Z %s | WARN slow request 1.2s" % (i % 60, name))
-        else:
-            out.append("2026-11-18T09:%02d:00Z %s | request %d ok" % (i % 60, name, i))
+def inspect_ports(ps_ports):
+    """docker ps's ports column as inspect's NetworkSettings.Ports: `public` null when unmapped."""
+    out, seen = [], set()
+    for item in [x.strip() for x in (ps_ports or "").split(",") if x.strip()]:
+        host, arrow, inner = item.rpartition("->")
+        port, _, proto = (inner if arrow else item).partition("/")
+        public, ip = None, ""
+        if arrow:
+            ip, _, hp = host.rpartition(":")
+            public = int(hp) if hp.isdigit() else None
+        key = (port, public, proto)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"private": int(port) if port.isdigit() else 0, "public": public, "type": proto or "tcp", "ip": ip})
     return out
 
 
+def inspect_body(sid, row):
+    """monitor.ParseInspect plus the project link (agentContainerInspect)."""
+    state = row.get("state", "")
+    health = row.get("health") or parse_health(row.get("status"))
+    m = re.match(r"Exited \((-?\d+)\)", row.get("status", ""))
+    exit_code = int(m.group(1)) if m else 0
+    if state == "running":
+        status = "running (%s)" % health if health != "none" else "running"
+    elif state == "exited":
+        status = "exited (%d)" % exit_code
+    else:
+        status = state
+    exited = state != "running"
+    return {"name": row["name"], "id": row["id"][:12], "image": row.get("image", ""), "image_id": "sha256:" + row["id"] * 5,
+            "state": state, "status": status, "health": health, "exit_code": exit_code,
+            "started_at": "2026-11-18T07:58:11.123456789Z", "finished_at": "2026-11-20T10:31:02.5Z" if exited else None,
+            "created_at": "2026-11-18T07:58:10.987654321Z", "restart_count": 3 if exited else 0,
+            "restart_policy": "unless-stopped", "oom_killed": False, "ports": inspect_ports(row.get("ports")),
+            "networks": ["traefik-network"], "mounts": [{"source": "/opt/volumes/" + row["name"], "destination": "/data", "rw": True}],
+            "env_keys": ["PORT", "DATABASE_URL", "DATA_PATH"], "labels": {},
+            "project_id": row.get("project_id"), "project_name": row.get("project_name"), "domains": row.get("domains", [])}
+
+
+def log_entries(name, count=40):
+    """(time, line) pairs; docker prints the time only with --timestamps."""
+    out = []
+    for i in range(count):
+        t = "2026-11-18T09:%02d:00.000000000Z" % (i % 60)
+        if i % 13 == 7:
+            out.append((t, "%s | ERROR db query failed: connection refused" % name))
+        elif i % 11 == 5:
+            out.append((t, "%s | WARN slow request 1.2s" % name))
+        else:
+            out.append((t, "%s | request %d ok" % (name, i)))
+    return out
+
+
+def log_query_problem(query, stream):
+    """parseAgentLogQuery: the 400 message, or None."""
+    since, until, grep = (query.get(k, [""])[0] for k in ("since", "until", "grep"))
+    if since and not LOG_TIME_RE.match(since):
+        return "Gecersiz since degeri (RFC 3339 veya 10m, 2h gibi)"
+    if stream and (until or grep):
+        return "Canli akista until ve grep desteklenmez"
+    if until and not LOG_TIME_RE.match(until):
+        return "Gecersiz until degeri (RFC 3339 veya 10m, 2h gibi)"
+    if len(grep.encode()) > 200:
+        return "grep en fazla 200 karakter olabilir"
+    if any(c in grep for c in "\n\r\x00"):
+        return "grep tek satir olmali"
+    return None
+
+
+def in_window(t, since, until):
+    """since/until as RFC 3339 prefixes compared as text (the mock's lines are all on one day)."""
+    if since and LOG_TIME_RE.match(since) and not re.fullmatch(r"[0-9]+[smh]", since) and t < since:
+        return False
+    if until and not re.fullmatch(r"[0-9]+[smh]", until) and t > until:
+        return False
+    return True
+
+
+def container_logs(h, sid, name, query):
+    if not known_server(sid):
+        return h.error(404, "not_found", "Sunucu bulunamadi")
+    tail = max(1, min(5000, int((query.get("tail") or ["200"])[0] or 200)))
+    if not args.v16:
+        text = "\n".join("%s %s" % (t, line) for t, line in log_entries(name)[-tail:])
+        return send_text(h, text)
+    problem = log_query_problem(query, False)
+    if problem:
+        return h.error(400, "bad_request", problem)
+    since, until, grep = (query.get(k, [""])[0] for k in ("since", "until", "grep"))
+    stamps = (query.get("timestamps") or [""])[0] in ("1", "true")
+    if not any(r["name"] == name for r in container_rows(sid)):
+        # docker logs fails; with grep the pipe swallows the error (an empty 200).
+        if grep:
+            return send_text(h, "")
+        return h.error(502, "server_unreachable", "Error response from daemon: No such container: " + name)
+    lines = [(t, l) for t, l in log_entries(name) if in_window(t, since, until)]
+    if grep:
+        lines = [(t, l) for t, l in lines if grep.lower() in l.lower()]
+    lines = lines[-tail:]
+    send_text(h, "\n".join(("%s %s" % (t, l)) if stamps else l for t, l in lines))
+
+
 def containers_get(h, p, query):
-    """GETs of the container additions; False when it isn't one."""
+    """GETs of the container routes; False when it isn't one."""
+    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/logs", p)
+    if m:
+        container_logs(h, int(m.group(1)), unquote(m.group(2)), query)
+        return True
+    if not args.v16:
+        return False
+    m = re.fullmatch(r"/servers/(\d+)/containers(?:/stats|/[^/]+(?:/stats)?)?", p)
+    if m and not known_server(int(m.group(1))):
+        h.error(404, "not_found", "Sunucu bulunamadi")
+        return True
     m = re.fullmatch(r"/servers/(\d+)/containers", p)
     if m:
         h.send_json(200, container_rows(int(m.group(1))))
         return True
-    m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/logs", p)
-    if m:
-        lines = log_lines(unquote(m.group(2)))
-        grep = (query.get("grep") or [""])[0].lower()
-        if args.containers and grep:
-            lines = [l for l in lines if grep in l.lower()]
-        tail = int((query.get("tail") or ["200"])[0] or 200)
-        send_text(h, "\n".join(lines[-tail:] if tail else []))
-        return True
-    if not args.containers:
-        return False
     m = re.fullmatch(r"/servers/(\d+)/health", p)
     if m and int(m.group(1)) != 3:
         sid = int(m.group(1))
@@ -837,11 +947,15 @@ def containers_get(h, p, query):
         cpu = round(3 + 20 * random_unit(), 1)
         mem_total = 4 * 1024 ** 3
         mem_used = int(mem_total * (0.35 + 0.1 * random_unit()))
-        h.send_json(200, {"reachable": True, "docker_ok": True, "cpu": "%s%%" % cpu, "memory": "%.1fGi/4.0Gi" % (mem_used / 1024 ** 3),
-                          "disk": "9G/40G (22%)", "uptime": "up 3 days", "load_avg": "0.42 0.37 0.30", "checked_at": now(),
-                          "cpu_percent": cpu, "cores": 4, "mem_used_bytes": mem_used, "mem_total_bytes": mem_total,
-                          "disk_used_bytes": 9 * 1024 ** 3, "disk_total_bytes": 40 * 1024 ** 3, "load1": 0.42, "load5": 0.37,
-                          "load15": 0.30, "net_rx_bytes": rx, "net_tx_bytes": tx, "uptime_seconds": 259200})
+        body = {"reachable": True, "docker_ok": True, "cpu": "%s%%" % cpu, "memory": "%.1fGi/4.0Gi" % (mem_used / 1024 ** 3),
+                "disk": "9G/40G (22%)", "uptime": "up 3 days", "load_avg": "0.42 0.37 0.30", "checked_at": now(),
+                "cpu_percent": cpu, "cores": 4, "mem_used_bytes": mem_used, "mem_total_bytes": mem_total,
+                "disk_used_bytes": 9 * 1024 ** 3, "disk_total_bytes": 40 * 1024 ** 3, "load1": 0.42, "load5": 0.37,
+                "load15": 0.30, "net_rx_bytes": rx, "net_tx_bytes": tx, "uptime_seconds": 259200}
+        if sid == 2:
+            # A field the panel couldn't read is null on its own.
+            body.update(net_rx_bytes=None, net_tx_bytes=None)
+        h.send_json(200, body)
         return True
     m = re.fullmatch(r"/servers/(\d+)/containers/stats", p)
     if m:
@@ -852,25 +966,27 @@ def containers_get(h, p, query):
     if m:
         sid, name = int(m.group(1)), unquote(m.group(2))
         row = next((r for r in container_rows(sid) if r["name"] == name), None)
-        if not row:
+        if not NAME_RE.fullmatch(name):
+            h.error(400, "bad_request", "Gecersiz container adi")
+        elif not row:
             h.error(404, "not_found", "Container bulunamadi")
         else:
-            h.send_json(200, container_stats(sid, row))
+            # A list, like the all-containers route (docker stats NAME).
+            h.send_json(200, [container_stats(sid, row)])
         return True
     m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)", p)
     if m:
         sid, name = int(m.group(1)), unquote(m.group(2))
         row = next((r for r in container_rows(sid) if r["name"] == name), None)
-        if not row:
+        if not NAME_RE.fullmatch(name):
+            h.error(400, "bad_request", "Gecersiz container adi")
+        elif not row:
             h.error(404, "not_found", "Container bulunamadi")
-            return True
-        exited = row.get("state") != "running"
-        h.send_json(200, dict(row, image_id="sha256:" + row["id"] * 5, exit_code=1 if exited else 0, started_at=ago(120),
-                              finished_at=ago(29) if exited else "0001-01-01T00:00:00Z", created_at=ago(125),
-                              restart_count=3 if exited else 0, restart_policy="unless-stopped", oom_killed=False,
-                              networks=["traefik-network"], mounts=[{"source": "/opt/volumes/" + name, "destination": "/data", "rw": True}],
-                              env_keys=["PORT", "DATABASE_URL", "DATA_PATH"]))
+        else:
+            h.send_json(200, inspect_body(sid, row))
         return True
+    if not args.containers:
+        return False
     m = re.fullmatch(r"/servers/(\d+)/docker/disk", p)
     if m:
         h.send_json(200, {"images": {"count": 14, "active": 5, "size_bytes": 6_400_000_000, "reclaimable_bytes": 3_900_000_000},
@@ -1055,8 +1171,14 @@ class Handler(BaseHTTPRequestHandler):
                 if args.v15:
                     me.update(server_version="1.5", features=me["features"] + ["ratelimit"],
                               scopes=sorted(set(me["scopes"]) | {"dns"}))
+                if args.v16:
+                    features = me["features"] + V16_FEATURES
+                    # Like the panel: only with the terminal scope (servers.ssh + containers.control).
+                    if "terminal" in me["features"]:
+                        features.append("container_exec")
+                    me.update(server_version="1.6", features=features)
                 if args.containers:
-                    me.update(features=me["features"] + CONTAINER_FEATURES)
+                    me.update(features=me["features"] + PROPOSED_FEATURES)
                 return self.send_json(200, me)
             if p == "/ratelimit" and args.v15:
                 return ratelimit_get(self, query)
@@ -1111,18 +1233,15 @@ class Handler(BaseHTTPRequestHandler):
             m = re.fullmatch(r"/deployments/(\d+)/stream", p)
             if m:
                 return self.deploy_stream(int(m.group(1)))
-            m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/logs", p)
-            if m:
-                text = "\n".join("2026-11-18T09:%02d:00Z %s | request %d ok" % (i % 60, unquote(m.group(2)), i) for i in range(40))
-                body = text.encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/plain; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                return self.wfile.write(body)
             m = re.fullmatch(r"/servers/(\d+)/containers/([^/]+)/logs/stream", p)
             if m:
-                return self.log_stream(unquote(m.group(2)))
+                if not known_server(int(m.group(1))):
+                    return self.error(404, "not_found", "Sunucu bulunamadi")
+                if args.v16:
+                    problem = log_query_problem(query, True)
+                    if problem:
+                        return self.error(400, "bad_request", problem)
+                return self.log_stream(unquote(m.group(2)), (query.get("timestamps") or [""])[0] in ("1", "true"))
             if p == "/events":
                 return self.events()
             self.error(404, "not_found", "Bulunamadı")
@@ -1157,19 +1276,21 @@ class Handler(BaseHTTPRequestHandler):
                 last_ping = time.time()
             time.sleep(0.3)
 
-    def log_stream(self, container):
+    def log_stream(self, container, stamps=False):
+        def stamp(line):
+            return ("%s %s" % (time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime()), line)) if stamps else line
         self.sse_start()
         if container == "payments-api":  # exited container: the tail, then docker logs ends
             for line in deploy_lines.get(207, [])[-3:]:
-                self.sse("log", {"line": line, "stream": "stderr"})
+                self.sse("log", {"line": stamp(line), "stream": "stderr"})
             self.sse("end", {"reason": "log stream ended"})
             return
         i = 0
         while True:
             if i % 7 == 6:
-                self.sse("log", {"line": "%s %s | ERROR upstream timeout after 30s (GET /api/orders)" % (now(), container), "stream": "stderr"})
+                self.sse("log", {"line": stamp("%s | ERROR upstream timeout after 30s (GET /api/orders)" % container), "stream": "stderr"})
             else:
-                self.sse("log", {"line": "%s %s | GET /health 200 %dms" % (now(), container, 2 + i % 5), "stream": "stdout"})
+                self.sse("log", {"line": stamp("%s | GET /health 200 %dms" % (container, 2 + i % 5)), "stream": "stdout"})
             i += 1
             time.sleep(2)
 
@@ -1241,14 +1362,20 @@ class Handler(BaseHTTPRequestHandler):
             command = body.get("command", "shell")
             if command == "claude" and sid != 1:
                 return self.error(400, "bad_request", "Bu sunucuda claude yok")
+            if command not in ("shell", "claude", "exec") or (command == "exec" and not args.v16):
+                return self.error(400, "bad_request", "command sadece shell, claude veya exec olabilir")
             if command == "exec":
+                # agentWSTicket (1.6): name check, then the server (404), then docker inspect
+                # (404 unknown container, 400 not running). No 428.
                 name = body.get("container") or ""
-                if not args.containers:
-                    return self.error(400, "bad_request", "command sadece shell veya claude olabilir")
-                if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", name):
-                    return self.error(400, "bad_request", "Gecersiz container adi")
+                if not NAME_RE.fullmatch(name):
+                    return self.error(400, "bad_request", "exec icin gecerli bir container adi gerekli")
+                if not known_server(sid):
+                    return self.error(404, "not_found", "Sunucu bulunamadi")
                 row = next((r for r in container_rows(sid) if r["name"] == name), None)
-                if not row or row.get("state") != "running":
+                if not row:
+                    return self.error(404, "not_found", "Container bulunamadi")
+                if row.get("state") != "running":
                     return self.error(400, "bad_request", "Container calismiyor")
                 command = "exec:" + name
             ticket = secrets.token_urlsafe(24)
@@ -1340,10 +1467,17 @@ def main():
     parser.add_argument("--v15", action="store_true", help="/me says 1.5 (implies --v14): GET/POST /ratelimit, POST /ratelimit/clear")
     parser.add_argument("--cloudflare", choices=("configured", "unconfigured"), default="configured",
                         help="unconfigured: /ratelimit answers 412 not_configured")
+    parser.add_argument("--v16", action="store_true",
+                        help="/me says 1.6 (implies --v15): container details / inspect / stats, numbers on health, logs "
+                             "since/until/grep/timestamps, container_exec terminals (ServerPlan's real 1.6 shapes)")
     parser.add_argument("--containers", action="store_true",
-                        help="the proposed container additions (docs/serverplan-containers.md §5): stats, inspect, logs since/grep, "
-                             "exec terminals, recreate/pull/remove, docker disk/prune, numbers on health")
+                        help="--v16 plus what ClaudeDeck still proposes (docs/serverplan-containers.md §5.7-5.10): "
+                             "recreate/pull/remove, docker disk/prune")
     args = parser.parse_args()
+    if args.containers:
+        args.v16 = True
+    if args.v16:
+        args.v15 = True
     if args.v15:
         args.v14 = True
     if args.v14:

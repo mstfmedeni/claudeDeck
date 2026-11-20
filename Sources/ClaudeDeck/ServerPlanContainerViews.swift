@@ -315,6 +315,7 @@ private struct ServerPlanContainerOverview: View {
                         row("Restarts") { Text(verbatim: "\(count)" + (inspect.restartPolicy.map { " (\($0))" } ?? "")) }
                     }
                     if let started = inspect.startedAt { row("Started") { Text(started, format: .dateTime) } }
+                    if let finished = inspect.finishedAt, !container.isRunning { row("Finished") { Text(finished, format: .dateTime) } }
                     if inspect.oomKilled == true { row("Out of memory") { Text("Killed by the kernel (OOM)").foregroundStyle(.red) } }
                     if !inspect.networks.isEmpty { row("Networks") { Text(inspect.networks.joined(separator: ", ")) } }
                     if !inspect.mounts.isEmpty {
@@ -516,15 +517,22 @@ struct ServerPlanLogsPane: View {
             } while !Task.isCancelled
             return
         }
-        // Follow: reconnects when a window shows again after the stream ended.
+        // Follow: reconnects when a window shows again after the stream ended. With `log_query`
+        // the reconnect asks for what was logged since the stream stopped (`since`), so the gap
+        // while hidden is filled; without it the stream restarts from now.
         entries = []
         selection = []
         var ended = false
+        var stoppedAt: Date?
+        let resumes = controller.has(ServerPlanContract.Feature.logQuery)
         while !Task.isCancelled, !ended {
             await AppVisibility.shared.waitUntilVisible()
             do {
-                let tail = entries.isEmpty ? Self.initialTail : 0
-                for try await event in try await client.containerLogStream(serverID: serverID, container: container.name, tail: tail) {
+                let since = resumes ? stoppedAt.map { $0.formatted(.iso8601) } : nil
+                let tail = entries.isEmpty ? Self.initialTail : since != nil ? Self.initialTail : 0
+                defer { stoppedAt = Date() }
+                for try await event in try await client.containerLogStream(serverID: serverID, container: container.name, tail: tail,
+                                                                           since: since) {
                     if let reason = ServerPlanLogLine.endReason(event) {
                         append("— " + (reason.isEmpty ? String(localized: "log ended") : reason) + " —", stderr: true)
                         ended = true
