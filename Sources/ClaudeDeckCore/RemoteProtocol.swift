@@ -367,6 +367,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
     /// Approvals a session waits on (ServerPlan gates, domain purchases), the one expiring first
     /// on top (hosts with `Feature.approvals`).
     public var approvals: [OwnerApproval]?
+    /// The Mac's load level and numbers (hosts with `Feature.load`; only while a remote is connected).
+    public var load: RemoteLoad?
 
     public enum Feature {
         /// `sendPromptWithFiles` (phone) and `pasteFiles` (another Mac).
@@ -431,12 +433,14 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let closedTerminals = "closedTerminals"
         /// `approvals` in the snapshot, `answerApproval`.
         public static let approvals = "approvals"
+        /// `load` in the snapshot (read-only): the Mac's load level, memory, simulators, builds.
+        public static let load = "load"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
-                                              closedTerminals, approvals]
+                                              closedTerminals, approvals, load]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }

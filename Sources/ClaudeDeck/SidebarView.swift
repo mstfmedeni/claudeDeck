@@ -71,6 +71,8 @@ struct SidebarView: View {
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                LoadTray()
+                    .sidebarStyle(scale: textScale, density: density)
                 UsageMeterFooter()
                 footer
             }

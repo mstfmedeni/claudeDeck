@@ -49,7 +49,12 @@ extension AppModel {
     /// once its old process is gone, left alone if that process still runs.
     func recoverHelperSessions(_ ids: [UUID]) async {
         // The children got SIGHUP: give them all together a moment to exit.
-        let hosts = ids.compactMap { deck.session($0)?.helperHost }
+        // Not those alive in the helper we're connected to again (a dropped connection, not a dead helper).
+        let hosts = ids.compactMap { id -> PtydHost? in
+            guard let session = deck.session(id) else { return nil }
+            if case .attach = ptyd.gate(for: session) { return nil }
+            return session.helperHost
+        }
         let deadline = ContinuousClock.now + .seconds(5)
         while hosts.contains(where: PtydLaunchPlan.processAlive), ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(100))
@@ -63,6 +68,32 @@ extension AppModel {
             }
             launch(id, resume: true, automatic: current.kind == .claude)
         }
+    }
+
+    /// The helper answered again (or is gone) after being unresponsive: every held session is
+    /// decided again. Alive there: attached. Ended there: closed. Its process still running
+    /// without a helper: still held. Otherwise the usual path (resumed if it was open). Never a
+    /// second process for one that may still run.
+    func resolveHeldSessions() {
+        var changed = false
+        for id in Array(ptyd.held.keys) {
+            ptyd.held[id] = nil
+            guard let session = deck.session(id), !terminals.isRunning(id) else { continue }
+            switch ptyd.gate(for: session) {
+            case .attach(let info):
+                attachFromHelper(id, info, readOnly: false)
+            case .attachReadOnly(let info):
+                attachFromHelper(id, info, readOnly: true)
+            case .ended:
+                mutate(userInitiated: false) { $0.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil } }
+                changed = true
+            case .hold(let reason):
+                ptyd.held[id] = reason
+            case .proceed:
+                if session.isOpen { launch(id, resume: true, automatic: session.kind == .claude) }
+            }
+        }
+        if changed { saveNow() }
     }
 
     /// Settings › Sessions toggle.

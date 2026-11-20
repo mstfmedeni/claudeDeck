@@ -20,6 +20,7 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 14) {
                 DashboardHeader(process: process)
                 NowTiles(wide: wide)
+                LoadCard()
                 RiverCard()
                 columns {
                     WaitingCard()

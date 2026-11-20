@@ -159,7 +159,13 @@ struct PtydBanner: View {
                     if readOnly > 0 {
                         Text("Restart sessions to upgrade: \(readOnly) sessions run in an older session helper and are read-only.")
                     }
-                    if held > 0 {
+                    if held > 0, ptyd.reconnecting {
+                        // The helper is alive but slow (an overloaded Mac): retried with backoff.
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Connecting to the session helper… \(held) sessions wait for it; nothing is started twice.")
+                        }
+                    } else if held > 0 {
                         Text("\(held) sessions may still be running in a session helper that doesn't answer; they are left alone so nothing runs twice.")
                     }
                 }

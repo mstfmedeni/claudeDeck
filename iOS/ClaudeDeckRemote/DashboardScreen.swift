@@ -43,6 +43,7 @@ extension RemoteStore {
     var dashboard: RemoteDashboard? { snapshot?.supports(RemoteSnapshot.Feature.dashboard) == true ? snapshot?.dashboard : nil }
     var serverPlan: RemoteServerPlan? { snapshot?.supports(RemoteSnapshot.Feature.serverPlan) == true ? snapshot?.serverPlan : nil }
     var simulators: [RemoteSimulator]? { snapshot?.supports(RemoteSnapshot.Feature.simulators) == true ? snapshot?.simulators : nil }
+    var macLoad: RemoteLoad? { snapshot?.supports(RemoteSnapshot.Feature.load) == true ? snapshot?.load : nil }
 }
 
 enum DashStyle {
@@ -190,6 +191,7 @@ struct DashboardScreen: View {
                                 caption: dashboard.linesRemoved.map { "−\(DashStyle.compact($0)) removed" } ?? "Counting…",
                                 color: DashStyle.lines, systemImage: "chevron.left.forwardslash.chevron.right")
                     }
+                    if let load = store.macLoad { MacLoadCard(load: load) }
                     let waiting = WaitingCard(dashboard: dashboard)
                     let usage = UsageCard(dashboard: dashboard)
                     if wide {
@@ -214,6 +216,45 @@ struct DashboardScreen: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The Mac's load (hosts with `Feature.load`): level, load per core, memory, simulators, builds.
+private struct MacLoadCard: View {
+    let load: RemoteLoad
+
+    private var color: Color {
+        switch load.level {
+        case "ok": .green
+        case "overloaded": .red
+        default: .orange
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        switch load.level {
+        case "ok": "Mac load: OK"
+        case "overloaded": "Mac load: Overloaded"
+        default: "Mac load: Busy"
+        }
+    }
+
+    var body: some View {
+        Card(title: "Mac Load", systemImage: "gauge.with.dots.needle.67percent") {
+            HStack(spacing: 8) {
+                Circle().fill(color).frame(width: 10, height: 10)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(color)
+            }
+            Text(String(format: "%.1f×", load.loadPerCore) + " · " + String(localized: "RAM \(load.memoryPercent)%") + " · "
+                 + String(localized: "\(load.simulators) sims") + " · " + String(localized: "\(load.builds) builds") + " · "
+                 + String(localized: "\(load.sessions) sessions"))
+                .font(.callout).monospacedDigit().foregroundStyle(.secondary)
+            if load.throttled {
+                Label("Agents are held back: no new sessions, simulators or extra builds until the Mac is back to normal.",
+                      systemImage: "tortoise.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
     }
 }
 

@@ -85,12 +85,15 @@ public enum SessionCLI {
         /// Ending itself or a session it started, and removing such a session from the deck
         /// (also needs Settings › "Sessions may close sessions they started").
         case close
+        /// Build slots (`claudedeck slot`, `claudedeck heavy`): also for terminals a session opened,
+        /// where the builds run.
+        case slots
     }
 
     /// Claude sessions and the user's own terminals.
     public static let fullScopes: Set<Scope> = Set(Scope.allCases)
     /// A terminal a session opened runs what that session wrote: it may look and tell, not act.
-    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify, .usage]
+    public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify, .usage, .slots]
 
     public static func scopes(openedBy: UUID?) -> Set<Scope> { openedBy == nil ? fullScopes : openedScopes }
 
@@ -149,6 +152,11 @@ public enum SessionCLI {
         case close(String)
         /// `POST /v1/cli/sessions/{ref}/remove`: a session that isn't running leaves the deck.
         case remove(String)
+        /// `GET /v1/cli/load`: the Mac's load level, its numbers and the build slots.
+        case load
+        /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
+        case slotAcquire(String)
+        case slotRelease(String)
 
         public var scope: Scope {
             switch self {
@@ -170,6 +178,8 @@ public enum SessionCLI {
             case .usage: .usage
             case .status: .list
             case .close, .remove: .close
+            case .load: .list
+            case .slotAcquire, .slotRelease: .slots
             }
         }
     }
@@ -216,6 +226,9 @@ public enum SessionCLI {
         case 2 where rest[0] == "sim" && rest[1] == "acquire": return expect("POST", .simAcquire)
         case 2 where rest[0] == "sim" && rest[1] == "release": return expect("POST", .simRelease)
         case 1 where rest[0] == "usage": return expect("GET", .usage)
+        case 1 where rest[0] == "load": return expect("GET", .load)
+        case 3 where rest[0] == "slot" && rest[2] == "acquire": return expect("POST", .slotAcquire(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "slot" && rest[2] == "release": return expect("POST", .slotRelease(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "sessions":
             let ref = AgentHTTP.percentDecode(rest[1])
             switch rest[2] {

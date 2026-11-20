@@ -765,6 +765,7 @@ final class RemoteController {
         snapshot.agentsRunning = model.cliRunningStarted
         snapshot.agentsCap = model.deck.settings.maxStartedSessions
         snapshot.agentsQueued = model.deck.cliQueue.filter { $0.status == .queued }.count
+        snapshot.load = LoadController.shared.remoteLoad
         RemotePhoneFeeds.shared.apply(to: &snapshot, model: model)
         server.snapshot = snapshot
     }

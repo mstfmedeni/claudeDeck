@@ -45,7 +45,8 @@ public final class PtydClient: @unchecked Sendable {
     public var onDisconnect: (@Sendable () -> Void)?
 
     private let fd: Int32
-    private let queue = DispatchQueue(label: "claudedeck.ptyd.client")
+    // Above the default QoS: on a loaded Mac the helper drops a client that falls 64 MB behind.
+    private let queue = DispatchQueue(label: "claudedeck.ptyd.client", qos: .userInitiated)
     private let callbackQueue: DispatchQueue
     private var reader = PtydFrameReader()
     private var readSource: DispatchSourceRead?
@@ -346,6 +347,18 @@ public final class PtydClient: @unchecked Sendable {
 extension PtydClient {
     public func list() async throws -> [PtydSessionInfo] {
         try await withCheckedThrowingContinuation { cont in list { cont.resume(with: $0) } }
+    }
+
+    /// `list`, or `.timeout` when the helper doesn't answer within `timeout` (a hung or starved
+    /// helper must never look like one with no sessions).
+    public func list(timeout: TimeInterval) async throws -> [PtydSessionInfo] {
+        try await withCheckedThrowingContinuation { cont in
+            let once = PtydOnce()
+            list { result in if once.claim() { cont.resume(with: result) } }
+            callbackQueue.asyncAfter(deadline: .now() + timeout) {
+                if once.claim() { cont.resume(throwing: PtydClientError.timeout) }
+            }
+        }
     }
 
     public func spawn(_ spawn: PtydSpawn) async throws -> PtydSessionInfo {

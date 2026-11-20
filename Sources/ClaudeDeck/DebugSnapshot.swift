@@ -47,6 +47,13 @@ enum DebugSnapshot {
             // Opens Settings too (already open: just brought forward).
             model.openSettings?()
         }
+        // `load.inject`: "overloaded", "busy", "ok", a JSON LoadSample, or "real" (LoadController.inject).
+        for file in files where file == "load.inject" {
+            let path = (dir as NSString).appendingPathComponent(file)
+            let text = contents(path)
+            try? FileManager.default.removeItem(atPath: path)
+            LoadController.shared.inject(text)
+        }
         for file in files where file == "settings.scroll" {
             let path = (dir as NSString).appendingPathComponent(file)
             let y = Double(contents(path).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0

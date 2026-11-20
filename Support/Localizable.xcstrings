@@ -21223,6 +21223,486 @@
           }
         }
       }
+    },
+    "[ClaudeDeck] The Mac is overloaded: postpone heavy work (builds, simulators) and release simulators you're done with.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "[ClaudeDeck] Mac aşırı yüklü: ağır işleri (derleme, simülatör) ertele, bitmiş simülatörleri bırak."
+          }
+        }
+      }
+    },
+    "The Mac is overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac aşırı yüklü"
+          }
+        }
+      }
+    },
+    "%lld simulators booted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld simülatör açık"
+          }
+        }
+      }
+    },
+    "%lld builds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld derleme"
+          }
+        }
+      }
+    },
+    "%lld sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld oturum"
+          }
+        }
+      }
+    },
+    "memory pressure critical": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bellek baskısı kritik"
+          }
+        }
+      }
+    },
+    "memory pressure high": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bellek baskısı yüksek"
+          }
+        }
+      }
+    },
+    "load %lld on %lld cores": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yük %lld (%lld çekirdek)"
+          }
+        }
+      }
+    },
+    "Show Agents": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanları Göster"
+          }
+        }
+      }
+    },
+    "Mac load: OK": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yükü: Normal"
+          }
+        }
+      }
+    },
+    "Mac load: Busy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yükü: Yoğun"
+          }
+        }
+      }
+    },
+    "Mac load: Overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yükü: Aşırı"
+          }
+        }
+      }
+    },
+    "RAM %lld%%": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RAM %%%lld"
+          }
+        }
+      }
+    },
+    "%lld sims": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld simülatör"
+          }
+        }
+      }
+    },
+    "The Mac's load (Settings › Resources)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'in yükü (Ayarlar › Kaynaklar)"
+          }
+        }
+      }
+    },
+    "Mac Load": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Yükü"
+          }
+        }
+      }
+    },
+    "Load": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yük"
+          }
+        }
+      }
+    },
+    "Memory": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek"
+          }
+        }
+      }
+    },
+    "%lld%% · pressure %@ · swap %lld MB": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%%%lld · baskı %@ · takas %lld MB"
+          }
+        }
+      }
+    },
+    "%lld booted (agents up to %lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld açık (ajanlar için en fazla %lld)"
+          }
+        }
+      }
+    },
+    "Builds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derlemeler"
+          }
+        }
+      }
+    },
+    "%lld compiler processes · slots %lld/%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld derleyici süreci · yuva %lld/%lld"
+          }
+        }
+      }
+    },
+    "%lld Claude sessions · %lld processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Claude oturumu · %lld süreç"
+          }
+        }
+      }
+    },
+    "Agents are held back: no new sessions, simulators or extra builds until the Mac is back to normal.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar yavaşlatıldı: Mac normale dönene kadar yeni oturum, simülatör ya da ek derleme yok."
+          }
+        }
+      }
+    },
+    "Measuring…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ölçülüyor…"
+          }
+        }
+      }
+    },
+    "normal": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "normal"
+          }
+        }
+      }
+    },
+    "high": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yüksek"
+          }
+        }
+      }
+    },
+    "critical": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kritik"
+          }
+        }
+      }
+    },
+    "Overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aşırı yüklü"
+          }
+        }
+      }
+    },
+    "Resources": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaynaklar"
+          }
+        }
+      }
+    },
+    "Slow down agents while the Mac is overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yüklüyken ajanları yavaşlat"
+          }
+        }
+      }
+    },
+    "While overloaded (until the Mac is back to normal): claudedeck new is refused (with --queue it waits in the queue), the queue holds, claudedeck sim acquire is refused, only one build slot is handed out, and agents get a note to postpone heavy work.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aşırı yükte (Mac normale dönene kadar): claudedeck new reddedilir (--queue ile kuyrukta bekler), kuyruk durur, claudedeck sim acquire reddedilir, yalnızca bir derleme yuvası verilir ve ajanlar ağır işleri ertelemeleri için bir not alır."
+          }
+        }
+      }
+    },
+    "Most booted simulators: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En fazla açık simülatör: %lld"
+          }
+        }
+      }
+    },
+    "claudedeck sim acquire is refused once this many simulators are booted (yours count too).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu kadar simülatör açıkken claudedeck sim acquire reddedilir (seninkiler de sayılır)."
+          }
+        }
+      }
+    },
+    "Most builds at once: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aynı anda en fazla derleme: %lld"
+          }
+        }
+      }
+    },
+    "A build slot goes back after %lld minutes at most": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir derleme yuvası en geç %lld dakika sonra bırakılır"
+          }
+        }
+      }
+    },
+    "Agents run builds with claudedeck heavy -- COMMAND (or claudedeck slot acquire build): they wait for one of these slots. A slot also goes back when its session ends.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajanlar derlemeleri claudedeck heavy -- KOMUT (ya da claudedeck slot acquire build) ile çalıştırır: bu yuvalardan biri boşalana kadar bekler. Oturumu biten yuva da bırakılır."
+          }
+        }
+      }
+    },
+    "When is the Mac overloaded?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac ne zaman aşırı yüklü sayılır?"
+          }
+        }
+      }
+    },
+    "Load above %@× the cores for a minute (%lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yük bir dakika boyunca çekirdek sayısının %@ katının üstünde (%lld)"
+          }
+        }
+      }
+    },
+    "Busy above %@× the cores (%lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yük çekirdek sayısının %@ katının üstündeyse yoğun (%lld)"
+          }
+        }
+      }
+    },
+    "More than %lld compiler processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld derleyici sürecinden fazlası"
+          }
+        }
+      }
+    },
+    "Also when macOS reports critical memory pressure. Back to normal once the numbers stay well below these for a minute. The defaults follow this Mac's %lld cores.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS kritik bellek baskısı bildirdiğinde de. Sayılar bir dakika boyunca bunların epey altında kalınca normale döner. Varsayılanlar bu Mac'in %lld çekirdeğine göre ayarlanır."
+          }
+        }
+      }
+    },
+    "Showing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gösterim"
+          }
+        }
+      }
+    },
+    "Notify when the Mac becomes overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac aşırı yüklendiğinde bildir"
+          }
+        }
+      }
+    },
+    "Once per episode, on this Mac and on paired phones, with what's behind it (simulators, builds, sessions).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her yük döneminde bir kez, bu Mac'te ve eşlenmiş telefonlarda; nedenleriyle birlikte (simülatörler, derlemeler, oturumlar)."
+          }
+        }
+      }
+    },
+    "Always show the load in the sidebar": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yükü kenar çubuğunda hep göster"
+          }
+        }
+      }
+    },
+    "Otherwise it shows only while the Mac is busy or overloaded.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aksi halde yalnızca Mac yoğun ya da aşırı yüklüyken görünür."
+          }
+        }
+      }
+    },
+    "Connecting to the session helper… %lld sessions wait for it; nothing is started twice.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yardımcıya bağlanılıyor… %lld oturum onu bekliyor; hiçbir şey iki kez başlatılmaz."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
