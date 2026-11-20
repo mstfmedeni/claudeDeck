@@ -106,9 +106,13 @@ extension AppModel {
         logAgent("ClaudeDeck", inbound: false, "stall watch · \(session.name): \(reason.summary) → \(what)")
         let notice = String(localized: "Looks stuck: \(reason.localizedSummary(minutes: settings.minutes)). \(action.localizedOutcome)")
         if deck.settings.notifications { onSessionNotice?(id, notice) }
-        if settings.tellParent, let parent = session.startedBy, deck.session(parent) != nil {
-            _ = receiveNote(requestID: nil, sessionID: parent, agent: String(localized: "ClaudeDeck stall watch"),
-                            text: String(localized: "\(session.name) (which this session started) looks stuck: \(reason.localizedSummary(minutes: settings.minutes)). \(action.localizedOutcome)"))
+        // The starter hears about it as a queued message (typed once it is idle), never as a note
+        // (notes reach the owner only; the owner has the notification above and the log).
+        if let parent = session.startedBy {
+            let live = deck.session(parent)?.kind == .claude && terminals.isRunning(parent)
+            if AgentNoticeRouting.route(.childStalled, recipientIsLiveClaude: live, enabled: settings.tellParent) == .queue {
+                enqueue(parent, text: "[ClaudeDeck] " + String(localized: "\(session.name) (which this session started) looks stuck: \(reason.localizedSummary(minutes: settings.minutes)). \(action.localizedOutcome)"))
+            }
         }
     }
 

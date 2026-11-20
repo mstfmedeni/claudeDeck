@@ -145,7 +145,7 @@ extension AppModel {
         // simulators (counted now, not from the last sample: acquires run one after another).
         if deck.settings.load.throttle {
             let booted = await Task.detached(priority: .utility) { SystemLoadSampler.bootedSimulators() }.value
-            switch LoadThrottle.simulator(throttled: systemLoad.monitor.throttled, enabled: true, booted: booted, wanted: wanted.count,
+            switch LoadThrottle.simulator(level: systemLoad.level, enabled: true, booted: booted, wanted: wanted.count,
                                           max: systemLoad.thresholds.maxSimulators) {
             case .allow: break
             case .overloaded:

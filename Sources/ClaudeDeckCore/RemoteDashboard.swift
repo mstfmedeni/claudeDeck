@@ -180,7 +180,7 @@ public struct RemoteSimulator: Codable, Sendable, Equatable, Identifiable {
 public struct RemoteLoad: Codable, Sendable, Equatable {
     /// "ok", "busy" or "overloaded" (a string: an unknown one shows as busy).
     public var level: String
-    /// In an overload episode: new agents, simulators and builds are held back.
+    /// Something is held back right now (new agents; while overloaded simulators and builds too).
     public var throttled: Bool
     /// The 1-minute load per core, to one decimal (1.0: every core busy).
     public var loadPerCore: Double
@@ -195,6 +195,48 @@ public struct RemoteLoad: Codable, Sendable, Equatable {
     public var sessions: Int
     public var slotsUsed: Int
     public var slots: Int
+    /// The heaviest sessions (hosts with `Feature.loadDetail`, while measured; nil otherwise).
+    public var top: [Top]?
+    /// Booted simulators with who holds them (hosts with `Feature.loadDetail`).
+    public var bootedSimulators: [BootedSimulator]?
+    /// The overload triggers firing now (`compilers`, `load`, …; hosts with `Feature.loadDetail`).
+    public var fired: [String]?
+
+    /// One session with its child processes.
+    public struct Top: Codable, Sendable, Equatable, Identifiable {
+        public var session: UUID
+        public var name: String
+        public var project: String
+        /// CPU in whole percent (100: one core), memory in MB.
+        public var cpuPercent: Int
+        public var memoryMB: Int
+        /// Started by another session (`claudedeck new`).
+        public var agent: Bool
+        public var id: UUID { session }
+        public init(session: UUID, name: String, project: String, cpuPercent: Int, memoryMB: Int, agent: Bool) {
+            self.session = session
+            self.name = name
+            self.project = project
+            self.cpuPercent = cpuPercent
+            self.memoryMB = memoryMB
+            self.agent = agent
+        }
+    }
+
+    public struct BootedSimulator: Codable, Sendable, Equatable, Identifiable {
+        public var udid: String
+        public var name: String
+        /// The session holding it (`claudedeck sim acquire`); nil: the user's own.
+        public var holder: String?
+        public var memoryMB: Int?
+        public var id: String { udid }
+        public init(udid: String, name: String, holder: String?, memoryMB: Int?) {
+            self.udid = udid
+            self.name = name
+            self.holder = holder
+            self.memoryMB = memoryMB
+        }
+    }
 
     public init(level: String, throttled: Bool, loadPerCore: Double, cores: Int, memoryPercent: Int, memoryPressure: String,
                 simulators: Int, builds: Int, sessions: Int, slotsUsed: Int, slots: Int) {

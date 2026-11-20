@@ -121,7 +121,7 @@ extension AppModel {
         case .remove(let ref):
             return cliRemove(caller, ref: ref, json: json)
         case .load:
-            return cliLoad(json: json)
+            return await cliLoad(form: form, json: json)
         case .slotAcquire(let kind):
             return await cliSlotAcquire(caller, kind: kind, form: form, json: json)
         case .slotRelease(let kind):

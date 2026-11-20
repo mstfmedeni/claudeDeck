@@ -68,6 +68,8 @@ final class SimulatorsController {
     private(set) var loaded = false
     private(set) var listError: String?
     private(set) var memory: [String: SimulatorMemory] = [:]
+    /// UDID → its `launchd_sim` pid, from the latest sample (the load tab reads the uptime off it).
+    private(set) var launchdPIDs: [String: pid_t] = [:]
     /// Uses seen in the latest sample.
     private(set) var uses: [String: [SimulatorUsage.Use]] = [:]
     private(set) var lastUse: [String: LastUse] = [:]
@@ -129,6 +131,7 @@ final class SimulatorsController {
         sampledAt = Date()
         let sample = await sampler.sample(roots: model.sessionProcessRoots(), devices: devices)
         memory = sample.memory
+        launchdPIDs = sample.launchdSims
         uses = sample.uses
         let now = Date()
         for (udid, list) in sample.uses {

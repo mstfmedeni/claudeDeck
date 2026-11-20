@@ -203,9 +203,9 @@ extension AppModel {
     }
 
     /// After the process ended: its pane closes (or, with `remove`, the session leaves the deck),
-    /// the Activity Log gets a line, the session that started it a note (unless that's the caller,
-    /// or it had ended already and stays: `ended` and `remove` false), and a queued `new --queue`
-    /// may start in the freed slot.
+    /// the Activity Log gets a line, the session that started it a queued message when the owner
+    /// turned that on (unless that's the caller, or it had ended already and stays: `ended` and
+    /// `remove` false), and a queued `new --queue` may start in the freed slot.
     private func finishCLIClose(_ session: DeckSession, by caller: UUID, forced: Bool, ended: Bool = true, remove: Bool) {
         let callerName = deck.session(caller)?.name ?? "claudedeck"
         let byItself = caller == session.id
@@ -223,10 +223,14 @@ extension AppModel {
         if deck.cliQueue.contains(where: { $0.status == .queued }) { drainCLIQueueSoon() }
     }
 
-    /// A note for the session that started `session` (when that's a Claude session other than the
-    /// caller), saying it was closed and/or removed.
+    /// Tells the session that started `session` (when that's a running Claude session other than
+    /// the caller) that it was closed and/or removed: a one-line message in its queue, typed once
+    /// it is idle, and only with Settings › Agents › "Tell the starter" on (off by default: the
+    /// close is in the Activity Log already). Never a note: notes reach the owner only.
     private func notifyStarter(of session: DeckSession, by caller: UUID, callerName: String, removed: Bool, ended: Bool) {
-        guard let parent = session.startedBy, parent != caller, deck.session(parent)?.kind == .claude else { return }
+        guard let parent = session.startedBy, parent != caller else { return }
+        let live = deck.session(parent)?.kind == .claude && terminals.isRunning(parent)
+        guard AgentNoticeRouting.route(.childClosed, recipientIsLiveClaude: live, enabled: deck.settings.tellStarterOnClose) == .queue else { return }
         let byItself = caller == session.id
         let text: String
         switch (byItself, ended, removed) {
@@ -241,6 +245,6 @@ extension AppModel {
         case (false, _, false):
             text = String(localized: "\(callerName) closed \(session.name), a session this one started.")
         }
-        receiveNote(requestID: nil, sessionID: parent, agent: removed ? "claudedeck remove" : "claudedeck close", text: text)
+        enqueue(parent, text: "[ClaudeDeck] " + text)
     }
 }

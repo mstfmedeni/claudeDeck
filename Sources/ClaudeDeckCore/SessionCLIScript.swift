@@ -92,9 +92,11 @@ extension SessionCLI {
           acquire is refused: overloaded / too_many_booted (exit 4). Release what you're done with.
 
     The Mac's load and build slots (Settings > Resources):
-      claudedeck load [--json]
+      claudedeck load [--json] [--detail]
           ok, busy or overloaded, with the load, memory, booted simulators, compiler processes,
-          Claude sessions and who holds the build slots. Check it before heavy work.
+          Claude sessions, who holds the build slots and which overload trigger fired. --detail
+          adds CPU and memory per session (with its child processes) and per project. Busy holds
+          nothing back; only overloaded does. Check it before heavy work.
       claudedeck heavy [--wait SECONDS] [--label TEXT] -- COMMAND...
           Waits for a build slot (default up to 3600 s), runs COMMAND, releases the slot and
           exits with COMMAND's code. Wrap xcodebuild, swift build, gradle, npm run build in it.
@@ -287,7 +289,7 @@ extension SessionCLI {
               switching_account) hint=" (it is being moved to another account; try again in a moment)" ;;
               too_many_simulators) hint=" (at most 4 per session; release some first)" ;;
               overloaded) case "$command_name" in
-                  new) hint=" (the Mac is overloaded: try later, or new --queue to start once it is back to ok; see claudedeck load)" ;;
+                  new) hint=" (the Mac is overloaded: try later, or new --queue to start once it no longer is; see claudedeck load)" ;;
                   *) hint=" (the Mac is overloaded: try later and release simulators you're done with; see claudedeck load)" ;;
                 esac ;;
               too_many_booted) hint=" (too many simulators are booted: release yours, or try later; see claudedeck load)" ;;
@@ -705,12 +707,13 @@ extension SessionCLI {
       while [ $# -gt 0 ]; do
         case "$1" in
           --json) json=1 ;;
+          --detail) detail=1 ;;
           *) die "load: unknown argument $1" ;;
         esac
         shift
       done
       need_session
-      call /load -G --data-urlencode "format=$(fmt)"
+      call /load -G --data-urlencode "format=$(fmt)" --data-urlencode "detail=${detail:-0}"
       finish
     }
 
@@ -1584,8 +1587,9 @@ extension SessionCLI {
       the user's simulators are never handed out. At most 4 per session (exit 4 `too_many_simulators`).
     - Acquiring can take a minute or two (create + boot). `--json` gives `udid`, `name`, `runtime`.
     - While the Mac is overloaded (`claudedeck load`), or once too many simulators are booted
-      (4 on a 20-core Mac, Settings > Resources), `acquire` is refused with exit 4 (`overloaded`,
-      `too_many_booted`). Release simulators as soon as you're done with them; try again later.
+      (4 by default, Settings > Resources), `acquire` is refused with exit 4 (`overloaded`,
+      `too_many_booted`). Reaching the cap doesn't make the Mac busy or overloaded; it only
+      refuses more simulators. Release simulators as soon as you're done with them.
 
     ### Heavy work: the Mac's load and build slots
 
@@ -1593,7 +1597,8 @@ extension SessionCLI {
     (ClaudeDeck too) crawl, so builds take turns:
 
     ```sh
-    claudedeck load                       # ok | busy | overloaded, load, memory, sims, builds, slot holders
+    claudedeck load                       # ok | busy | overloaded, load, memory, sims, builds, slot holders, triggers
+    claudedeck load --detail              # plus CPU and memory per session and per project
     claudedeck heavy -- xcodebuild -scheme App -destination "id=$udid" build
     claudedeck heavy -- swift build -c release
     claudedeck heavy --wait 600 -- ./gradlew assembleDebug    # give up after 10 minutes (exit 124)
@@ -1603,16 +1608,20 @@ extension SessionCLI {
 
     - **Wrap every heavy command in `claudedeck heavy --`**: `xcodebuild`, `swift build`,
       `swift test`, `gradle`/`./gradlew`, `npm run build`, `cargo build`, `docker build`. It waits
-      for one of the build slots (3 on a 20-core Mac; one while the Mac is overloaded), runs the
+      for one of the build slots (3 by default; one while the Mac is overloaded), runs the
       command, gives the slot back and exits with the command's code. Outside ClaudeDeck it just
       runs the command, so it's always safe to use.
     - Slots also go back when your session ends, or after 60 minutes (Settings > Resources).
+    - `overloaded` means a real risk of the Mac freezing: critical memory pressure, swap growing
+      fast under pressure, too many compilers, an extreme load (10 x cores for 3 minutes) or
+      process count (3,000) by default. `busy` (a high load average) is informational: nothing is
+      held back. Work normally while busy.
     - Before starting heavy work, `claudedeck load`: when it says `overloaded`, put off builds and
       simulators, release simulators you're done with, and don't start new sessions.
     - While the Mac is overloaded, `claudedeck new` is refused (exit 4, `overloaded`); with
-      `--queue` it waits in the queue and starts once the Mac is back to ok.
-    - A note `[ClaudeDeck] Mac aşırı yüklü: …` beside your session means the same: postpone heavy
-      work (builds, simulators) and release finished simulators.
+      `--queue` it waits in the queue and starts as soon as the Mac is no longer overloaded.
+    - A message `[ClaudeDeck] Mac aşırı yüklü: …` typed to you between turns (once per overload)
+      means the same: postpone heavy work (builds, simulators) and release finished simulators.
 
     ### Projects and Claude sessions
 
@@ -1656,8 +1665,9 @@ extension SessionCLI {
     - The user gets a notification for each and can see them in the activity log. Start
       sessions only when parallel work really helps, and say why in the prompt.
     - If the user turned on the stall watch, a session you started that makes no progress for a
-      while (or repeats the same error) may be nudged or restarted by ClaudeDeck, and the user
-      gets a note beside your session; `claudedeck status ID` shows the watch's state.
+      while (or repeats the same error) may be nudged or restarted by ClaudeDeck; you get a
+      one-line message about it between turns (unless the user turned that off), and
+      `claudedeck status ID` shows the watch's state.
 
     ### Closing sessions
 
@@ -1686,7 +1696,8 @@ extension SessionCLI {
       the user: exit 3 `blocked`; still there 15 s after `/exit`: exit 124 `still_running`. Use
       `--force` only when you mean to cut its work off.
     - `close self` returns at once (`closing: after this turn`) and the session ends when your
-      turn is over; finish your reply first. The session that started you gets a note.
+      turn is over; finish your reply first. The close is in the activity log; the session that
+      started you is told only if the user turned that on (a message between its turns).
 
     ### ServerPlan
 

@@ -65,7 +65,7 @@ struct WorkspaceView: View {
         case .automations: ""
         case .repository(let repo, _): (repo as NSString).abbreviatingWithTildeInPath
         case .inbox: ""
-        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions, .agentsOverview, .approvals: ""
+        case .search, .skills, .dashboard, .remoteTerminal, .simulators, .decisions, .agentsOverview, .approvals, .macLoad: ""
         case .agenda(let id): (model.deck.project(id)?.path).map { ($0 as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }
@@ -114,6 +114,8 @@ private struct TabContent: View {
             if isSelected { AgendaBoardView(projectID: id) }
         case .agentsOverview:
             if isSelected { AgentsOverviewView() }
+        case .macLoad:
+            if isSelected { LoadDetailView() }   // measures processes only while shown
         }
     }
 }
@@ -275,6 +277,7 @@ private struct TabItem: View {
         case .approvals: Image(systemName: "checkmark.shield")
         case .agenda: Image(systemName: "rectangle.split.3x1")
         case .agentsOverview: Image(systemName: "point.3.connected.trianglepath.dotted")
+        case .macLoad: Image(systemName: "cpu")
         }
     }
 
@@ -532,6 +535,7 @@ extension WorkspaceTab {
         case .approvals: "approvals"
         case .agenda(let id): "agenda:\(id.uuidString)"
         case .agentsOverview: "agentsOverview"
+        case .macLoad: "macLoad"
         }
     }
 
@@ -556,6 +560,7 @@ extension WorkspaceTab {
         case .agenda(let id):
             MainActor.assumeIsolated { AgendaController.tabTitle(id) }
         case .agentsOverview: String(localized: "Agents")
+        case .macLoad: String(localized: "Mac Load")
         }
     }
 
@@ -582,6 +587,7 @@ extension WorkspaceTab {
         case .approvals: String(localized: "Actions your sessions wait for you to approve")
         case .agenda: String(localized: "The project's docs/AGENDA.md as a board")
         case .agentsOverview: String(localized: "Sessions started by sessions, by project")
+        case .macLoad: String(localized: "What is using the Mac: sessions, simulators, builds")
         default: url.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
         }
     }

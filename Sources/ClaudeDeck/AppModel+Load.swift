@@ -2,28 +2,31 @@ import ClaudeDeckCore
 import Foundation
 
 /// What ClaudeDeck does about the Mac's load (LoadController, SystemLoad.swift): one notification
-/// (Mac and phone) and one note to the agents per overload episode, the start queue resuming once
-/// the Mac is back to ok, and the `claudedeck load` / `slot` routes. The throttling checks sit in
-/// `new` (AppModel+SessionCLIAutonomy), the queue drain (AppModel+SessionCLILaunch) and
-/// `sim acquire` (AppModel+SessionCLISimulators).
+/// (Mac and phone) and one queued message to the agents per overload episode, the start queue
+/// resuming as soon as starts are no longer held, and the `claudedeck load` / `slot` routes. The
+/// throttling checks sit in `new` (AppModel+SessionCLIAutonomy), the queue drain
+/// (AppModel+SessionCLILaunch) and `sim acquire` (AppModel+SessionCLISimulators).
 extension AppModel {
     var systemLoad: LoadController { LoadController.shared }
-
-    /// The note an agent gets when the Mac becomes overloaded (Turkish in the Turkish UI).
-    static var overloadNote: String {
-        String(localized: "[ClaudeDeck] The Mac is overloaded: postpone heavy work (builds, simulators) and release simulators you're done with.")
-    }
 
     func loadChanged(_ events: [LoadEvent], sample: LoadSample) {
         for event in events {
             switch event {
             case .level(let from, let to):
+                let fired = systemLoad.monitor.fired.map(\.rawValue).joined(separator: ", ")
                 let contributors = LoadContributor.of(sample, thresholds: systemLoad.thresholds).map(\.text).joined(separator: ", ")
-                logAgent("ClaudeDeck", inbound: false, "Mac load: \(from.rawValue) → \(to.rawValue) (\(contributors))", ok: to != .overloaded)
+                logAgent("ClaudeDeck", inbound: false, "Mac load: \(from.rawValue) → \(to.rawValue) ("
+                         + (fired.isEmpty ? "" : "fired: \(fired); ") + "\(contributors))", ok: to != .overloaded)
+                // Starts held at the old level and not at the new one: the queue drains again.
+                let settings = deck.settings.load
+                if !LoadThrottle.drains(level: from, busyAction: settings.busyAction, enabled: settings.throttle),
+                   LoadThrottle.drains(level: to, busyAction: settings.busyAction, enabled: settings.throttle),
+                   deck.cliQueue.contains(where: { $0.status == .queued }) {
+                    drainCLIQueueSoon()
+                }
             case .episodeStarted:
                 overloadEpisodeStarted(sample)
             case .episodeEnded:
-                // The queue held back during the episode starts draining again.
                 if deck.cliQueue.contains(where: { $0.status == .queued }) { drainCLIQueueSoon() }
             }
         }
@@ -37,13 +40,20 @@ extension AppModel {
             systemLoad.onOverloaded?(title, body)
             remote.pushNotice(title: title, body: body, collapseID: "load-overloaded", threadID: "load")
         }
-        // Agents hear about it once per episode, as a note (never typed into Claude).
-        guard settings.throttle else { return }
-        let agents = deck.sessions.filter { $0.kind == .claude && $0.startedBy != nil && terminals.isRunning($0.id) }
-        for session in agents {
-            _ = receiveNote(requestID: nil, sessionID: session.id, agent: "ClaudeDeck", text: Self.overloadNote)
+        // Agents hear about it once per episode as a queued message (typed only once each is idle,
+        // never interrupting a turn); a note would reach the owner only.
+        let text = AgentNoticeRouting.overloadMessage
+        let recipients = AgentNoticeRouting.overloadRecipients(deck.sessions.map {
+            (id: $0.id, isClaude: $0.kind == .claude, startedBy: $0.startedBy, running: terminals.isRunning($0.id))
+        })
+        var told = 0
+        for id in recipients {
+            let queued = deck.session(id)?.queue.contains { $0.text == text } ?? false
+            guard AgentNoticeRouting.route(.overloaded, recipientIsLiveClaude: true, enabled: true, alreadyQueued: queued) == .queue else { continue }
+            enqueue(id, text: text)
+            told += 1
         }
-        if !agents.isEmpty { logAgent("ClaudeDeck", inbound: false, "Mac overloaded: told \(agents.count) agents to postpone heavy work") }
+        if told > 0 { logAgent("ClaudeDeck", inbound: false, "Mac overloaded: queued a message for \(told) agents to postpone heavy work") }
     }
 
     /// "11 simulators booted, 30 builds, 37 sessions · load 42 on 20 cores" (localized).
@@ -57,6 +67,10 @@ extension AppModel {
             case .sessions(let n): parts.append(String(localized: "\(n) sessions"))
             case .memory(let pressure):
                 parts.append(pressure == .critical ? String(localized: "memory pressure critical") : String(localized: "memory pressure high"))
+            case .swap(let bytes):
+                parts.append(String(localized: "swap \(String(format: "%.1f", Double(bytes) / 1_073_741_824)) GB"))
+            case .processes(let n):
+                parts.append(String(localized: "\(n) processes"))
             case .load(let value, let cores):
                 loadText = String(localized: "load \(Int(value.rounded())) on \(cores) cores")
             }
@@ -66,19 +80,29 @@ extension AppModel {
 
     // MARK: claudedeck load / slot
 
-    func cliLoad(json: Bool) -> AgentHTTPResponse {
+    /// `claudedeck load [--json] [--detail]`: the JSON always has `top` (per session, measured now
+    /// unless the load tab measured it in the last few seconds); the text lists it with `--detail`.
+    func cliLoad(form: [String: String], json: Bool) async -> AgentHTTPResponse {
         systemLoad.pruneSlots()
-        let report = loadReport()
-        return SessionCLI.answer(200, report, text: report.text, exit: .ok, json: json)
+        let detail = form["detail"] == "1"
+        var usage = systemLoad.usage
+        if json || detail, usage == nil || Date().timeIntervalSince(usage!.at) > 10 {
+            usage = await systemLoad.measureUsage()
+        }
+        let report = loadReport(usage: usage)
+        return SessionCLI.answer(200, report, text: report.text(detail: detail), exit: .ok, json: json)
     }
 
-    func loadReport() -> SessionCLILoad {
+    func loadReport(usage: LoadUsageReport? = nil) -> SessionCLILoad {
         let slots = systemLoad.slots.slots.map {
             SessionCLILoad.Slot(id: $0.id, session: $0.session, sessionName: deck.session($0.session)?.name, label: $0.label, since: $0.acquiredAt)
         }
-        return SessionCLILoad(level: systemLoad.level, throttled: systemLoad.monitor.throttled, throttle: deck.settings.load.throttle,
-                              sample: systemLoad.latest, thresholds: systemLoad.thresholds, capacity: systemLoad.slotCapacity, slots: slots,
-                              waiting: systemLoad.slots.waiters.count)
+        let top = usage.map { systemLoad.topEntries($0) }
+        return SessionCLILoad(level: systemLoad.level, settings: deck.settings.load, sample: systemLoad.latest,
+                              thresholds: systemLoad.thresholds, triggers: systemLoad.monitor.triggers,
+                              capacity: systemLoad.slotCapacity, slots: slots, waiting: systemLoad.slots.waiters.count,
+                              maxStartedSessions: deck.settings.maxStartedSessions, runningStartedSessions: cliRunningStarted,
+                              top: top?.sessions, topProjects: top?.projects)
     }
 
     private struct SlotRefusal: Encodable {

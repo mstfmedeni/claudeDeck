@@ -40,6 +40,52 @@ enum SystemLoadSampler {
         return names
     }
 
+    /// Every process with its parent, name, start time, CPU time and resident memory (libproc:
+    /// one `proc_pidinfo(PROC_PIDTASKALLINFO)` each; another user's process falls back to its BSD
+    /// info, without CPU and memory). Only for the load tab and `claudedeck load --detail`.
+    nonisolated static func usageTable(at date: Date = Date()) -> ProcessUsageTable {
+        let estimate = proc_listallpids(nil, 0)
+        guard estimate > 0 else { return ProcessUsageTable(at: date, records: []) }
+        var pids = [pid_t](repeating: 0, count: Int(estimate) + 256)
+        let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
+        guard count > 0 else { return ProcessUsageTable(at: date, records: []) }
+        let ticks = machTickNanos
+        var records: [ProcessUsageRecord] = []
+        records.reserveCapacity(Int(count))
+        for pid in pids.prefix(Int(count)) where pid > 0 {
+            var all = proc_taskallinfo()
+            let size = Int32(MemoryLayout<proc_taskallinfo>.size)
+            if proc_pidinfo(pid, PROC_PIDTASKALLINFO, 0, &all, size) == size {
+                let cpu = Double(all.ptinfo.pti_total_user + all.ptinfo.pti_total_system) * ticks
+                records.append(ProcessUsageRecord(pid: pid, ppid: Int32(all.pbsd.pbi_ppid), name: bsdName(all.pbsd),
+                                                  started: Double(all.pbsd.pbi_start_tvsec) + Double(all.pbsd.pbi_start_tvusec) / 1e6,
+                                                  cpuNanos: UInt64(cpu), residentBytes: all.ptinfo.pti_resident_size))
+                continue
+            }
+            var bsd = proc_bsdinfo()
+            let bsdSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd, bsdSize) == bsdSize else { continue }
+            records.append(ProcessUsageRecord(pid: pid, ppid: Int32(bsd.pbi_ppid), name: bsdName(bsd),
+                                              started: Double(bsd.pbi_start_tvsec) + Double(bsd.pbi_start_tvusec) / 1e6))
+        }
+        return ProcessUsageTable(at: date, records: records)
+    }
+
+    /// Nanoseconds per Mach tick: `pti_total_user`/`_system` are in Mach time units on Apple silicon
+    /// (1 on Intel).
+    nonisolated static let machTickNanos: Double = {
+        var info = mach_timebase_info_data_t()
+        guard mach_timebase_info(&info) == KERN_SUCCESS, info.denom > 0 else { return 1 }
+        return Double(info.numer) / Double(info.denom)
+    }()
+
+    private nonisolated static func bsdName(_ info: proc_bsdinfo) -> String {
+        var copy = info
+        let long = withUnsafeBytes(of: &copy.pbi_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        if !long.isEmpty { return long }
+        return withUnsafeBytes(of: &copy.pbi_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }
+
     /// `kern.memorystatus_vm_pressure_level`: 1 normal, 2 warning, 4 critical.
     nonisolated static func pressureLevel() -> Int {
         var level: Int32 = 0

@@ -264,6 +264,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// A session closed with `claudedeck close` is also removed from the deck (like the owner's
     /// End and Remove; its Claude transcript is kept) unless the call says `--keep`. On by default.
     public var removeClosedSessions = true
+    /// A session that closes or removes one it started (or the closed one itself) also queues a
+    /// one-line message for the starter. Off by default: the starter knows when it closes a child,
+    /// and the close is in the Activity Log either way (never a note for the owner).
+    public var tellStarterOnClose = false
     /// The cap on Claude sessions started with `claudedeck new` running at once (1–40).
     public var maxStartedSessions = SessionCLI.maxRunningStarted
     /// A session started with `claudedeck new` finishing its turn is news for the session that
@@ -360,6 +364,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
         removeClosedSessions = try c.decodeIfPresent(Bool.self, forKey: .removeClosedSessions) ?? d.removeClosedSessions
+        tellStarterOnClose = (try? c.decodeIfPresent(Bool.self, forKey: .tellStarterOnClose)) ?? d.tellStarterOnClose
         startedSessionsTurnGoesToStarter = try c.decodeIfPresent(Bool.self, forKey: .startedSessionsTurnGoesToStarter) ?? d.startedSessionsTurnGoesToStarter
         maxStartedSessions = min(max(try c.decodeIfPresent(Int.self, forKey: .maxStartedSessions) ?? d.maxStartedSessions, 1), 40)
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations

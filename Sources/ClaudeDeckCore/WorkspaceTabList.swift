@@ -34,6 +34,9 @@ public enum WorkspaceTab: Hashable, Codable, Sendable {
     /// Approvals sessions wait on (ServerPlan gates, domain purchases). Not restored at launch:
     /// older versions can't decode it.
     case approvals
+    /// "Mac Yükü": the Mac's load in detail (per-session CPU and memory, simulators, builds,
+    /// idle agents, charts). Not restored at launch: older versions can't decode it.
+    case macLoad
 
     public var fileURL: URL? {
         if case .file(let url) = self { url } else { nil }
@@ -136,7 +139,7 @@ public struct WorkspaceTabList: Equatable, Codable, Sendable {
         copy.tabs = tabs.filter {
             switch $0 {
             case .sessions, .file, .automations, .inbox, .search, .skills, .dashboard: true
-            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda, .agentsOverview, .approvals: false
+            case .diff, .repository, .remoteTerminal, .simulators, .decisions, .agenda, .agentsOverview, .approvals, .macLoad: false
             }
         }
         if !copy.tabs.contains(selected) { copy.selected = .sessions }

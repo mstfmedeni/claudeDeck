@@ -237,6 +237,12 @@ extension AppModel {
         showMainWindow()
     }
 
+    /// The "Mac Yükü" tab (sidebar load row, Dashboard card).
+    func showMacLoad() {
+        tabs.open(.macLoad)
+        showMainWindow()
+    }
+
     /// The Agents tab: every agent tree by project.
     func showAgentsOverview() {
         tabs.open(.agentsOverview)

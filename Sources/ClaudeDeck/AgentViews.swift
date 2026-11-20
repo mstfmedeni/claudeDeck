@@ -178,6 +178,12 @@ struct AgentsSettingsSection: View {
                     get: { model.deck.settings.removeClosedSessions },
                     set: { on in model.mutate(userInitiated: false) { $0.settings.removeClosedSessions = on } }
                 ))
+                Toggle("Tell the starter when a session it started is closed", isOn: Binding(
+                    get: { model.deck.settings.tellStarterOnClose },
+                    set: { on in model.mutate(userInitiated: false) { $0.settings.tellStarterOnClose = on } }
+                ))
+                Text("A one-line message queued for the starting Claude session, typed once it is idle. Off: only the activity log (the starter usually closed it itself).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Text(model.deck.settings.removeClosedSessions
                  ? "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. A closed session is also removed from the list (unless the session says --keep); its Claude conversation is kept and can be reopened from the project's \"Resume Previous Conversation…\" menu. claudedeck remove removes such a session once it has stopped. Each close and removal is in the activity log."
@@ -231,7 +237,7 @@ private struct StallWatchRows: View {
             if model.deck.settings.stallWatch.action != .notify {
                 TextField("Nudge message", text: binding(\.nudgeMessage), prompt: Text(AppModel.defaultStallNudge))
             }
-            Toggle("Leave a note beside the session that started it", isOn: binding(\.tellParent))
+            Toggle("Tell the session that started it (a message once it is idle)", isOn: binding(\.tellParent))
         }
         Text("Only Claude sessions started with claudedeck new. Progress is a hook event or a new transcript line, so a long build that prints nothing to Claude can look stalled: pick enough minutes. Nudges and restarts: at most 3 per session an hour, then notifications only. Everything is in the activity log.")
             .font(.caption).foregroundStyle(.secondary)
