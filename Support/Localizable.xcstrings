@@ -24103,6 +24103,56 @@
           }
         }
       }
+    },
+    "Today": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün"
+          }
+        }
+      }
+    },
+    "Yesterday": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dün"
+          }
+        }
+      }
+    },
+    "No limit": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Süresiz"
+          }
+        }
+      }
+    },
+    "%lld h left": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sa kaldı"
+          }
+        }
+      }
+    },
+    "Without an answer in time it's refused.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Süresi içinde cevap verilmezse reddedilir."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -257,6 +257,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var sessionsMayBypassPermissions = false
     /// `claudedeck server …`: sessions use ServerPlan through the app (never its token). Off by default.
     public var sessionsMayUseServerPlan = false
+    /// How long an owner approval (a ServerPlan gate, a domain purchase) waits for an answer
+    /// before it's refused. 24 hours by default.
+    public var approvalWait = ApprovalWait.day
     /// `claudedeck sim acquire`: sessions reserve simulators of their own (ClaudeDeck creates and
     /// boots them; never the user's own devices). Off by default.
     public var sessionsMayUseSimulators = false
@@ -365,6 +368,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayStartSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayStartSessions) ?? d.sessionsMayStartSessions
         sessionsMayBypassPermissions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayBypassPermissions) ?? d.sessionsMayBypassPermissions
         sessionsMayUseServerPlan = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseServerPlan) ?? d.sessionsMayUseServerPlan
+        approvalWait = (try? c.decodeIfPresent(ApprovalWait.self, forKey: .approvalWait)) ?? d.approvalWait
         sessionsMayUseSimulators = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseSimulators) ?? d.sessionsMayUseSimulators
         simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch

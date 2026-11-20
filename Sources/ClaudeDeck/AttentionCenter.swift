@@ -95,6 +95,7 @@ final class AttentionCenter: NSObject, UNUserNotificationCenterDelegate {
             switch change {
             case .added(let approval): self?.approvalAsked(approval)
             case .resolved(let resolved): self?.center?.removeDeliveredNotifications(withIdentifiers: ["approval-\(resolved.id)"])
+            case .updated: break
             }
         }
         ServerPlanController.shared.onNotice = { [weak self, weak model] notice in

@@ -82,6 +82,12 @@ extension AppModel {
             return await cliNewSession(caller, project: ref, form: form, json: json)
         case .server(let command):
             return await cliServer(caller, command: command, method: request.method, form: form, json: json)
+        case .approval(let id):
+            return cliApprovalStatus(id, json: json)
+        case .waitApproval(let id):
+            return await cliApprovalWait(id, form: form, json: json)
+        case .cancelApproval(let id):
+            return cliApprovalCancel(caller, id: id, json: json)
         case .presets:
             return cliPresets(json: json)
         case .showPreset(let ref):

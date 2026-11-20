@@ -34,6 +34,10 @@ public enum SessionCLI {
         /// reset (no other account to move to, or moving is off). One that moves to another
         /// account keeps running: `wait` keeps waiting for it.
         case limited = 6
+        /// An owner approval is still pending: `claudedeck server … --no-wait`, the first answer of
+        /// a gated call (the script then long-polls `approval wait`), or `approval wait --timeout`
+        /// that ran out. The call goes on in ClaudeDeck once the owner answers.
+        case pendingApproval = 75
         /// For `wait`: still running when the timeout passed (like timeout(1)).
         case timeout = 124
     }
@@ -132,6 +136,11 @@ public enum SessionCLI {
         case decision(String)
         /// `POST /v1/cli/decisions/{id}/cancel`: withdraw a pending one.
         case cancelDecision(String)
+        /// `claudedeck approval status|wait|cancel ID`: an approval a `server` call waits on
+        /// (`GET /v1/cli/approvals/{id}`, `GET …/wait`, `POST …/cancel`).
+        case approval(String)
+        case waitApproval(String)
+        case cancelApproval(String)
         /// `GET /v1/cli/accounts`: the Claude accounts and their usage.
         case accounts
         /// `GET /v1/cli/accounts/current`: the caller's account.
@@ -169,7 +178,7 @@ public enum SessionCLI {
             case .ask: .ask
             case .projects: .projects
             case .addProject, .newSession, .presets, .showPreset, .setPreset, .queue, .queueItem, .cancelQueued: .start
-            case .server: .server
+            case .server, .approval, .waitApproval, .cancelApproval: .server
             case .waitMany: .wait
             case .decide, .decisions, .decision, .cancelDecision: .decide
             case .accounts, .currentAccount: .list
@@ -216,6 +225,9 @@ public enum SessionCLI {
         case 3 where rest[0] == "queue" && rest[2] == "cancel": return expect("POST", .cancelQueued(AgentHTTP.percentDecode(rest[1])))
         case 1 where rest[0] == "wait": return expect("GET", .waitMany)
         case 2 where rest[0] == "server": return .route(.server(rest[1]))
+        case 2 where rest[0] == "approvals": return expect("GET", .approval(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "approvals" && rest[2] == "wait": return expect("GET", .waitApproval(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "approvals" && rest[2] == "cancel": return expect("POST", .cancelApproval(AgentHTTP.percentDecode(rest[1])))
         case 1 where rest[0] == "decisions": return method == "POST" ? .route(.decide) : expect("GET", .decisions)
         case 2 where rest[0] == "decisions": return expect("GET", .decision(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "decisions" && rest[2] == "cancel": return expect("POST", .cancelDecision(AgentHTTP.percentDecode(rest[1])))

@@ -370,8 +370,9 @@ struct SessionListView: View {
             }
             if let plan = store.serverPlan { ServersRow(plan: plan) }
             if let simulators = store.simulators { SimulatorsRow(simulators: simulators) }
-            // A Mac that sends decisions: always the row, so it can be found before anything is asked.
-            if let approvals = store.approvals, !approvals.isEmpty { ApprovalsRow(approvals: approvals) }
+            // A Mac that sends approvals / decisions: always the rows, so they (and their history)
+            // can be found before anything is asked.
+            if let approvals = store.approvals { ApprovalsRow(approvals: approvals) }
             if let decisions = store.decisions { DecisionsRow(decisions: decisions) }
             if let agendas = store.agendas, !agendas.isEmpty { AgendaRow(agendas: agendas) }
             if let groups = store.agentGroups, !groups.isEmpty { AgentTreeRow(groups: groups) }
