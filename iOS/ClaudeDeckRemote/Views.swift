@@ -555,6 +555,7 @@ struct SessionListView: View {
             case "decisions": selection = MacScreen.decisions
             case "agenda": selection = MacScreen.agenda
             case "agents": selection = MacScreen.agents
+            case "approvals": selection = MacScreen.approvals
             case "newsession": newSessionProject = nil; newSessionKind = .claude; showNewSession = true
             default: debugSheet = DebugSheet(id: screen)
             }
