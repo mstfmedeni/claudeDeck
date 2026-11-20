@@ -191,8 +191,14 @@ public final class PtydClient: @unchecked Sendable {
 
     public func write(_ id: String, _ bytes: [UInt8]) {
         guard !bytes.isEmpty else { return }
+        activityLock.withLock { lastInput = Date() }
         post(PtydMessage(op: .write, session: id), payload: bytes)
     }
+
+    /// When input was last sent to any session over this connection (nil: never).
+    public var lastInputAt: Date? { activityLock.withLock { lastInput } }
+    private let activityLock = NSLock()
+    private var lastInput: Date?
 
     public func resize(_ id: String, cols: Int, rows: Int) {
         var message = PtydMessage(op: .resize, session: id)
@@ -240,6 +246,21 @@ public final class PtydClient: @unchecked Sendable {
         callbackQueue.asyncAfter(deadline: .now() + timeout) {
             if once.claim() { completion(.unknown) }
         }
+    }
+
+    /// The helper can replace its own code without ending its sessions (protocol 3 and later).
+    public var supportsUpgrade: Bool { welcome.protocolVersion >= PtydProtocol.upgradeVersion && isFull }
+
+    /// Asks the helper to exec into the binary now at its path (an update replaced it). `.ok`
+    /// (with the new build) means it is about to: the connection drops in a moment and the same
+    /// helper, same pid and instance, answers again with every session. `.refused("not_newer")`
+    /// or `("invalid_candidate")`: it keeps running as it is. Never sent to an older helper.
+    public func upgrade(_ completion: @escaping @Sendable (Result<PtydFrame, PtydClientError>) -> Void) {
+        guard supportsUpgrade else {
+            callbackQueue.async { completion(.failure(.refused(PtydErrorCode.badRequest, nil))) }
+            return
+        }
+        request(PtydMessage(op: .upgrade), completion: completion)
     }
 
     /// Closes the connection (the helper keeps every session running).

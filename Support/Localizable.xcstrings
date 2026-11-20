@@ -22783,6 +22783,56 @@
           }
         }
       }
+    },
+    "Restart an outdated helper when its sessions are quiet": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eski sürüm yardımcıyı oturumları sakinken yeniden başlat"
+          }
+        }
+      }
+    },
+    "The session helper updates itself with ClaudeDeck without interrupting its sessions. A helper from an older version can't: it needs one restart, which resumes its sessions. With this on, ClaudeDeck does it when nothing is happening in them.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı, oturumlarını kesmeden ClaudeDeck ile birlikte kendini günceller. Eski bir sürümden kalan yardımcı bunu yapamaz: bir kez yeniden başlatılması gerekir, oturumları da kaldıkları yerden devam eder. Bu açıkken ClaudeDeck bunu oturumlarda hiçbir şey olmadığı bir anda yapar."
+          }
+        }
+      }
+    },
+    "The session helper is from an older version and can't update itself. ClaudeDeck restarts it once its sessions are quiet; they resume.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı eski bir sürümden ve kendini güncelleyemiyor. ClaudeDeck onu oturumları sakinleşince yeniden başlatacak; oturumlar kaldıkları yerden devam eder."
+          }
+        }
+      }
+    },
+    "The session helper is from an older version and can't update itself. Restart it once to update it; its sessions resume.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum yardımcısı eski bir sürümden ve kendini güncelleyemiyor. Güncellemek için bir kez yeniden başlatın; oturumları kaldıkları yerden devam eder."
+          }
+        }
+      }
+    },
+    "ClaudeDeck was updated; the session helper was restarted (%lld sessions resume where they left off).": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck güncellendi; oturum yardımcısı yeniden başlatıldı (%lld oturum kaldığı yerden devam ediyor)."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -14,10 +14,14 @@ public enum PtydProtocol {
     /// This build's protocol version. Bump it when a message changes meaning; add the old
     /// behaviour behind `dialect` checks while older peers are still supported.
     /// 2: `probeAccess` / `access` (PtydAccessProbe).
-    public static let version = 2
+    /// 3: `upgrade` (the helper re-execs itself into the updated binary, see PtydHandover).
+    public static let version = 3
     /// The first helper version that answers `probeAccess`. Never sent to an older helper: it
     /// can't decode an op it doesn't know and drops the connection.
     public static let accessProbeVersion = 2
+    /// The first helper version that can replace its own code without ending its sessions
+    /// (`upgrade`). Older helpers can only be restarted, which ends their sessions.
+    public static let upgradeVersion = 3
     /// Oldest helper this app can drive fully (spawn, write, resize, signal).
     public static let oldestCompatibleHelper = 1
     /// Oldest app this helper accepts as a full client; older apps get read-only access.
@@ -36,6 +40,9 @@ public enum PtydOp: String, Codable, Sendable {
     case spawn, spawned, write, resize, signal, forget, drain, shutdown, ok
     // Version 2: the helper checks what privacy (TCC) lets it open; answered by `access`.
     case probeAccess, access
+    // Version 3: re-exec into the binary now on disk, keeping every session (answered by `ok`
+    // just before the connection drops, or `error`).
+    case upgrade
 }
 
 /// One pty session as the helper reports it.
@@ -140,6 +147,12 @@ public enum PtydErrorCode {
     public static let badRequest = "bad_request"
     public static let spawnFailed = "spawn_failed"
     public static let notAlive = "not_alive"
+    /// upgrade: the binary on disk isn't a newer build than the running one.
+    public static let notNewer = "not_newer"
+    /// upgrade: the binary on disk isn't validly signed by the same developer.
+    public static let invalidCandidate = "invalid_candidate"
+    /// upgrade: the helper couldn't hand its sessions over (it keeps running as it was).
+    public static let upgradeFailed = "upgrade_failed"
 }
 
 public struct PtydFrame: Sendable, Equatable {
