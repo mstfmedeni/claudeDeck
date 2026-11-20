@@ -266,6 +266,23 @@ import Testing
         #expect(old.container == nil && old.command == .shell)
     }
 
+    // MARK: The phone
+
+    @Test func phoneMessagesRoundTrip() throws {
+        #expect(RemoteSnapshot.Feature.all.contains(RemoteSnapshot.Feature.serverPlanContainers))
+        let row = RemoteServerPlan.Container(name: "api", condition: "unhealthy", status: "Up 2 hours (unhealthy)", image: "api:3",
+                                             domains: ["api.example.com"], cpuPercent: 1.5)
+        #expect(row.isRunning && !RemoteServerPlan.Container(name: "x", condition: "failed", status: nil, image: nil).isRunning)
+        for message in [RemoteMessage.serverPlanContainersRequest(serverID: 1, logsOf: "api"),
+                        .serverPlanContainers(serverID: 1, containers: [row], logsOf: "api", logs: ["ERROR x"], error: nil),
+                        .serverPlanContainerAction(serverID: 1, container: "api", verb: "restart"),
+                        .serverPlanContainerActionResult(serverID: 1, container: "api", verb: "restart", error: "Not approved on the Mac.")] {
+            #expect(try RemoteMessage.decode(message.frame()) == message)
+        }
+        #expect(RemoteServerPlan.isValidContainerName("api_1.web") && !RemoteServerPlan.isValidContainerName("../etc") && !RemoteServerPlan.isValidContainerName(""))
+        #expect(RemoteServerPlan.containerVerbs == ["start", "stop", "restart"])
+    }
+
     // MARK: The CLI table
 
     @Test func gatesAndOffers() throws {

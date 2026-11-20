@@ -157,6 +157,14 @@ struct ServersScreen: View {
                         Text("No projects").font(.callout).foregroundStyle(.secondary)
                     }
                     ForEach(mine) { project in projectRow(project) }
+                    // Macs with Feature.serverPlanContainers.
+                    if store.canShowContainers, server.status != "offline" {
+                        NavigationLink {
+                            ServerContainersScreen(serverID: server.id, serverName: server.name)
+                        } label: {
+                            Label("Containers", systemImage: "shippingbox")
+                        }
+                    }
                 } header: {
                     HStack(spacing: 6) {
                         Circle().fill(ServerStyle.color(server: server.status)).frame(width: 8, height: 8)
@@ -192,7 +200,11 @@ struct ServersScreen: View {
             }
             Section {
             } footer: {
-                Text("Read only. Deploy, restart and the terminals are on the Mac.")
+                if store.canShowContainers {
+                    Text("Deploys and the terminals are on the Mac. A container restart from here waits for your approval on the Mac.")
+                } else {
+                    Text("Read only. Deploy, restart and the terminals are on the Mac.")
+                }
             }
         }
     }

@@ -22803,6 +22803,176 @@
           }
         }
       }
+    },
+    "The Mac asks you to approve it in its Approvals before anything happens.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir şey yapılmadan önce Mac, Onaylar'da onaylamanızı ister."
+          }
+        }
+      }
+    },
+    "No log lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Günlük satırı yok"
+          }
+        }
+      }
+    },
+    "Ask the Mac to Start": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'ten Başlatmasını İste"
+          }
+        }
+      }
+    },
+    "Ask the Mac to Stop": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'ten Durdurmasını İste"
+          }
+        }
+      }
+    },
+    "Ask the Mac to Restart": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'ten Yeniden Başlatmasını İste"
+          }
+        }
+      }
+    },
+    "Waiting for your approval on the Mac…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te onayınız bekleniyor…"
+          }
+        }
+      }
+    },
+    "The Mac didn't answer.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yanıt vermedi."
+          }
+        }
+      }
+    },
+    "Started.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlatıldı."
+          }
+        }
+      }
+    },
+    "Stopped.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durduruldu."
+          }
+        }
+      }
+    },
+    "Restarted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeniden başlatıldı."
+          }
+        }
+      }
+    },
+    "Deploys and the terminals are on the Mac. A container restart from here waits for your approval on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deploy'lar ve terminaller Mac'te. Buradan bir konteyneri yeniden başlatmak Mac'te onayınızı bekler."
+          }
+        }
+      }
+    },
+    "Phone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon"
+          }
+        }
+      }
+    },
+    "Not approved on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac'te onaylanmadı."
+          }
+        }
+      }
+    },
+    "Last Log Lines": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son Günlük Satırları"
+          }
+        }
+      }
+    },
+    "The phone asks to start %@ on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon, %2$@ üzerindeki %1$@ konteynerinin başlatılmasını istiyor"
+          }
+        }
+      }
+    },
+    "The phone asks to stop %@ on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon, %2$@ üzerindeki %1$@ konteynerinin durdurulmasını istiyor"
+          }
+        }
+      }
+    },
+    "The phone asks to restart %@ on %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon, %2$@ üzerindeki %1$@ konteynerinin yeniden başlatılmasını istiyor"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

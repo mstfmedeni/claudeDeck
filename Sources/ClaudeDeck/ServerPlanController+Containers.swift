@@ -107,6 +107,67 @@ extension ServerPlanController {
         }
     }
 
+    // MARK: The phone
+
+    /// A server's containers for a phone (`Feature.serverPlanContainers`), with their use on
+    /// panels that send it, and the last 100 log lines of `logsOf`.
+    func phoneContainers(serverID: Int, logsOf: String?) async -> RemoteMessage {
+        guard let client else {
+            return .serverPlanContainers(serverID: serverID, containers: [], logsOf: logsOf, logs: nil,
+                                         error: String(localized: "ServerPlan isn't set up (Settings › ServerPlan)."))
+        }
+        do {
+            let list = try await client.containers(serverID: serverID)
+            containers[serverID] = list
+            if domains.isEmpty { await refreshDomains() }
+            await sampleContainers(serverID)
+            let stats = containerStats[serverID] ?? [:]
+            let rows = list.map { container in
+                RemoteServerPlan.Container(name: container.name, condition: container.condition.rawValue, status: container.status,
+                                           image: container.image, domains: domains(for: container, serverID: serverID),
+                                           cpuPercent: stats[container.name]?.cpuPercent, memPercent: stats[container.name]?.memPercent,
+                                           memBytes: stats[container.name]?.memUsedBytes)
+            }
+            var logs: [String]?
+            if let logsOf, allows(.logs) {
+                let text = try await client.containerLogs(serverID: serverID, container: logsOf, tail: 100)
+                logs = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+                while logs?.last?.isEmpty == true { logs?.removeLast() }
+            }
+            return .serverPlanContainers(serverID: serverID, containers: rows, logsOf: logsOf, logs: logs, error: nil)
+        } catch {
+            return .serverPlanContainers(serverID: serverID, containers: [], logsOf: logsOf, logs: nil, error: error.localizedDescription)
+        }
+    }
+
+    /// Start, stop or restart from a phone: the panel's summary becomes a card in the Onaylar
+    /// queue (approved on the Mac only); nil once done, else why not.
+    func phoneContainerAction(serverID: Int, container: String, verb: String) async -> String? {
+        guard let client, let model else { return String(localized: "ServerPlan isn't set up (Settings › ServerPlan).") }
+        guard let verb = ServerPlanAction.ContainerVerb(rawValue: verb) else { return "bad action" }
+        guard allows(.containers) else { return String(localized: "The token isn't allowed to do this.") }
+        let serverName = server(serverID)?.name ?? "#\(serverID)"
+        let action = ServerPlanAction.container(serverID: serverID, serverName: serverName, name: container, verb: verb)
+        do {
+            let preview = try await client.preview(action)
+            let title = switch verb {
+            case .start: String(localized: "The phone asks to start \(container) on \(serverName)")
+            case .stop: String(localized: "The phone asks to stop \(container) on \(serverName)")
+            case .restart: String(localized: "The phone asks to restart \(container) on \(serverName)")
+            }
+            var approval = model.makeApproval(UUID(), kind: .serverPlan, command: "container \(verb.rawValue)", target: preview.expected ?? container,
+                                              summary: preview.summary, title: title)
+            approval.session = String(localized: "Phone")
+            guard await model.awaitApproval(approval) else { return String(localized: "Not approved on the Mac.") }
+            guard let confirmation = ServerPlanConfirmation(action, expected: preview.expected) else { return String(localized: "This needs a confirmation first.") }
+            let result = try await client.perform(confirmation)
+            actionDone(action, result: result)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     // MARK: Claude ile düzelt from log lines
 
     /// Sends the picked log lines (or the last errors) of a container to a Claude session in the
