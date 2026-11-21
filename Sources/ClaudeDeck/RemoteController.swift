@@ -586,7 +586,13 @@ final class RemoteController {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmed.isEmpty { model.renameSession(id, to: String(trimmed.prefix(200))) }
                     case .restart:
-                        if model.terminals.isRunning(id), model.canRestart(id) { Task { await model.restartSession(id) } }
+                        // From the phone the owner already chose it there: no dialog on the Mac (one
+                        // nobody at the Mac would answer). A stopped session simply starts again.
+                        if model.terminals.isRunning(id) {
+                            if model.canRestart(id) { Task { await model.restartSession(id, busy: .force, interactive: false) } }
+                        } else {
+                            model.launch(id, resume: session.kind == .claude && model.canResume(id))
+                        }
                     case .close:
                         if model.terminals.isRunning(id) { model.stop(id) }
                     case .startFresh:
