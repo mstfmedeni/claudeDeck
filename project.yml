@@ -182,6 +182,7 @@ targets:
       - Sources/ClaudeDeckCore/Decisions.swift
       - Sources/ClaudeDeckCore/AgendaBoard.swift
       - Sources/ClaudeDeckCore/AgentTree.swift
+      - Sources/ClaudeDeckCore/TerminalKeys.swift
       - Support/Localizable.xcstrings
     dependencies:
       - package: SwiftTerm
@@ -231,6 +232,8 @@ targets:
           - "Resources/InfoPlist.xcstrings"
           - "Resources/Localizable.xcstrings"
           - "Resources/PrivacyInfo.xcprivacy"
+      # ClaudeDeck's bridge: the screen-sharing keyboard for the terminal and conversation.
+      - path: iOS/ScreenSharingBridge
     dependencies:
       - framework: Vendor/open-screen-sharing/Frameworks/Libsharing.xcframework
         embed: false

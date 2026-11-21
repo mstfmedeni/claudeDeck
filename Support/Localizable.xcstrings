@@ -24563,6 +24563,46 @@
           }
         }
       }
+    },
+    "System Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sistem klavyesi"
+          }
+        }
+      }
+    },
+    "ClaudeDeck Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck klavyesi"
+          }
+        }
+      }
+    },
+    "Terminal Keyboard": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminal klavyesi"
+          }
+        }
+      }
+    },
+    "Keys": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuşlar"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

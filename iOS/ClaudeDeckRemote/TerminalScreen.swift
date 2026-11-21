@@ -1,3 +1,5 @@
+import GameController
+import ScreenSharingKit
 import SwiftTerm
 import SwiftUI
 import UIKit
@@ -12,25 +14,72 @@ final class FixedGridTerminalView: TerminalView {
         enforceGrid()
     }
 
-    /// Ctrl+Return (the keyboard bar's Ctrl, then Return): SwiftTerm has no control character for
-    /// Return and sent nothing. Sends Ctrl+J instead, which Claude Code takes as a new line.
+    /// The quick-key bar's sticky Ctrl and Option (SwiftTerm's own bar is replaced, see `installKeyboard`).
+    let quickKeys = QuickKeyState()
+    private var keyboardChoiceApplied: TerminalKeyboardChoice?
+
+    /// A typed character with the bar's Ctrl (or SwiftTerm's) is its control byte: Ctrl, then c sends
+    /// 0x03, Ctrl then Return a new line (Ctrl+J). Always the plain byte, never a kitty CSI-u sequence.
     override func insertText(_ text: String) {
-        let accessory = inputAccessoryView as? TerminalAccessory
-        if text == "\n", accessory?.controlModifier == true || controlModifier {
-            accessory?.controlModifier = false
+        var modifiers = quickKeys.modifiers
+        if controlModifier { modifiers.insert(.control) }
+        if !modifiers.isEmpty, !text.isEmpty {
+            quickKeys.clear()
             controlModifier = false
-            send(data: [0x0a][...])
+            send(data: TerminalKeys.bytes(text: text, modifiers: modifiers)[...])
             return
         }
         super.insertText(text)
     }
 
-    /// A hardware keyboard's Ctrl+Return or Shift+Return: a new line too (plain Return still sends).
+    /// The bar's keys and the ClaudeDeck keyboard's: bytes straight to the program.
+    func sendQuickKey(_ key: QuickKey) {
+        let bytes = key.bytes(applicationCursor: getTerminal().applicationCursor)
+        if !bytes.isEmpty { send(data: bytes[...]) }
+    }
+
+    /// The quick-key bar, and the ClaudeDeck keyboard in place of the system one when chosen.
+    func installKeyboard(_ choice: TerminalKeyboardChoice, onToggle: @escaping () -> Void) {
+        let bar = QuickKeysBar(state: quickKeys, send: { [weak self] in self?.sendQuickKey($0) }, choice: choice,
+                               onToggleChoice: onToggle, onHide: { [weak self] in _ = self?.resignFirstResponder() })
+        if let accessory = inputAccessoryView as? QuickKeyAccessory {
+            accessory.update(bar)
+        } else {
+            inputAccessoryView = QuickKeyAccessory(bar: bar)
+        }
+        guard choice != keyboardChoiceApplied else { return }
+        keyboardChoiceApplied = choice
+        switch choice {
+        case .system:
+            inputView = nil
+        case .claudeDeck:
+            let keyboard = HostKeyboardInputView(compact: traitCollection.horizontalSizeClass == .compact)
+            keyboard.model.onKey = { [weak self] event in
+                guard let self else { return }
+                let extra = quickKeys.modifiers
+                quickKeys.clear()
+                let bytes = event.terminalBytes(applicationCursor: getTerminal().applicationCursor, extra: extra)
+                if !bytes.isEmpty { send(data: bytes[...]) }
+            }
+            inputView = keyboard
+        }
+        if isFirstResponder { UIView.performWithoutAnimation { reloadInputViews() } }
+    }
+
+    /// A hardware keyboard: Ctrl+letter is the control byte (Ctrl+C is 0x03, an interrupt) whatever
+    /// keyboard mode the program asked for; Ctrl+Return or Shift+Return is a new line (plain Return
+    /// still sends). ⌘ keys stay the app's (⌘C copies).
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        if presses.count == 1, let key = presses.first?.key, key.keyCode == .keyboardReturnOrEnter,
-           !key.modifierFlags.intersection([.control, .shift]).isEmpty, !key.modifierFlags.contains(.command) {
-            send(data: [0x0a][...])
-            return
+        if presses.count == 1, let key = presses.first?.key, !key.modifierFlags.contains(.command) {
+            if key.keyCode == .keyboardReturnOrEnter, !key.modifierFlags.intersection([.control, .shift]).isEmpty {
+                send(data: [0x0a][...])
+                return
+            }
+            if key.modifierFlags.contains(.control), key.charactersIgnoringModifiers.count == 1,
+               let character = key.charactersIgnoringModifiers.first, let byte = TerminalKeys.controlByte(for: character) {
+                send(data: (key.modifierFlags.contains(.alternate) ? [0x1b, byte] : [byte])[...])
+                return
+            }
         }
         super.pressesBegan(presses, with: event)
     }
@@ -207,7 +256,22 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         terminal.enforceGrid()
         if changed { fit() }
         terminal.feed(byteArray: ArraySlice(screen))
-        if !scrolledToBottom { scrollToCursor() }
+        if !scrolledToBottom {
+            scrollToCursor()
+            focusForHardwareKeyboard()
+        }
+    }
+
+    /// With a hardware keyboard attached the terminal takes its keys right away (Ctrl+C included);
+    /// SwiftTerm only took focus on its long press, which is off here. Without one, the system
+    /// keyboard stays down until the toolbar's keyboard button.
+    func focusForHardwareKeyboard() {
+        guard GCKeyboard.coalesced != nil, window != nil, !terminal.isFirstResponder else { return }
+        _ = terminal.becomeFirstResponder()
+    }
+
+    @objc private func tappedForFocus(_ gesture: UITapGestureRecognizer) {
+        focusForHardwareKeyboard()
     }
 
     func feed(_ bytes: Data) {
@@ -341,6 +405,12 @@ final class RemoteTerminalUIView: UIView, @preconcurrency TerminalViewDelegate, 
         clear.name = Self.clearTapName
         clear.delegate = selectionGate
         terminal.addGestureRecognizer(clear)
+
+        let focus = UITapGestureRecognizer(target: self, action: #selector(tappedForFocus(_:)))
+        focus.name = Self.clearTapName
+        focus.delegate = selectionGate
+        focus.cancelsTouchesInView = false
+        terminal.addGestureRecognizer(focus)
 
         // A drag at a selection end moves it instead of scrolling; a pointer click-drag selects.
         terminal.gestureRecognizers?.filter { $0.delegate is WheelGate }.forEach { $0.require(toFail: handle) }
@@ -536,6 +606,7 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
     let sessionID: UUID
     let store: RemoteStore
     let keyboardToggle: Int
+    var keyboardChoice = TerminalKeyboardChoice.system
     var copyRequest = TerminalCopyRequest()
     let fitToScreen: Bool
     @Binding var fontSize: Double
@@ -564,6 +635,7 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
         let size = $fontSize
         view.onReadingFont = { size.wrappedValue = $0 }
         store.attachTerminal(id, sink: view)
+        view.terminal.installKeyboard(keyboardChoice, onToggle: Self.toggleChoice)
         context.coordinator.lastToggle = keyboardToggle
         context.coordinator.lastCopy = copyRequest.serial
         return view
@@ -572,6 +644,7 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
     func updateUIView(_ view: RemoteTerminalUIView, context: Context) {
         view.fitToScreen = fitToScreen
         view.readingFont = fontSize
+        view.terminal.installKeyboard(keyboardChoice, onToggle: Self.toggleChoice)
         if keyboardToggle != context.coordinator.lastToggle {
             context.coordinator.lastToggle = keyboardToggle
             view.toggleKeyboard()
@@ -580,6 +653,12 @@ struct RemoteTerminalRepresentable: UIViewRepresentable {
             context.coordinator.lastCopy = copyRequest.serial
             UIPasteboard.general.string = view.text(lastLines: copyRequest.lines)
         }
+    }
+
+    /// The bar's keyboard button: the other keyboard, remembered on this device.
+    static func toggleChoice() {
+        let current = TerminalKeyboardChoice(rawValue: UserDefaults.standard.string(forKey: TerminalKeyboardChoice.key) ?? "") ?? .system
+        UserDefaults.standard.set(current.toggled.rawValue, forKey: TerminalKeyboardChoice.key)
     }
 
     static func dismantleUIView(_ view: RemoteTerminalUIView, coordinator: Coordinator) {
@@ -604,6 +683,8 @@ struct SessionDetailView: View {
     @SceneStorage("detail.mode") private var mode = Mode.conversation
     @AppStorage("terminal.fit") private var fitToScreen = true
     @AppStorage(TerminalFont.key) private var terminalFont = TerminalFont.standard
+    @AppStorage(TerminalKeyboardChoice.key) private var keyboardChoice = TerminalKeyboardChoice.system
+    @AppStorage(ConversationView.keysKey) private var conversationKeys = false
     @State private var filesProject: RemoteProject?
 
     /// Claude's edits shown in the conversation, at its tool calls (the toolbar's ± switches it).
@@ -681,9 +762,16 @@ struct SessionDetailView: View {
                         .disabled(store.terminalStates[sessionID] == nil)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { keyboardToggle += 1 } label: { Image(systemName: "keyboard") }
-                        .accessibilityLabel(Text("Keyboard"))
-                        .disabled(store.terminalStates[sessionID] != .live)
+                    // Tap: show or hide the keyboard; hold: System or ClaudeDeck keyboard.
+                    Menu {
+                        Picker("Keyboard", selection: $keyboardChoice) {
+                            ForEach(TerminalKeyboardChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }
+                    } label: { Image(systemName: keyboardChoice == .system ? "keyboard" : "keyboard.badge.ellipsis") } primaryAction: {
+                        keyboardToggle += 1
+                    }
+                    .accessibilityLabel(Text("Keyboard"))
+                    .disabled(store.terminalStates[sessionID] != .live)
                 }
             } else {
                 if mode == .conversation, store.supportsEdits {
@@ -693,6 +781,15 @@ struct SessionDetailView: View {
                         }
                         .accessibilityLabel(Text("Edits in the Conversation"))
                         .accessibilityValue(Text(inlineEdits ? "On" : "Off"))
+                    }
+                }
+                if mode == .conversation {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { conversationKeys.toggle() } label: {
+                            Image(systemName: conversationKeys ? "keyboard.fill" : "keyboard")
+                        }
+                        .accessibilityLabel(Text("Keys"))
+                        .accessibilityValue(Text(conversationKeys ? "On" : "Off"))
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) { ConversationTextSizeMenu() }
@@ -714,7 +811,7 @@ struct SessionDetailView: View {
     }
 
     private var terminal: some View {
-            RemoteTerminalRepresentable(sessionID: sessionID, store: store, keyboardToggle: keyboardToggle, copyRequest: copyRequest, fitToScreen: fitToScreen, fontSize: $terminalFont)
+            RemoteTerminalRepresentable(sessionID: sessionID, store: store, keyboardToggle: keyboardToggle, keyboardChoice: keyboardChoice, copyRequest: copyRequest, fitToScreen: fitToScreen, fontSize: $terminalFont)
                 .overlay {
                     if let message = overlayMessage {
                         VStack(spacing: 8) {

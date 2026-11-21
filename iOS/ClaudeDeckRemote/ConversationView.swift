@@ -27,6 +27,9 @@ struct ConversationView: View {
     /// Claude's edits as diffs at their tool calls (SessionDetailView's toolbar switches it).
     @AppStorage(Self.inlineEditsKey) private var inlineEdits = true
     static let inlineEditsKey = "conversation.inlineEdits"
+    /// The live keys above the composer (Esc, ⌃C, Tab, arrows; SessionDetailView's toolbar switches it).
+    @AppStorage(Self.keysKey) private var showKeys = false
+    static let keysKey = "conversation.keys"
     /// How many of the latest entries are drawn (a long session has thousands; laying them all out
     /// again on every update kept the main thread busy for most of the time).
     @State private var window = ConversationView.windowStep * 2
@@ -153,6 +156,7 @@ struct ConversationView: View {
                     }
                 }
             }
+            if showKeys { ConversationKeys(sessionID: sessionID) }
             Divider()
             composer(session)
         }

@@ -1424,6 +1424,7 @@ struct SettingsView: View {
     @AppStorage(ConversationTextSize.key) private var conversationSize = ConversationTextSize.standard
     @AppStorage(ConversationTextSize.densityKey) private var density = 0
     @AppStorage(TerminalFont.key) private var terminalFont = TerminalFont.standard
+    @AppStorage(TerminalKeyboardChoice.key) private var keyboardChoice = TerminalKeyboardChoice.system
 
     var body: some View {
         Form {
@@ -1437,6 +1438,10 @@ struct SettingsView: View {
                         Slider(value: $terminalFont, in: TerminalFont.range, step: 0.5)
                         Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
                     }
+                }
+                // The terminal's keyboard (and the conversation's live keys), on this device.
+                Picker("Terminal Keyboard", selection: $keyboardChoice) {
+                    ForEach(TerminalKeyboardChoice.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 Picker("Session List Rows", selection: $density) {
                     Text("Normal").tag(0)
