@@ -822,6 +822,19 @@ struct SessionDetailView: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    // Keys that got nothing back: the Mac may have dropped them, which an older Mac does
+                    // silently (a read-only helper session, or a program that ended).
+                    if overlayMessage == nil, store.unansweredInput.contains(sessionID) {
+                        Label("The Mac isn't taking keys for this terminal. It may be read-only; restart the session on the Mac.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .padding(10)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            .padding(12)
+                            .allowsHitTesting(false)
+                    }
+                }
     }
 
     private var overlayMessage: String? {

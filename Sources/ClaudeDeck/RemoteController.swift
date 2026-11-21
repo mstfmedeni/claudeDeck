@@ -395,7 +395,17 @@ final class RemoteController {
                 MainActor.assumeIsolated {
                     self?.counters["inputReceived", default: 0] += data.count
                     // The same path as a key press on this Mac (status follows, e.g. "1" answers a prompt).
-                    guard let view = self?.model?.terminals.view(for: id), self?.model?.terminals.isRunning(id) == true else { return }
+                    guard let self, let terminals = self.model?.terminals else { return }
+                    // A read-only helper session (adopted from an older helper) or a terminal whose
+                    // program ended takes no keys: say so on the phone instead of dropping them silently.
+                    if terminals.readOnlySessions.contains(id) {
+                        self.noticeDroppedInput(id, readOnly: true)
+                        return
+                    }
+                    guard let view = terminals.view(for: id), terminals.isRunning(id) else {
+                        self.noticeDroppedInput(id, readOnly: false)
+                        return
+                    }
                     view.send(source: view, data: ArraySlice(data))
                 }
             }
@@ -892,6 +902,23 @@ final class RemoteController {
                 for id in Array(self.outputBuffers.keys) { self.flushOutput(id) }
             }
         }
+    }
+
+    /// When a dropped key last told the phone why (at most once per session every 10 s).
+    @ObservationIgnored private var droppedInputNoticed: [UUID: Date] = [:]
+
+    /// Keys from a phone that this session can't take: a highlighted line on the phone's screen
+    /// only (the Mac's own terminal is untouched; the next redraw clears it).
+    private func noticeDroppedInput(_ id: UUID, readOnly: Bool) {
+        counters["inputDropped", default: 0] += 1
+        let now = Date()
+        if let last = droppedInputNoticed[id], now.timeIntervalSince(last) < 10 { return }
+        droppedInputNoticed[id] = now
+        let message = readOnly
+            ? String(localized: "This session is read-only (an older session helper's). Restart it to type.")
+            : String(localized: "This terminal isn't running on the Mac. Restart it to type.")
+        flushOutput(id)
+        server?.sendOutput(sessionID: id, bytes: Data("\r\n\u{1b}[7m ClaudeDeck: \(message) \u{1b}[0m\r\n".utf8))
     }
 
     private func flushOutput(_ id: UUID) {

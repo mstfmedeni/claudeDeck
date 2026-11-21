@@ -64,6 +64,11 @@ final class RemoteStore {
     private(set) var terminalStates: [UUID: TerminalState] = [:]
     /// Several per session when it's open in more than one window.
     @ObservationIgnored private var sinks: [UUID: [RemoteTerminalSink]] = [:]
+    /// Terminals whose keys got no output back for a while: the Mac may have dropped them (a
+    /// read-only helper session, or one whose program ended; an older Mac drops them silently).
+    private(set) var unansweredInput: Set<UUID> = []
+    /// When the oldest key still waiting for output was sent, per terminal.
+    @ObservationIgnored private var inputPending: [UUID: Date] = [:]
 
     @ObservationIgnored private var hostConnection: RemoteHostConnection?
     @ObservationIgnored private var retryTask: Task<Void, Never>?
@@ -566,11 +571,15 @@ final class RemoteStore {
             MainActor.assumeIsolated {
                 guard let self, let sinks = self.sinks[id] else { return }
                 self.terminalStates[id] = .live
+                self.inputAnswered(id)
                 for sink in sinks { sink.start(cols: cols, rows: rows, screen: screen) }
             }
         }
         next.onTerminalOutput = { [weak self] id, bytes in
-            MainActor.assumeIsolated { self?.sinks[id]?.forEach { $0.feed(bytes) } }
+            MainActor.assumeIsolated {
+                self?.inputAnswered(id)
+                self?.sinks[id]?.forEach { $0.feed(bytes) }
+            }
         }
         next.onTerminalEnded = { [weak self] id in
             MainActor.assumeIsolated {
@@ -1210,6 +1219,20 @@ final class RemoteStore {
     func sendTerminalInput(_ id: UUID, data: Data) {
         guard terminalStates[id] == .live else { return }
         hostConnection?.sendInput(id, data: data)
+        guard inputPending[id] == nil else { return }
+        let sent = Date()
+        inputPending[id] = sent
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard let self, self.inputPending[id] == sent, self.terminalStates[id] == .live else { return }
+            self.unansweredInput.insert(id)
+        }
+    }
+
+    /// Output (or a fresh screen) came back: the keys reached the program.
+    private func inputAnswered(_ id: UUID) {
+        inputPending[id] = nil
+        if unansweredInput.contains(id) { unansweredInput.remove(id) }
     }
 
     /// Fit mode: size the Mac's terminal to this screen (0 cols gives it back). Re-sent after reconnects.

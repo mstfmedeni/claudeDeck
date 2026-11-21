@@ -7636,6 +7636,36 @@
         }
       }
     },
+    "This session is read-only (an older session helper's). Restart it to type.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturum salt okunur (eski bir oturum yardımcısından kaldı). Yazmak için yeniden başlatın."
+          }
+        }
+      }
+    },
+    "The Mac isn't taking keys for this terminal. It may be read-only; restart the session on the Mac.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac bu terminalin tuşlarını almıyor. Oturum salt okunur olabilir; Mac'te yeniden başlatın."
+          }
+        }
+      }
+    },
+    "This terminal isn't running on the Mac. Restart it to type.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu terminal Mac'te çalışmıyor. Yazmak için yeniden başlatın."
+          }
+        }
+      }
+    },
     "This session can use the Pencil (Pen.app) MCP tools": {
       "localizations": {
         "tr": {
