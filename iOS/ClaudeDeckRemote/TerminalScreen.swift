@@ -53,7 +53,7 @@ final class FixedGridTerminalView: TerminalView {
         case .system:
             inputView = nil
         case .claudeDeck:
-            let keyboard = HostKeyboardInputView(compact: traitCollection.horizontalSizeClass == .compact)
+            let keyboard = HostKeyboardInputView(compact: UIDevice.current.userInterfaceIdiom == .phone)
             keyboard.model.onKey = { [weak self] event in
                 guard let self else { return }
                 let extra = quickKeys.modifiers

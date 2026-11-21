@@ -223,13 +223,15 @@ struct ConversationKeys: View {
 
     private func send(_ key: QuickKey) {
         var bytes = key.bytes(applicationCursor: false)
-        if bytes == TerminalKeys.escape, !live {
-            // Not open yet: the Mac's interrupt (Esc while Claude works).
+        let state = store.snapshot?.session(sessionID)?.state
+        if bytes == TerminalKeys.escape, !live || state == .running || state?.isBlocked == true {
+            // The Mac's interrupt: Esc only while Claude works. On a permission prompt Esc would
+            // Deny it, and the conversation has its own buttons for that.
             store.interrupt(sessionID)
             return
         }
-        if bytes.count == 1, state.option { bytes.insert(0x1b, at: 0) }
-        state.clear()
+        if bytes.count == 1, self.state.option { bytes.insert(0x1b, at: 0) }
+        self.state.clear()
         store.sendTerminalInput(sessionID, data: Data(bytes))
     }
 }
