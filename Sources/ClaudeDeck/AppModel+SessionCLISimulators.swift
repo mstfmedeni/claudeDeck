@@ -174,6 +174,7 @@ extension AppModel {
         // Settings › Resources: not while the Mac is overloaded or busy holding new work, nor past the cap on booted
         // simulators (counted now, not from the last sample: acquires run one after another).
         if deck.settings.load.throttle {
+            await systemLoad.sampleIfStale()
             let booted = await Task.detached(priority: .utility) { SystemLoadSampler.bootedSimulators() }.value
             switch LoadThrottle.simulator(level: systemLoad.level, busyAction: deck.settings.load.busyAction, enabled: true,
                                           booted: booted, wanted: wanted.count,

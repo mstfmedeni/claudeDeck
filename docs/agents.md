@@ -359,7 +359,7 @@ fires):
 | Level | When |
 |---|---|
 | `overloaded` | any switched-on trigger fires |
-| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit (steady count). **New work waits** (with the brake on and Settings › Resources › "Meşgulken" on "Yeni işleri beklet", the default since 0.6.20): `new` answers `429 overloaded` / queues, the start queue doesn't drain, `sim acquire` answers `429 busy`, and build slots drop to half (never below the overloaded count). Running agents get no message. "Sadece göster" makes it informational. Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
+| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit (steady count). **New work waits** (with the brake on and Settings › Resources › "Meşgulken" on "Yeni işleri beklet", the default since 0.6.20): `new` answers `429 busy` (exit 4) or, with `--queue`, queues (reason `busy`), the start queue doesn't drain, `sim acquire` answers `429 busy`, and build slots drop to half (never below the overloaded count). Running agents get no message. "Sadece göster" makes it informational. Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
 | `ok` | otherwise |
 
 Hysteresis: overloaded ends once no trigger fires and the load and process count have stayed

@@ -138,6 +138,7 @@ extension AppModel {
         let deadline = ContinuousClock.now + .seconds(window)
         let name = deck.session(caller)?.name ?? "claudedeck"
         systemLoad.pruneSlots()
+        await systemLoad.sampleIfStale()
         while true {
             guard deck.session(caller) != nil else { return SessionCLI.failure(404, "unknown_session", exit: .unknown) }
             let capacity = systemLoad.slotCapacity

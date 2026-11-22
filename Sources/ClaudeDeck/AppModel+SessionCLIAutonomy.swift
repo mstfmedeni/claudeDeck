@@ -109,17 +109,19 @@ extension AppModel {
                                      name: (form["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines), prompt: prompt,
                                      worktree: worktree, skill: skill.isEmpty ? nil : skill, options: given)
         request.account = account
-        // An overloaded Mac (Settings › Resources; busy too when the owner chose so): refused, or
-        // queued until it is no longer. Before the rate limit, so a refusal doesn't use up one of
-        // the caller's starts.
+        // An overloaded or busy Mac (Settings › Resources): refused (`429 overloaded` / `busy`), or
+        // queued until starts are no longer held. Before the rate limit, so a refusal doesn't use
+        // up one of the caller's starts. A late sample is refreshed first.
+        await systemLoad.sampleIfStale()
+        let heldBy = systemLoad.level == .busy ? "busy" : "overloaded"
         switch LoadThrottle.start(level: systemLoad.level, busyAction: deck.settings.load.busyAction, enabled: deck.settings.load.throttle,
                                   queue: form["queue"] == "1") {
         case .allow: break
         case .refuse:
             logAgent(callerName, inbound: true, "claudedeck new · \(project.name): refused (the Mac is \(systemLoad.level.rawValue))", ok: false)
-            return SessionCLI.failure(429, "overloaded", exit: .refused)
+            return SessionCLI.failure(429, heldBy, exit: .refused)
         case .queue:
-            return cliEnqueue(request, reason: "overloaded", json: json)
+            return cliEnqueue(request, reason: heldBy, json: json)
         }
         let running = cliRunningStarted
         if let refusal = SessionCLI.admitStart(caller: caller, runningStarted: running, cap: deck.settings.maxStartedSessions, book: &cli) {
