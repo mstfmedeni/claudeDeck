@@ -96,6 +96,8 @@ public enum SessionCLI {
         /// terminals, and with Settings › "Sessions may restart their project's command terminals"
         /// the terminals with a startup command in its project.
         case restart
+        /// Compacting its own context, or that of a Claude session it started (`claudedeck compact`).
+        case compact
     }
 
     /// Claude sessions and the user's own terminals.
@@ -169,6 +171,8 @@ public enum SessionCLI {
         case remove(String)
         /// `POST /v1/cli/sessions/{ref}/restart`: its process is stopped and its command re-run in the same pane.
         case restart(String)
+        /// `POST /v1/cli/sessions/{ref}/compact`: `/compact` is typed into it (after its turn when busy).
+        case compact(String)
         /// `GET /v1/cli/load`: the Mac's load level, its numbers and the build slots.
         case load
         /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
@@ -196,6 +200,7 @@ public enum SessionCLI {
             case .status: .list
             case .close, .remove: .close
             case .restart: .restart
+            case .compact: .compact
             case .load: .list
             case .slotAcquire, .slotRelease: .slots
             }
@@ -261,6 +266,7 @@ public enum SessionCLI {
             case "close": return expect("POST", .close(ref))
             case "remove": return expect("POST", .remove(ref))
             case "restart": return expect("POST", .restart(ref))
+            case "compact": return expect("POST", .compact(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -414,6 +420,45 @@ public enum SessionCLI {
             return mayRestartProjectTerminals ? .allowed : .restartOff
         }
     }
+
+    // MARK: Compacting
+
+    public enum CompactCheck: Equatable, Sendable {
+        case allowed
+        /// A plain terminal (`400 not_claude`).
+        case notClaude
+        /// The owner's session, or one another session started (`403 not_yours`).
+        case notYours
+    }
+
+    /// `compact`: a Claude session only; the caller itself, or a session it started (directly or
+    /// through sessions it started), the same chain `close` follows (`mayClose`). No setting:
+    /// compacting loses nothing the transcript doesn't keep.
+    public static func mayCompact(caller: UUID, target: UUID, targetKind: SessionKind, startedBy: [UUID: UUID],
+                                  openedBy: [UUID: UUID] = [:]) -> CompactCheck {
+        guard targetKind == .claude else { return .notClaude }
+        return mayClose(caller: caller, target: target, startedBy: startedBy, openedBy: openedBy) ? .allowed : .notYours
+    }
+
+    /// What `compact` does with a running Claude session in this state: type `/compact` now (idle,
+    /// or at its usage limit, where it sits at the prompt), once its turn is over (working), or
+    /// refuse (`409 blocked`: it waits on a permission or a question).
+    public enum CompactTiming: Equatable, Sendable {
+        case now
+        case afterTurn
+        case blocked
+    }
+
+    public static func compactTiming(_ progress: Progress) -> CompactTiming {
+        switch progress {
+        case .finished, .stopped, .limited: .now
+        case .blocked: .blocked
+        case .running, .failed: .afterTurn
+        }
+    }
+
+    /// A deferred `/compact` (`compact self`, or a busy session) is given up after this long (logged).
+    public static let compactLimit: TimeInterval = 30 * 60
 
     /// How long `close` waits for Claude to leave after `/exit` before it gives up (or, with
     /// `--force`, ends the process).
@@ -862,6 +907,19 @@ public struct SessionCLIClosed: Encodable, Sendable, Equatable {
         try c.encode(forced, forKey: .forced)
         if pending { try c.encode(pending, forKey: .pending) }
         if removed { try c.encode(removed, forKey: .removed) }
+    }
+}
+
+/// `POST /v1/cli/sessions/{ref}/compact`: `{"compacting":true,"id":…,"pending":false}`.
+/// `pending`: `/compact` waits for the current turn to end (always for `compact self`).
+public struct SessionCLICompacting: Encodable, Sendable, Equatable {
+    public var compacting: Bool
+    public var id: UUID
+    public var pending: Bool
+    public init(compacting: Bool = true, id: UUID, pending: Bool) {
+        self.compacting = compacting
+        self.id = id
+        self.pending = pending
     }
 }
 

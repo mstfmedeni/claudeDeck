@@ -161,6 +161,7 @@ claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck close ID|self [--force] [--remove|--keep] [--json]
 claudedeck remove ID [--json]
 claudedeck restart ID [--json]
+claudedeck compact [ID|self] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--supersedes ID] [--json]
@@ -219,6 +220,8 @@ claudedeck skill setup [--user|--project] [--force]
   removes it from the list); **remove:** removes one that has already stopped; see
   [Closing sessions](#closing-sessions) below. **restart:** stops a terminal's process and
   re-runs its command in the same pane; see [Restarting terminals](#restarting-terminals).
+  **compact:** types `/compact` into itself (the default) or a Claude session it started; see
+  [Compacting](#compacting).
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -251,10 +254,10 @@ claudedeck skill setup [--user|--project] [--force]
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart | compact |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | | |
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
@@ -309,6 +312,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/sessions/{ref}/close` | `force=1`, `remove=1`, `keep=1`; `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/restart` | `{ref}` may be a started queue id | restart |
+| POST | `/v1/cli/sessions/{ref}/compact` | `{ref}` may be `self` or a started queue id | compact |
 | GET | `/v1/cli/load` | | list |
 | POST | `/v1/cli/slot/build/acquire` | `ticket` (wait in line), `timeout` (seconds, at most 25 per request), `label` | slots |
 | POST | `/v1/cli/slot/build/release` | `id` (empty: all of the caller's), or `ticket` (leave the line) | slots |
@@ -327,7 +331,8 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
 `403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for `restart`
 `400 cannot_restart_self`, `403 restart_off` / `close_off` / `not_yours`, `404 unknown_session`,
-`409 read_only` / `busy` / `not_running` / `not_restarted` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
+`409 read_only` / `busy` / `not_running` / `not_restarted` / `switching_account`; for `compact` `400 not_claude`,
+`403 not_yours`, `404 unknown_session`, `409 read_only` / `blocked` / `not_running` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`; while the Mac is
 overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_many_booted` for `sim acquire`; for slots
 `400 bad_ticket`, `404 unknown_slot` / `unknown_slot_id`, `429 no_slot` (exit 124, with `position`, `used`,
@@ -679,6 +684,28 @@ started. It never creates a terminal. Answer: `restarted` or `started` (`--json`
   `400 cannot_restart_self`.
 - `409 read_only` when the terminal runs in another app's session helper. Every restart (and
   every send into such a project terminal) is in the agent Activity Log.
+
+### Compacting
+
+`claudedeck compact [ID|self] [--json]` types `/compact` into a Claude session the way the owner
+would (Ctrl+C first clears a draft in its prompt). Without an ID it compacts the caller itself.
+
+- **Itself:** when its context runs low, a session updates docs/HANDOFF.md and then runs
+  `claudedeck compact`. The answer comes at once (`compacting after this turn`, `--json`:
+  `{"compacting":true,"id":…,"pending":true}`); `/compact` is typed once a hook says the current
+  turn is over (the same deferred mechanism as `close self`).
+- **A Claude session it started** (directly or through sessions it started: the `close` chain,
+  `mayClose`): idle (or at its usage limit) → typed now (`compacting`, `"pending":false`);
+  working → typed once its turn is over (`compacting after its turn`, `"pending":true`); waiting
+  on a permission or a question → `409 blocked` (exit 3). `claudedeck wait ID` then waits for
+  the compaction to finish.
+- Only Claude sessions (`400 not_claude` for terminals); never the owner's sessions or ones
+  another session started (`403 not_yours`). `409 not_running` / `read_only` /
+  `switching_account`. A second request while one is pending answers the same without queuing
+  another.
+- No setting beyond the command-line tool itself (scope `compact`): compacting loses nothing
+  the transcript doesn't keep. Every request, every typed `/compact` and every give-up (the
+  session stopped, or the turn didn't end within 30 minutes) is in the agent Activity Log.
 
 ### Claude accounts and usage limits
 

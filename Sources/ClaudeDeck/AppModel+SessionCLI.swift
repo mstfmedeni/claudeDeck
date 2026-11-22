@@ -128,6 +128,8 @@ extension AppModel {
             return cliRemove(caller, ref: ref, json: json)
         case .restart(let ref):
             return await cliRestart(caller, ref: ref, json: json)
+        case .compact(let ref):
+            return cliCompact(caller, ref: ref, json: json)
         case .load:
             return await cliLoad(form: form, json: json)
         case .slotAcquire(let kind):

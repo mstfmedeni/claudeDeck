@@ -52,6 +52,11 @@ extension SessionCLI {
           Restart Terminal (a stopped one is just started). Terminals this session opened, and,
           with "Sessions may restart command terminals in their own project", the terminals with
           a startup command in this session's project (also for send). Never other projects.
+      claudedeck compact [ID|self] [--json]
+          Types /compact into this session (the default: once the current turn is over) or a
+          Claude session it started (now when idle, after its turn when it's working; 3 when it
+          waits on a permission or a question). When your context runs low: update
+          docs/HANDOFF.md first, then compact yourself.
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -310,6 +315,7 @@ extension SessionCLI {
               not_yours) case "$command_name" in
                   close|remove) hint=" (only this session, the sessions it started and the terminals it opened)" ;;
                   restart) hint=" (only terminals this session opened, or command terminals of its own project)" ;;
+                  compact) hint=" (only this session and the Claude sessions it started)" ;;
                   decide|decision) hint=" (only the session that asked it, or one that started that session)" ;;
                   *) hint=" (only terminals this session opened, or ones beside it)" ;;
                 esac ;;
@@ -326,6 +332,7 @@ extension SessionCLI {
               unknown_session) hint=" (see claudedeck list)" ;;
               ambiguous) hint=" (give more of the id)" ;;
               not_running) hint=" (it isn't running)" ;;
+              not_claude) hint=" (only Claude sessions can be compacted)" ;;
               blocked) hint=" (a permission or a question is on screen)" ;;
               bad_recommend) hint=" (--recommend must be one of --options, or its number)" ;;
               too_many_options) hint=" (at most 10 options)" ;;
@@ -643,6 +650,23 @@ extension SessionCLI {
       # Up to ~10 s for the old process to go (SIGTERM, then SIGKILL).
       max_time=60
       call "/sessions/$id/restart" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_compact() {
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "compact: unknown option $1" ;;
+          *) [ -z "$id" ] || die "compact: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      [ -n "$id" ] || id=self
+      check_id "$id" compact
+      need_session
+      call "/sessions/$id/compact" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1699,6 +1723,7 @@ extension SessionCLI {
       close) cmd_close "$@" ;;
       remove) cmd_remove "$@" ;;
       restart) cmd_restart "$@" ;;
+      compact) cmd_compact "$@" ;;
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
@@ -1966,6 +1991,26 @@ extension SessionCLI {
       start (exit 4 `not_yours`); a Claude session you started follows the close rules.
     - Exit 1 `read_only` when it runs in another app's session helper. Every restart is in the
       activity log.
+
+    ### Compacting
+
+    ```sh
+    claudedeck compact [--json]        # yourself (same as compact self), once this turn is over
+    claudedeck compact ID [--json]     # a Claude session you started (or one they started)
+    ```
+
+    - When your context is low, update docs/HANDOFF.md, then run `claudedeck compact`. It
+      returns at once (`compacting after this turn`, `--json`:
+      `{"compacting":true,"id":…,"pending":true}`) and `/compact` is typed once your turn is
+      over; finish your reply first. HANDOFF.md is what you continue from afterwards.
+    - A session you started: `/compact` is typed now when it's idle (`compacting`,
+      `"pending":false`), or once its current turn is over when it's working (`compacting after
+      its turn`). Waiting on a permission or a question: exit 3 `blocked`. `claudedeck wait ID`
+      then waits for the compaction to finish.
+    - Only Claude sessions (a terminal: exit 2 `not_claude`); never sessions the user started or
+      other sessions started (exit 4 `not_yours`). Exit 1 `not_running`, `read_only` (another
+      app's session helper) or `switching_account`. No setting needed; every compact is in the
+      activity log. A deferred one is given up after 30 minutes.
 
     ### ServerPlan
 
