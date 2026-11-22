@@ -86,6 +86,7 @@ extension AppModel {
     /// unless the load tab measured it in the last few seconds); the text lists it with `--detail`.
     func cliLoad(form: [String: String], json: Bool) async -> AgentHTTPResponse {
         systemLoad.pruneSlots()
+        await systemLoad.sampleIfStale()
         let detail = form["detail"] == "1"
         var usage = systemLoad.usage
         if json || detail, usage == nil || Date().timeIntervalSince(usage!.at) > 10 {
@@ -108,11 +109,13 @@ extension AppModel {
             SessionCLILoad.Slot(id: $0.id, session: $0.session, sessionName: deck.session($0.session)?.name, label: $0.label, since: $0.acquiredAt)
         }
         let top = usage.map { systemLoad.topEntries($0) }
-        return SessionCLILoad(level: systemLoad.level, settings: deck.settings.load, sample: systemLoad.latest,
+        var report = SessionCLILoad(level: systemLoad.level, settings: deck.settings.load, sample: systemLoad.latest,
                               thresholds: systemLoad.thresholds, triggers: systemLoad.monitor.triggers,
                               capacity: systemLoad.slotCapacity, slots: slots, waiting: systemLoad.slots.waiters.count,
                               maxStartedSessions: deck.settings.maxStartedSessions, runningStartedSessions: cliRunningStarted,
                               top: top?.sessions, topProjects: top?.projects)
+        report.explainExit(systemLoad.monitor)
+        return report
     }
 
     private struct SlotRefusal: Encodable {

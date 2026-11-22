@@ -41,12 +41,14 @@ final class LoadController {
     var thresholds: LoadThresholds { LoadThresholds.resolve(settings, cores: cores, slim: slimSimulators) }
     /// sim acquire slims its simulators (setting on, simslim installed): a higher default cap.
     var slimSimulators: Bool { model?.deck.settings.simulatorsSlim == true && SimulatorsController.simslimInstalled }
-    var level: LoadLevel { monitor.level }
+    /// The monitor's level, except that an overloaded level whose calm period ran out counts as
+    /// ended even when the next sample is late (LoadMonitor.effectiveLevel).
+    var level: LoadLevel { monitor.effectiveLevel(now: Date()) }
     var latest: LoadSample? { monitor.latest }
     /// New starts wait right now (overloaded, or busy with "hold new starts"), with throttling on.
     var holdsStarts: Bool { LoadThrottle.holdsStarts(level: level, busyAction: settings.busyAction, enabled: settings.throttle) }
     /// Overloaded with throttling on: new agents, simulators and extra builds hold back.
-    var isThrottling: Bool { settings.throttle && monitor.overloaded }
+    var isThrottling: Bool { settings.throttle && level == .overloaded }
     /// Build slots handed out right now (fewer while overloaded).
     var slotCapacity: Int { LoadThrottle.slotCapacity(thresholds, level: level, enabled: settings.throttle) }
 
@@ -61,6 +63,14 @@ final class LoadController {
                 try? await Task.sleep(for: Self.interval)
             }
         }
+    }
+
+    /// A sample right now when the latest is older than `maxAge` (the 12-second loop was late, e.g.
+    /// under App Nap), so `claudedeck load` never reports a level frozen at an old sample.
+    func sampleIfStale(maxAge: TimeInterval = 30) async {
+        if let latest = monitor.latest, Date().timeIntervalSince(latest.at) <= maxAge { return }
+        let sample = await Task.detached(priority: .utility) { SystemLoadSampler.sample() }.value
+        apply(injected.map { Self.restamped($0, at: sample.at) } ?? sample)
     }
 
     private static func restamped(_ sample: LoadSample, at date: Date) -> LoadSample {
@@ -180,7 +190,7 @@ final class LoadController {
     /// booted simulators when measured.
     var remoteLoad: RemoteLoad? {
         guard let sample = monitor.latest else { return nil }
-        var load = RemoteLoad(level: monitor.level.rawValue, throttled: holdsStarts, loadPerCore: sample.loadPerCore, cores: sample.cores,
+        var load = RemoteLoad(level: level.rawValue, throttled: holdsStarts, loadPerCore: sample.loadPerCore, cores: sample.cores,
                               memoryPercent: Int(sample.memoryUsedPercent.rounded()), memoryPressure: sample.pressure.rawValue,
                               simulators: sample.simulators, builds: sample.compilers, sessions: sample.sessions,
                               slotsUsed: slots.slots.count, slots: slotCapacity)

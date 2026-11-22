@@ -425,7 +425,16 @@ public struct LoadMonitor: Sendable, Equatable {
 
     private var highLoadSince: Date?
     private var busyLoadSince: Date?
-    private var calmSince: Date?
+    /// Since when the level's exit condition holds (overloaded: nothing fires and the numbers are
+    /// under the exit margin; busy: busy is clear). Reset by a sample that breaks it.
+    public private(set) var calmSince: Date?
+    /// Overloaded and calm: the level it will move to once `overloadCalm` has passed.
+    public private(set) var exitTarget: LoadLevel?
+    /// Overloaded, nothing fires, but a number is still within the exit margin (why it stays).
+    public private(set) var exitBlockedBy: String?
+    /// The latest sample at which an overload trigger fired, and which ones.
+    public private(set) var lastFiredAt: Date?
+    public private(set) var lastFired: [LoadTrigger] = []
 
     public init() {}
 
@@ -434,6 +443,34 @@ public struct LoadMonitor: Sendable, Equatable {
     public var overloaded: Bool { level == .overloaded }
     /// The triggers firing now.
     public var fired: [LoadTrigger] { triggers.filter(\.firing).map(\.trigger) }
+
+    /// Overloaded and calm: the seconds until the level leaves overloaded (0 when due at the next
+    /// sample). Nil otherwise.
+    public func exitSecondsLeft(now: Date) -> TimeInterval? {
+        guard level == .overloaded, let calmSince else { return nil }
+        return max(0, LoadThresholds.overloadCalm - now.timeIntervalSince(calmSince))
+    }
+
+    /// The level as of `now`: `level`, except that an overloaded level whose calm period has
+    /// already run out counts as its exit target even before the next sample arrives, so a
+    /// sampler that stalls (App Nap, a hidden app) never leaves the Mac stuck at overloaded.
+    public func effectiveLevel(now: Date) -> LoadLevel {
+        if level == .overloaded, let exitTarget, let left = exitSecondsLeft(now: now), left <= 0 { return exitTarget }
+        return level
+    }
+
+    /// Why overloaded holds while nothing fires (nil when it doesn't apply).
+    static func exitBlock(_ sample: LoadSample, thresholds t: LoadThresholds) -> String? {
+        let m = LoadThresholds.exitMargin
+        if t.enabled.contains(.load), sample.load1 >= t.overloadLoad * m {
+            return String(format: "load %.1f not yet under %.1f (exit margin)", sample.load1, t.overloadLoad * m)
+        }
+        let processes = Double(t.maxProcesses) * (1 - (1 - m) / 2)
+        if t.enabled.contains(.processes), Double(sample.processes) >= processes {
+            return "processes \(sample.processes) not yet under \(Int(processes)) (exit margin)"
+        }
+        return nil
+    }
 
     /// The triggers for `sample` given the samples before it and since when the load is high.
     public static func evaluate(_ sample: LoadSample, history: [LoadSample], highLoadSince: Date?,
@@ -473,11 +510,7 @@ public struct LoadMonitor: Sendable, Equatable {
 
     /// Every enabled trigger well under its threshold (the exit margin), so overloaded may end.
     static func clearWithMargin(_ sample: LoadSample, triggers: [LoadTriggerState], thresholds t: LoadThresholds) -> Bool {
-        guard !triggers.contains(where: \.firing) else { return false }
-        let m = LoadThresholds.exitMargin
-        if t.enabled.contains(.load), sample.load1 >= t.overloadLoad * m { return false }
-        if t.enabled.contains(.processes), Double(sample.processes) >= Double(t.maxProcesses) * (1 - (1 - m) / 2) { return false }
-        return true
+        !triggers.contains(where: \.firing) && exitBlock(sample, thresholds: t) == nil
     }
 
     @discardableResult
@@ -498,6 +531,10 @@ public struct LoadMonitor: Sendable, Equatable {
         }
         triggers = Self.evaluate(sample, history: history, highLoadSince: highLoadSince, thresholds: t)
         let overloadedNow = triggers.contains(where: \.firing)
+        if overloadedNow {
+            lastFiredAt = sample.at
+            lastFired = fired
+        }
         let busyLoad = busyLoadSince.map { sample.at.timeIntervalSince($0) >= t.busySustain } ?? false
         let busyNow = busyLoad || sample.pressure >= .warning || sample.compilers > t.busyCompilers
         let overloadClear = Self.clearWithMargin(sample, triggers: triggers, thresholds: t)
@@ -532,6 +569,8 @@ public struct LoadMonitor: Sendable, Equatable {
         }
         if next != previous { calmSince = nil }
         level = next
+        exitTarget = next == .overloaded && calmSince != nil ? (busyClear ? .ok : .busy) : nil
+        exitBlockedBy = next == .overloaded && !overloadedNow ? Self.exitBlock(sample, thresholds: t) : nil
 
         var events: [LoadEvent] = []
         if next != previous { events.append(.level(from: previous, to: next)) }
@@ -787,6 +826,8 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
             lines.append("no sample yet")
             return lines.joined(separator: "\n")
         }
+        if let exitLine { lines.append(exitLine) }
+        if let sampleAge, sampleAge > 36 { lines.append("sample: \(sampleAge) s old (the sampler has stalled)") }
         lines.append(String(format: "load: %.1f on %d cores (%.2f per core), 5 min %.1f", load1, cores, loadPerCore, load5))
         lines.append(String(format: "memory: %.0f%% used, pressure %@, swap %d MB", memoryUsedPercent, memoryPressure, swapUsedMB))
         lines.append("simulators: \(simulators) booted (sim acquire allows \(maxSimulators))")
@@ -825,6 +866,44 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
     /// `--detail` / `--json`: each booted simulator with its memory and simslim state; nil when
     /// not read. Set after init (keeps the initializer other code calls unchanged).
     public var bootedSimulators: [LoadSimulator]?
+
+    /// Overloaded while nothing fires: the seconds until it ends (`exitIn`), or what still holds it
+    /// (`exitBlockedBy`), and the last triggers that fired. Set with `explainExit`; nil otherwise.
+    public var exitIn: Int?
+    public var exitBlockedBy: String?
+    public var lastFired: [String]?
+    public var lastFiredAgo: Int?
+    /// How old the sample behind these numbers is, in seconds.
+    public var sampleAge: Int?
+
+    /// Fills the exit fields from the monitor, so an overloaded level with nothing firing says why.
+    public mutating func explainExit(_ monitor: LoadMonitor, now: Date = Date()) {
+        sampleAge = monitor.latest.map { max(0, Int(now.timeIntervalSince($0.at).rounded())) }
+        guard level == LoadLevel.overloaded.rawValue, fired.isEmpty else { return }
+        exitIn = monitor.exitSecondsLeft(now: now).map { Int($0.rounded(.up)) }
+        exitBlockedBy = monitor.exitBlockedBy
+        if let at = monitor.lastFiredAt {
+            lastFired = monitor.lastFired.map(\.rawValue)
+            lastFiredAgo = max(0, Int(now.timeIntervalSince(at).rounded()))
+        }
+    }
+
+    /// The `exiting: …` line under `level:` (nil unless overloaded with nothing firing).
+    var exitLine: String? {
+        guard level == LoadLevel.overloaded.rawValue, fired.isEmpty else { return nil }
+        var why: String
+        if let exitIn {
+            why = "exiting: \(exitIn) s left (nothing fires; calm for \(Int(LoadThresholds.overloadCalm)) s ends it)"
+        } else if let exitBlockedBy {
+            why = "exit held: \(exitBlockedBy)"
+        } else {
+            why = "exiting: waits for the next sample"
+        }
+        if let lastFired, let lastFiredAgo, !lastFired.isEmpty {
+            why += "; last fired \(lastFiredAgo) s ago: \(lastFired.joined(separator: ", "))"
+        }
+        return why
+    }
 }
 
 /// A booted simulator in `claudedeck load --detail`.

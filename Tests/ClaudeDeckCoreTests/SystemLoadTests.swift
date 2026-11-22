@@ -342,6 +342,65 @@ import Testing
         #expect(MemoryPressure.normal < .warning && MemoryPressure.warning < .critical)
     }
 
+    /// The owner's Mac: overloaded with every trigger ok (memory normal, swap +0.0, compilers 5,
+    /// load 0.91 per core, 856 processes). It must leave overloaded after `overloadCalm`, say how
+    /// long is left meanwhile, and not stay frozen when the next sample is late.
+    @Test func overloadedWithNothingFiringEndsAfterTheCalmAndSaysWhen() {
+        let t = thresholds
+        var monitor = LoadMonitor()
+        monitor.add(sample(0, load: 18.2, pressure: .critical, compilers: 5, processes: 856), thresholds: t)
+        #expect(monitor.level == .overloaded && monitor.fired == [.pressure])
+        var ended: [LoadEvent] = []
+        for i in 1...6 {
+            let events = monitor.add(sample(Double(i) * 12, load: 18.2, compilers: 5, processes: 856), thresholds: t)
+            #expect(monitor.fired.isEmpty && monitor.exitBlockedBy == nil)
+            if i < 6 {
+                #expect(monitor.level == .overloaded)
+                #expect(monitor.exitSecondsLeft(now: t0.addingTimeInterval(Double(i) * 12)) == 60 - Double(i - 1) * 12)
+            } else {
+                ended = events
+            }
+        }
+        #expect(monitor.level == .ok)
+        #expect(ended == [.level(from: .overloaded, to: .ok), .episodeEnded(1)])
+
+        // The text says why it is still overloaded.
+        var m2 = LoadMonitor()
+        m2.add(sample(0, load: 18.2, pressure: .critical, compilers: 5, processes: 856), thresholds: t)
+        m2.add(sample(12, load: 18.2, compilers: 5, processes: 856), thresholds: t)
+        m2.add(sample(24, load: 18.2, compilers: 5, processes: 856), thresholds: t)
+        var report = SessionCLILoad(level: m2.level, settings: LoadSettings(), sample: m2.latest, thresholds: t,
+                                    triggers: m2.triggers, capacity: 1, slots: [], waiting: 0)
+        report.explainExit(m2, now: t0.addingTimeInterval(24))
+        #expect(report.exitIn == 48 && report.lastFired == ["pressure"] && report.lastFiredAgo == 24)
+        #expect(report.text.contains("exiting: 48 s left"))
+        #expect(report.text.contains("last fired 24 s ago: pressure"))
+
+        // A sampler that stalls after one calm sample: the level counts as ended once the calm ran out.
+        var m3 = LoadMonitor()
+        m3.add(sample(0, load: 18.2, pressure: .critical, compilers: 5, processes: 856), thresholds: t)
+        m3.add(sample(12, load: 18.2, compilers: 5, processes: 856), thresholds: t)
+        #expect(m3.level == .overloaded)
+        #expect(m3.effectiveLevel(now: t0.addingTimeInterval(50)) == .overloaded)
+        #expect(m3.effectiveLevel(now: t0.addingTimeInterval(73)) == .ok)
+        // The next sample, however late, ends it.
+        m3.add(sample(600, load: 18.2, compilers: 5, processes: 856), thresholds: t)
+        #expect(m3.level == .ok)
+    }
+
+    /// Nothing fires but the load is still within the exit margin: it stays, and says so.
+    @Test func overloadedHeldByTheExitMarginSaysSo() {
+        let t = thresholds
+        var monitor = LoadMonitor()
+        monitor.add(sample(0, load: 100, pressure: .critical), thresholds: t)
+        monitor.add(sample(12, load: 170), thresholds: t)
+        #expect(monitor.level == .overloaded && monitor.fired.isEmpty && monitor.exitSecondsLeft(now: t0.addingTimeInterval(12)) == nil)
+        var report = SessionCLILoad(level: monitor.level, settings: LoadSettings(), sample: monitor.latest, thresholds: t,
+                                    triggers: monitor.triggers, capacity: 1, slots: [], waiting: 0)
+        report.explainExit(monitor, now: t0.addingTimeInterval(12))
+        #expect(report.text.contains("exit held: load 170.0 not yet under 160.0 (exit margin)"))
+    }
+
     // MARK: Throttling
 
     @Test func busyDoesNotThrottle() {
