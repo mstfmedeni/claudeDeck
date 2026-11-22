@@ -62,6 +62,8 @@ extension AppModel {
             return compactingAnswer(id, pending: true, toSelf: false, json: json)
         case .now:
             logAgent(callerName, inbound: true, "claudedeck compact \(label): /compact typed")
+            // Right away, so a `wait` that follows doesn't see the idle from before the typing.
+            cli.sentAt[id] = Date()
             Task { @MainActor [weak self] in await self?.typeCompact(id) }
             return compactingAnswer(id, pending: false, toSelf: false, json: json)
         }
