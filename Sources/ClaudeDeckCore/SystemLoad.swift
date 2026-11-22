@@ -451,7 +451,10 @@ public struct LoadMonitor: Sendable, Equatable {
                           firing: t.enabled.contains(.swapSize) && sample.swapUsedBytes > t.swapSizeBytes))
         list.append(.init(trigger: .compilers, enabled: t.enabled.contains(.compilers), threshold: Double(t.overloadCompilers),
                           current: Double(sample.compilers), unit: "processes",
-                          firing: t.enabled.contains(.compilers) && sample.compilers > t.overloadCompilers))
+                          // Many compilers alone is one build fanning out over the cores, not freeze risk:
+                          // it counts only together with a busy load or memory pressure.
+                          firing: t.enabled.contains(.compilers) && sample.compilers > t.overloadCompilers
+                              && (sample.load1 > t.busyLoad || sample.pressure >= .warning)))
         let above = highLoadSince.map { sample.at.timeIntervalSince($0) }
         list.append(.init(trigger: .load, enabled: t.enabled.contains(.load), threshold: t.overloadLoad / Double(t.cores),
                           current: sample.loadPerCore, unit: "per_core",

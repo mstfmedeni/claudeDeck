@@ -191,8 +191,12 @@ import Testing
         #expect(critical.add(sample(0, load: 5, pressure: .critical), thresholds: thresholds).contains(.episodeStarted(1)))
         #expect(critical.fired == [.pressure])
         var builds = LoadMonitor()
-        builds.add(sample(0, load: 5, compilers: 13), thresholds: thresholds)
+        builds.add(sample(0, load: 5, pressure: .warning, compilers: 13), thresholds: thresholds)
         #expect(builds.level == .overloaded && builds.fired == [.compilers])
+        // One build fanning out over the cores, with the Mac otherwise fine: not freeze risk.
+        var oneBuild = LoadMonitor()
+        oneBuild.add(sample(0, load: 30, compilers: 25), thresholds: thresholds)
+        #expect(oneBuild.level != .overloaded)
         var twelve = LoadMonitor()
         twelve.add(sample(0, load: 5, compilers: 12), thresholds: thresholds)
         #expect(twelve.level == .busy)
@@ -251,7 +255,7 @@ import Testing
 
     @Test func hysteresisAndOneEpisodeUntilOK() {
         var monitor = LoadMonitor()
-        monitor.add(sample(0, load: 5, compilers: 30), thresholds: thresholds)
+        monitor.add(sample(0, load: 5, pressure: .warning, compilers: 30), thresholds: thresholds)
         #expect(monitor.level == .overloaded && monitor.episode == 1)
         // Under the threshold but not by the exit margin (80 % of 200): stays overloaded.
         monitor.add(sample(10, load: 170), thresholds: thresholds)
@@ -266,7 +270,7 @@ import Testing
         // overloaded again is no new episode (no second notification or message).
         #expect(!monitor.overloaded && monitor.inEpisode)
         #expect(!LoadThrottle.holdsStarts(level: monitor.level, busyAction: .nothing, enabled: true))
-        #expect(monitor.add(sample(180, load: 5, compilers: 20), thresholds: thresholds) == [.level(from: .busy, to: .overloaded)])
+        #expect(monitor.add(sample(180, load: 5, pressure: .warning, compilers: 20), thresholds: thresholds) == [.level(from: .busy, to: .overloaded)])
         #expect(monitor.episode == 1)
         // Calm all the way: overloaded → ok directly once busy is clear too; the episode ends.
         monitor.add(sample(190, load: 5), thresholds: thresholds)
