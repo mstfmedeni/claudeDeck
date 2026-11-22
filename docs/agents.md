@@ -160,6 +160,7 @@ claudedeck wait ID [--timeout SECONDS] [--json]
 claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck close ID|self [--force] [--remove|--keep] [--json]
 claudedeck remove ID [--json]
+claudedeck restart ID [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--supersedes ID] [--json]
@@ -216,7 +217,8 @@ claudedeck skill setup [--user|--project] [--force]
   first: an unknown one is exit 5, `self` exit 2.
 - **close:** ends a session the way End Session does, and closes its pane (and by default
   removes it from the list); **remove:** removes one that has already stopped; see
-  [Closing sessions](#closing-sessions) below.
+  [Closing sessions](#closing-sessions) below. **restart:** stops a terminal's process and
+  re-runs its command in the same pane; see [Restarting terminals](#restarting-terminals).
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -249,10 +251,10 @@ claudedeck skill setup [--user|--project] [--force]
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | |
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
@@ -306,6 +308,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/sim/release` | `udid` (empty: all of the caller's) | simulators |
 | POST | `/v1/cli/sessions/{ref}/close` | `force=1`, `remove=1`, `keep=1`; `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
+| POST | `/v1/cli/sessions/{ref}/restart` | `{ref}` may be a started queue id | restart |
 | GET | `/v1/cli/load` | | list |
 | POST | `/v1/cli/slot/build/acquire` | `ticket` (wait in line), `timeout` (seconds, at most 25 per request), `label` | slots |
 | POST | `/v1/cli/slot/build/release` | `id` (empty: all of the caller's), or `ticket` (leave the line) | slots |
@@ -322,7 +325,9 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
-`403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
+`403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for `restart`
+`400 cannot_restart_self`, `403 restart_off` / `close_off` / `not_yours`, `404 unknown_session`,
+`409 read_only` / `busy` / `not_running` / `not_restarted` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`; while the Mac is
 overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_many_booted` for `sim acquire`; for slots
 `400 bad_ticket`, `404 unknown_slot` / `unknown_slot_id`, `429 no_slot` (exit 124, with `position`, `used`,
@@ -619,9 +624,10 @@ Checked every 30 s (an error loop right away). The action (**When a session stal
 ### Closing sessions
 
 `close` and `remove` need **Settings › Agents › Sessions may close sessions they started** (off by
-default; else `403 close_off`, exit 4). A session may close or remove only itself and the
-sessions it started, directly or through sessions they started (`startedBy` all the way up);
-never one the owner started (`403 not_yours`, exit 4).
+default; else `403 close_off`, exit 4). A session may close or remove only itself, the
+sessions it started and the terminals it opened with `claudedeck open`, directly or through
+sessions they started (`startedBy` / `openedBy` all the way up); never one the owner started
+(`403 not_yours`, exit 4).
 
 - **close ID|self:** ends it like End Session: an idle Claude gets `/exit` (up to 15 s), a
   terminal's process is ended, and its pane closes. Claude working: `409 busy` (exit 1); waiting
@@ -651,6 +657,28 @@ never one the owner started (`403 not_yours`, exit 4).
 - **Agents:** remove the sessions you no longer need once their work is merged and handed off
   (`close ID`, which removes by default; `remove ID` for ones that already stopped), and close
   yourself with `close self` when you are done. Idle leftover sessions crowd the owner's sidebar.
+
+### Restarting terminals
+
+`claudedeck restart ID [--json]` is the owner's **Restart Terminal** from a session: the old
+process in that same pane is stopped (`stopForRestart`: SIGTERM, SIGKILL after 5 s) and the
+terminal's startup command runs again (`launch(resume: false)`); a stopped terminal is just
+started. It never creates a terminal. Answer: `restarted` or `started` (`--json`:
+`{"restarted":true,"id":…,"running":true|false}`, `running` = an old process was stopped).
+
+- **Its own terminals** (opened by it with `claudedeck open`, or by sessions it started): always.
+- **Command terminals of its own project:** plain terminals with a startup command in the
+  caller's project (e.g. "ServerPlan · cd servermanager; make run") only with **Settings ›
+  Agents › Sessions may restart command terminals in their own project** (off by default; else
+  `403 restart_off`, exit 4). The same setting lets the session `send` (with `--enter`) into
+  those terminals.
+- **Never** other projects, plain terminals without a startup command, terminals another session
+  opened outside those rules, or Claude sessions it didn't start (`403 not_yours`). A Claude
+  session it started restarts like the owner's Restart Session (resumed, no dialog; a busy one is
+  `409 busy`) and needs **Sessions may close sessions they started** (`403 close_off`). Itself:
+  `400 cannot_restart_self`.
+- `409 read_only` when the terminal runs in another app's session helper. Every restart (and
+  every send into such a project terminal) is in the agent Activity Log.
 
 ### Claude accounts and usage limits
 

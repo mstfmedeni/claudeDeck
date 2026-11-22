@@ -206,6 +206,12 @@ struct AgentsSettingsSection: View {
                  ? "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. A closed session is also removed from the list (unless the session says --keep); its Claude conversation is kept and can be reopened from the project's \"Resume Previous Conversation…\" menu. claudedeck remove removes such a session once it has stopped. Each close and removal is in the activity log."
                  : "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed (unless the session says --remove).")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Sessions may restart command terminals in their own project", isOn: Binding(
+                get: { model.deck.settings.sessionsMayRestartProjectTerminals },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayRestartProjectTerminals = on } }
+            ))
+            Text("claudedeck restart: a session may stop and re-run the terminals with a startup command in its own project (e.g. a dev server), in the same pane, and type into them with claudedeck send. Never other projects or your Claude sessions. Terminals a session opened itself are always its own. Each restart is in the activity log.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Sessions may use ServerPlan", isOn: Binding(
                 get: { model.deck.settings.sessionsMayUseServerPlan },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayUseServerPlan = on } }

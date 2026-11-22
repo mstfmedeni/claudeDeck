@@ -24823,6 +24823,26 @@
           }
         }
       }
+    },
+    "Sessions may restart command terminals in their own project": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumlar kendi projelerindeki komutlu terminalleri yeniden başlatabilir"
+          }
+        }
+      }
+    },
+    "claudedeck restart: a session may stop and re-run the terminals with a startup command in its own project (e.g. a dev server), in the same pane, and type into them with claudedeck send. Never other projects or your Claude sessions. Terminals a session opened itself are always its own. Each restart is in the activity log.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "claudedeck restart: bir oturum kendi projesindeki başlangıç komutlu terminalleri (ör. bir geliştirme sunucusu) aynı bölmede durdurup yeniden çalıştırabilir ve claudedeck send ile onlara yazabilir. Başka projeler veya senin Claude oturumların asla. Bir oturumun kendi açtığı terminaller her zaman onundur. Her yeniden başlatma etkinlik günlüğüne yazılır."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

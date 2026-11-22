@@ -1238,4 +1238,105 @@ import Testing
         #expect(help.contains("claudedeck remove ID") && help.contains("--remove|--keep"))
         #expect(SessionCLI.skill.contains("claudedeck remove ID") && SessionCLI.skill.contains("merged and handed off"))
     }
+
+    // MARK: Opened terminals and restarting
+
+    @Test func closeAndRemoveTerminalsItOpened() {
+        let me = UUID(), terminal = UUID(), child = UUID(), childsTerminal = UUID(), other = UUID(), othersTerminal = UUID()
+        let startedBy = [child: me]
+        let openedBy = [terminal: me, childsTerminal: child, othersTerminal: other]
+        // The bug: a terminal it opened (list: mine=true) was not_yours.
+        #expect(!SessionCLI.mayClose(caller: me, target: terminal, startedBy: startedBy))
+        #expect(SessionCLI.mayClose(caller: me, target: terminal, startedBy: startedBy, openedBy: openedBy))
+        #expect(SessionCLI.mayClose(caller: me, target: childsTerminal, startedBy: startedBy, openedBy: openedBy))
+        #expect(!SessionCLI.mayClose(caller: me, target: othersTerminal, startedBy: startedBy, openedBy: openedBy))
+        #expect(!SessionCLI.mayClose(caller: child, target: terminal, startedBy: startedBy, openedBy: openedBy))
+        #expect(SessionCLI.mayRemove(caller: me, target: terminal, startedBy: startedBy, openedBy: openedBy, running: false) == .allowed)
+        #expect(SessionCLI.mayRemove(caller: me, target: terminal, startedBy: startedBy, openedBy: openedBy, running: true) == .stillRunning)
+        #expect(SessionCLI.mayRemove(caller: me, target: othersTerminal, startedBy: startedBy, openedBy: openedBy, running: false) == .notYours)
+    }
+
+    @Test func restartOwnershipRules() {
+        let me = UUID(), mine = UUID(), child = UUID(), owners = UUID(), server = UUID(), plain = UUID(), elsewhere = UUID()
+        let project = UUID(), otherProject = UUID()
+        let startedBy = [child: me]
+        let openedBy = [mine: me]
+        func check(_ target: UUID, _ kind: SessionKind, project targetProject: UUID = project, command: String? = nil,
+                   setting: Bool = true, close: Bool = true) -> SessionCLI.RestartCheck {
+            SessionCLI.mayRestart(caller: me, callerProject: project, target: target, targetKind: kind,
+                                  targetProject: targetProject, targetCommand: command, startedBy: startedBy,
+                                  openedBy: openedBy, mayRestartProjectTerminals: setting, mayCloseSessions: close)
+        }
+        // Its own terminal: always, even with both settings off and no command.
+        #expect(check(mine, .shell, setting: false, close: false) == .allowed)
+        // A command terminal of its project: only with the setting.
+        #expect(check(server, .shell, command: "cd servermanager; make run") == .allowed)
+        #expect(check(server, .shell, command: "make run", setting: false) == .restartOff)
+        // Not one without a command, nor one in another project.
+        #expect(check(plain, .shell) == .notYours)
+        #expect(check(plain, .shell, command: "   ") == .notYours)
+        #expect(check(elsewhere, .shell, project: otherProject, command: "make run") == .notYours)
+        // Claude: the owner's never; one it started under the close rules.
+        #expect(check(owners, .claude) == .notYours)
+        #expect(check(child, .claude) == .allowed)
+        #expect(check(child, .claude, close: false) == .closeOff)
+        #expect(check(me, .shell) == .isSelf)
+        #expect(SessionCLI.isProjectCommandTerminal(callerProject: project, targetKind: .shell, targetProject: project, targetCommand: "x"))
+        #expect(!SessionCLI.isProjectCommandTerminal(callerProject: nil, targetKind: .shell, targetProject: project, targetCommand: "x"))
+        #expect(!SessionCLI.isProjectCommandTerminal(callerProject: project, targetKind: .claude, targetProject: project, targetCommand: "x"))
+    }
+
+    @Test func sendIntoProjectCommandTerminals() {
+        let me = UUID(), target = UUID()
+        #expect(SessionCLI.delivery(caller: me, target: target, targetKind: .shell, targetOpenedBy: nil, besideCaller: false,
+                                    mayTypeIntoClaude: false) == .refuse("not_yours"))
+        #expect(SessionCLI.delivery(caller: me, target: target, targetKind: .shell, targetOpenedBy: nil, besideCaller: false,
+                                    mayTypeIntoClaude: false, projectCommandTerminal: true) == .type)
+        // Never a Claude session that way.
+        #expect(SessionCLI.delivery(caller: me, target: target, targetKind: .claude, targetOpenedBy: nil, besideCaller: false,
+                                    mayTypeIntoClaude: false, projectCommandTerminal: true) == .note)
+    }
+
+    @Test func restartRouteScopeAndSetting() throws {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/abcd/restart") == .route(.restart("abcd")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd/restart") == .methodNotAllowed)
+        #expect(SessionCLI.Route.restart("x").scope == .restart)
+        #expect(SessionCLI.fullScopes.contains(.restart) && !SessionCLI.openedScopes.contains(.restart))
+        #expect(!DeckSettings().sessionsMayRestartProjectTerminals)
+        let old = try JSONDecoder().decode(DeckSettings.self, from: Data(#"{"sessionsMayCloseSessions":true}"#.utf8))
+        #expect(!old.sessionsMayRestartProjectTerminals)
+        var on = DeckSettings()
+        on.sessionsMayRestartProjectTerminals = true
+        #expect(try JSONDecoder().decode(DeckSettings.self, from: JSONEncoder().encode(on)).sessionsMayRestartProjectTerminals)
+        let id = UUID(uuidString: "C0000000-0000-0000-0000-000000000002")!
+        let data = try JSONEncoder().encode(SessionCLIRestarted(restarted: true, id: id, running: false))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["restarted"] as? Bool == true && object["running"] as? Bool == false && object["id"] as? String == id.uuidString)
+    }
+
+    @Test func restartArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/sessions/"
+        let restarted = try run(["restart", "d1234567"], answers: [("restarted", "200 0")])
+        #expect(restarted.code == 0 && restarted.out == "restarted\n")
+        let call = try #require(restarted.curlCalls.first)
+        #expect(call.last == base + "d1234567/restart" && call.contains("format=text") && !call.contains("-G"))
+        #expect(try run(["restart", "abcd", "--json"], answers: [(#"{"restarted":true}"#, "200 0")]).curlCalls.first?.contains("format=json") == true)
+        for args in [["restart"], ["restart", "a", "b"], ["restart", "a/../b"], ["restart", "abcd", "--force"]] {
+            let usage = try run(args)
+            #expect(usage.code == 2 && usage.curlCalls.isEmpty, "\(args)")
+        }
+        #expect(try run(["restart", "abcd"], session: false).code == 2)
+        let off = try run(["restart", "abcd"], answers: [(#"{"error":"restart_off"}"#, "403 4")])
+        #expect(off.code == 4 && off.err.contains("Sessions may restart command terminals in their own project"))
+        let mine = try run(["restart", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(mine.code == 4 && mine.err.contains("command terminals of its own project"))
+        #expect(try run(["restart", "abcd"], answers: [(#"{"error":"unknown_session"}"#, "404 5")]).code == 5)
+        let readOnly = try run(["restart", "abcd"], answers: [(#"{"error":"read_only"}"#, "409 1")])
+        #expect(readOnly.code == 1 && readOnly.err.contains("session helper"))
+        // close's not_yours hint now names opened terminals too.
+        let closeMine = try run(["close", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(closeMine.err.contains("terminals it opened"))
+        #expect(try run(["help"]).out.contains("claudedeck restart ID"))
+        #expect(SessionCLI.skill.contains("claudedeck restart ID") && SessionCLI.skill.contains("restart_off"))
+    }
 }

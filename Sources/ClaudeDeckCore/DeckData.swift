@@ -275,6 +275,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// A session closed with `claudedeck close` is also removed from the deck (like the owner's
     /// End and Remove; its Claude transcript is kept) unless the call says `--keep`. On by default.
     public var removeClosedSessions = true
+    /// `claudedeck restart` (and `send`) on the terminals with a startup command in the caller's
+    /// own project, e.g. a dev server it needs to restart after a change. Off by default; a
+    /// session's own terminals need no setting.
+    public var sessionsMayRestartProjectTerminals = false
     /// A session that closes or removes one it started (or the closed one itself) also queues a
     /// one-line message for the starter. Off by default: the starter knows when it closes a child,
     /// and the close is in the Activity Log either way (never a note for the owner).
@@ -380,6 +384,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
         removeClosedSessions = try c.decodeIfPresent(Bool.self, forKey: .removeClosedSessions) ?? d.removeClosedSessions
+        sessionsMayRestartProjectTerminals = (try? c.decodeIfPresent(Bool.self, forKey: .sessionsMayRestartProjectTerminals))
+            ?? d.sessionsMayRestartProjectTerminals
         tellStarterOnClose = (try? c.decodeIfPresent(Bool.self, forKey: .tellStarterOnClose)) ?? d.tellStarterOnClose
         startedSessionsTurnGoesToStarter = try c.decodeIfPresent(Bool.self, forKey: .startedSessionsTurnGoesToStarter) ?? d.startedSessionsTurnGoesToStarter
         maxStartedSessions = min(max(try c.decodeIfPresent(Int.self, forKey: .maxStartedSessions) ?? d.maxStartedSessions, 1), 40)

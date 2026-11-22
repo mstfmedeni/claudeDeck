@@ -126,6 +126,8 @@ extension AppModel {
             return await cliClose(caller, ref: ref, form: form, json: json)
         case .remove(let ref):
             return cliRemove(caller, ref: ref, json: json)
+        case .restart(let ref):
+            return await cliRestart(caller, ref: ref, json: json)
         case .load:
             return await cliLoad(form: form, json: json)
         case .slotAcquire(let kind):
@@ -286,9 +288,15 @@ extension AppModel {
         guard !text.isEmpty || enter else { return SessionCLI.failure(400, "bad_request", exit: .usage) }
         let sender = deck.session(caller)?.name ?? "claudedeck"
         let panes = deck.visiblePanes
+        // A command terminal of the caller's own project (a dev server it restarts) takes text
+        // too while the owner allows restarting those.
+        let projectCommandTerminal = deck.settings.sessionsMayRestartProjectTerminals
+            && SessionCLI.isProjectCommandTerminal(callerProject: deck.session(caller)?.projectID, targetKind: target.kind,
+                                                   targetProject: target.projectID, targetCommand: target.startupCommand)
         let delivery = SessionCLI.delivery(caller: caller, target: target.id, targetKind: target.kind, targetOpenedBy: target.openedBy,
                                            besideCaller: panes.contains(caller) && panes.contains(target.id),
-                                           mayTypeIntoClaude: deck.settings.sessionsMayTypeIntoClaude, targetStartedBy: target.startedBy)
+                                           mayTypeIntoClaude: deck.settings.sessionsMayTypeIntoClaude, targetStartedBy: target.startedBy,
+                                           projectCommandTerminal: projectCommandTerminal)
         switch delivery {
         case .refuse(let reason):
             return reason == "cannot_send_to_self"
@@ -318,6 +326,9 @@ extension AppModel {
                 terminals.type(text + (enter ? "\r" : ""), into: target.id)
                 // What `wait` reports is now about the typed command, not the first one.
                 if enter { cli.commandExits[target.id] = nil }
+                if projectCommandTerminal, target.openedBy != caller {
+                    logAgent(sender, inbound: true, "claudedeck send → project terminal · \(target.name)" + (enter ? " (with Return)" : ""))
+                }
                 delivered = "terminal"
             }
             if enter { cli.sentAt[target.id] = Date() }

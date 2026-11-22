@@ -92,6 +92,10 @@ public enum SessionCLI {
         /// Build slots (`claudedeck slot`, `claudedeck heavy`): also for terminals a session opened,
         /// where the builds run.
         case slots
+        /// Re-running a terminal's command in its own pane (`claudedeck restart`): its own
+        /// terminals, and with Settings › "Sessions may restart their project's command terminals"
+        /// the terminals with a startup command in its project.
+        case restart
     }
 
     /// Claude sessions and the user's own terminals.
@@ -163,6 +167,8 @@ public enum SessionCLI {
         case close(String)
         /// `POST /v1/cli/sessions/{ref}/remove`: a session that isn't running leaves the deck.
         case remove(String)
+        /// `POST /v1/cli/sessions/{ref}/restart`: its process is stopped and its command re-run in the same pane.
+        case restart(String)
         /// `GET /v1/cli/load`: the Mac's load level, its numbers and the build slots.
         case load
         /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
@@ -189,6 +195,7 @@ public enum SessionCLI {
             case .usage: .usage
             case .status: .list
             case .close, .remove: .close
+            case .restart: .restart
             case .load: .list
             case .slotAcquire, .slotRelease: .slots
             }
@@ -253,6 +260,7 @@ public enum SessionCLI {
             case "status": return expect("GET", .status(ref))
             case "close": return expect("POST", .close(ref))
             case "remove": return expect("POST", .remove(ref))
+            case "restart": return expect("POST", .restart(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -307,12 +315,15 @@ public enum SessionCLI {
     /// another Claude session gets it only with the user's "May type into Claude", else as a note;
     /// anyone else's plain terminal, and the session itself, are refused.
     /// A Claude session the caller started (`claudedeck new`, `targetStartedBy`) is its own too.
+    /// `projectCommandTerminal`: the target is a terminal with a startup command in the caller's
+    /// project and the owner allows restarting those (`isProjectCommandTerminal` and the setting).
     public static func delivery(caller: UUID, target: UUID, targetKind: SessionKind, targetOpenedBy: UUID?,
-                                besideCaller: Bool, mayTypeIntoClaude: Bool, targetStartedBy: UUID? = nil) -> Delivery {
+                                besideCaller: Bool, mayTypeIntoClaude: Bool, targetStartedBy: UUID? = nil,
+                                projectCommandTerminal: Bool = false) -> Delivery {
         guard target != caller else { return .refuse("cannot_send_to_self") }
         switch targetKind {
         case .shell:
-            return targetOpenedBy == caller || besideCaller ? .type : .refuse("not_yours")
+            return targetOpenedBy == caller || besideCaller || projectCommandTerminal ? .type : .refuse("not_yours")
         case .claude:
             return mayTypeIntoClaude || targetStartedBy == caller ? .type : .note
         }
@@ -320,15 +331,16 @@ public enum SessionCLI {
 
     // MARK: Closing
 
-    /// `close`: the caller itself, or a session it started (directly or through sessions it
-    /// started: `startedBy` all the way up). Never one the owner started (no `startedBy`), nor a
-    /// terminal another session opened. `startedBy` gives each session's starter.
-    public static func mayClose(caller: UUID, target: UUID, startedBy: [UUID: UUID]) -> Bool {
+    /// `close`: the caller itself, or a session it started or a terminal it opened (directly or
+    /// through sessions it started: `startedBy`/`openedBy` all the way up). Never one the owner
+    /// started (neither), nor a terminal another session opened. `startedBy` gives each session's
+    /// starter, `openedBy` each terminal's opener (`claudedeck open`).
+    public static func mayClose(caller: UUID, target: UUID, startedBy: [UUID: UUID], openedBy: [UUID: UUID] = [:]) -> Bool {
         if target == caller { return true }
         var current = target
         // Bounded: a broken deck with a loop can't hang the API.
         for _ in 0..<64 {
-            guard let parent = startedBy[current] else { return false }
+            guard let parent = startedBy[current] ?? openedBy[current] else { return false }
             if parent == caller { return true }
             current = parent
         }
@@ -353,9 +365,54 @@ public enum SessionCLI {
     }
 
     /// `remove`: the same sessions `close` may end (`mayClose`), and only once they've stopped.
-    public static func mayRemove(caller: UUID, target: UUID, startedBy: [UUID: UUID], running: Bool) -> RemoveCheck {
-        guard mayClose(caller: caller, target: target, startedBy: startedBy) else { return .notYours }
+    public static func mayRemove(caller: UUID, target: UUID, startedBy: [UUID: UUID], openedBy: [UUID: UUID] = [:],
+                                 running: Bool) -> RemoveCheck {
+        guard mayClose(caller: caller, target: target, startedBy: startedBy, openedBy: openedBy) else { return .notYours }
         return running ? .stillRunning : .allowed
+    }
+
+    // MARK: Restarting
+
+    /// An automatic terminal of the caller's project: a plain terminal with a startup command
+    /// (e.g. `cd api; make run`) in the same project as the caller.
+    public static func isProjectCommandTerminal(callerProject: UUID?, targetKind: SessionKind, targetProject: UUID,
+                                                targetCommand: String?) -> Bool {
+        guard targetKind == .shell, let callerProject, callerProject == targetProject else { return false }
+        return !(targetCommand ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public enum RestartCheck: Equatable, Sendable {
+        case allowed
+        /// The caller itself (`400 cannot_restart_self`).
+        case isSelf
+        /// A command terminal of its project while the owner's setting is off (`403 restart_off`).
+        case restartOff
+        /// A Claude session it started while "Sessions may close sessions they started" is off (`403 close_off`).
+        case closeOff
+        /// Anything else (`403 not_yours`): other projects, the owner's Claude sessions, plain
+        /// terminals without a command, terminals other sessions opened elsewhere.
+        case notYours
+    }
+
+    /// `restart`: its own terminals (opened by it or by sessions it started: `mayClose`) always;
+    /// a terminal with a startup command in its own project only with `mayRestartProjectTerminals`;
+    /// a Claude session only when it started it, under the close rules (`mayCloseSessions`).
+    public static func mayRestart(caller: UUID, callerProject: UUID?, target: UUID, targetKind: SessionKind,
+                                  targetProject: UUID, targetCommand: String?, startedBy: [UUID: UUID],
+                                  openedBy: [UUID: UUID], mayRestartProjectTerminals: Bool,
+                                  mayCloseSessions: Bool) -> RestartCheck {
+        guard target != caller else { return .isSelf }
+        let own = mayClose(caller: caller, target: target, startedBy: startedBy, openedBy: openedBy)
+        switch targetKind {
+        case .claude:
+            guard own else { return .notYours }
+            return mayCloseSessions ? .allowed : .closeOff
+        case .shell:
+            if own { return .allowed }
+            guard isProjectCommandTerminal(callerProject: callerProject, targetKind: targetKind,
+                                           targetProject: targetProject, targetCommand: targetCommand) else { return .notYours }
+            return mayRestartProjectTerminals ? .allowed : .restartOff
+        }
     }
 
     /// How long `close` waits for Claude to leave after `/exit` before it gives up (or, with
@@ -809,6 +866,19 @@ public struct SessionCLIClosed: Encodable, Sendable, Equatable {
 }
 
 /// `POST /v1/cli/sessions/{ref}/remove`: `{"removed":true,"id":…}`.
+/// `restart`'s answer: `running` says whether an old process was stopped first (false: it had
+/// stopped, and was only started).
+public struct SessionCLIRestarted: Encodable, Sendable, Equatable {
+    public var restarted: Bool
+    public var id: UUID
+    public var running: Bool
+    public init(restarted: Bool, id: UUID, running: Bool) {
+        self.restarted = restarted
+        self.id = id
+        self.running = running
+    }
+}
+
 public struct SessionCLIRemoved: Encodable, Sendable, Equatable {
     public var removed: Bool
     public var id: UUID
