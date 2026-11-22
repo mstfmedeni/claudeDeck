@@ -299,8 +299,8 @@ import Testing
         #expect(!monitor.overloaded && monitor.fired.isEmpty)
         #expect(!LoadThrottle.holdsStarts(level: monitor.level, busyAction: .nothing, enabled: true))
         #expect(LoadThrottle.drains(level: monitor.level, busyAction: .nothing, enabled: true))
-        // Busy with the default "hold new work": new work still waits, half the build slots.
-        #expect(LoadThrottle.slotCapacity(t, level: monitor.level, enabled: true) == 1)
+        // Busy with the default "hold new work": new work still waits, half the build slots, rounded up.
+        #expect(LoadThrottle.slotCapacity(t, level: monitor.level, enabled: true) == 2)
         let report = SessionCLILoad(level: monitor.level, settings: LoadSettings(), sample: monitor.latest, thresholds: t,
                                     triggers: monitor.triggers, capacity: 1, slots: [], waiting: 0)
         #expect(report.level == "busy" && report.holdsStarts && report.text.hasPrefix("level: busy (new work waits"))
@@ -411,9 +411,9 @@ import Testing
         #expect(LoadThrottle.start(level: .busy, busyAction: .holdStarts, enabled: true, queue: false) == .refuse)
         #expect(!LoadThrottle.drains(level: .busy, busyAction: .holdStarts, enabled: true))
         #expect(LoadThrottle.simulator(level: .busy, busyAction: .holdStarts, enabled: true, booted: 0, wanted: 1, max: 4) == .busy)
-        #expect(LoadThrottle.slotCapacity(thresholds, level: .busy, enabled: true) == 1)
+        #expect(LoadThrottle.slotCapacity(thresholds, level: .busy, enabled: true) == 2)
         #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8 }, level: .busy, enabled: true) == 4)
-        #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8; $0.overloadedBuildSlots = 5 }, level: .busy, enabled: true) == 5)
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8; $0.overloadedBuildSlots = 5 }, level: .busy, enabled: true) == 6)
         // Overloaded adds the calming rules: fewer slots still.
         #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8 }, level: .overloaded, enabled: true) == 1)
         // Busy never sends agents anything: an episode (and its one message) starts only at overloaded.

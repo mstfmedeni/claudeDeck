@@ -694,14 +694,15 @@ public enum LoadThrottle {
     }
 
     /// Build slots handed out right now (with throttling on): the overloaded count while
-    /// overloaded, half the full count (never fewer than the overloaded count) while busy holds
-    /// new work, the full count otherwise.
+    /// overloaded, half the full count rounded up (more than the overloaded count when the full
+    /// count allows it) while busy holds new work, the full count otherwise.
     public static func slotCapacity(_ t: LoadThresholds, level: LoadLevel, enabled: Bool) -> Int {
         let overloaded = max(1, min(t.overloadedBuildSlots, t.buildSlots))
         guard enabled else { return max(1, t.buildSlots) }
         switch level {
         case .overloaded: return overloaded
-        case .busy where t.busyAction == .holdStarts: return max(overloaded, t.buildSlots / 2)
+        case .busy where t.busyAction == .holdStarts:
+            return max(overloaded, min(t.buildSlots, max(overloaded + 1, (t.buildSlots + 1) / 2)))
         default: return max(1, t.buildSlots)
         }
     }
