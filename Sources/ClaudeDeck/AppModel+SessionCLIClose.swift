@@ -20,8 +20,8 @@ extension AppModel {
         case .failure(let refusal): return refusal.response
         case .success(let session): target = session
         }
-        guard SessionCLI.mayClose(caller: caller, target: target.id, startedBy: startedByMap()) else {
-            logAgent(callerName, inbound: true, "claudedeck close · \(target.name): refused (not started by this session)", ok: false)
+        guard SessionCLI.mayClose(caller: caller, target: target.id, startedBy: startedByMap(), openedBy: openedByMap()) else {
+            logAgent(callerName, inbound: true, "claudedeck close · \(target.name): refused (not started or opened by this session)", ok: false)
             return SessionCLI.failure(403, "not_yours", exit: .refused)
         }
         let force = form["force"] == "1"
@@ -118,9 +118,9 @@ extension AppModel {
         }
         let id = target.id
         let running = terminals.isRunning(id) || terminals.readOnlySessions.contains(id)
-        switch SessionCLI.mayRemove(caller: caller, target: id, startedBy: startedByMap(), running: running) {
+        switch SessionCLI.mayRemove(caller: caller, target: id, startedBy: startedByMap(), openedBy: openedByMap(), running: running) {
         case .notYours:
-            logAgent(callerName, inbound: true, "claudedeck remove · \(target.name): refused (not started by this session)", ok: false)
+            logAgent(callerName, inbound: true, "claudedeck remove · \(target.name): refused (not started or opened by this session)", ok: false)
             return SessionCLI.failure(403, "not_yours", exit: .refused)
         case .stillRunning:
             logAgent(callerName, inbound: true, "claudedeck remove · \(target.name): refused (still running; close it)", ok: false)
@@ -139,13 +139,19 @@ extension AppModel {
         return SessionCLI.answer(200, SessionCLIRemoved(removed: true, id: id), text: "removed", exit: .ok, json: json)
     }
 
-    private func startedByMap() -> [UUID: UUID] {
+    func startedByMap() -> [UUID: UUID] {
         Dictionary(deck.sessions.compactMap { session in session.startedBy.map { (session.id, $0) } },
                    uniquingKeysWith: { first, _ in first })
     }
 
+    /// Each terminal `claudedeck open` started, with the session that opened it.
+    func openedByMap() -> [UUID: UUID] {
+        Dictionary(deck.sessions.compactMap { session in session.openedBy.map { (session.id, $0) } },
+                   uniquingKeysWith: { first, _ in first })
+    }
+
     /// Like `target` in AppModel+SessionCLI.swift, with queue ids (a started `new --queue`).
-    private func cliCloseTarget(_ ref: String, caller: UUID) -> Result<DeckSession, AgentHTTPRequestRefusal> {
+    func cliCloseTarget(_ ref: String, caller: UUID) -> Result<DeckSession, AgentHTTPRequestRefusal> {
         var id: UUID?
         if SessionCLI.isQueueID(ref) {
             switch cliQueuedSession(ref) {

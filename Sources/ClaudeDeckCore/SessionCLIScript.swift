@@ -47,6 +47,11 @@ extension SessionCLI {
       claudedeck remove ID [--json]
           Removes a session this one started that has already stopped from the list (the
           transcript is kept). A running one: close it (close --remove).
+      claudedeck restart ID [--json]
+          Stops the terminal's process and re-runs its command in the same pane, like the user's
+          Restart Terminal (a stopped one is just started). Terminals this session opened, and,
+          with "Sessions may restart command terminals in their own project", the terminals with
+          a startup command in this session's project (also for send). Never other projects.
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -296,11 +301,15 @@ extension SessionCLI {
               not_available) hint="" ;;
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
               not_yours) case "$command_name" in
-                  close|remove) hint=" (only this session and the sessions it started)" ;;
+                  close|remove) hint=" (only this session, the sessions it started and the terminals it opened)" ;;
+                  restart) hint=" (only terminals this session opened, or command terminals of its own project)" ;;
                   decide|decision) hint=" (only the session that asked it, or one that started that session)" ;;
                   *) hint=" (only terminals this session opened, or ones beside it)" ;;
                 esac ;;
               close_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may close sessions they started\")" ;;
+              restart_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may restart command terminals in their own project\")" ;;
+              cannot_restart_self) hint=" (a session can't restart itself)" ;;
+              not_restarted) hint=" (ClaudeDeck couldn't stop it; try again)" ;;
               busy) hint=" (Claude is working; wait for it, or close --force)" ;;
               still_running) case "$command_name" in
                   remove) hint=" (it is still running; use claudedeck close ID --remove)" ;;
@@ -609,6 +618,24 @@ extension SessionCLI {
       check_id "$id" remove
       need_session
       call "/sessions/$id/remove" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_restart() {
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          -*) die "restart: unknown option $1" ;;
+          *) [ -z "$id" ] || die "restart: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      check_id "$id" restart
+      need_session
+      # Up to ~10 s for the old process to go (SIGTERM, then SIGKILL).
+      max_time=60
+      call "/sessions/$id/restart" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1664,6 +1691,7 @@ extension SessionCLI {
       wait) cmd_wait "$@" ;;
       close) cmd_close "$@" ;;
       remove) cmd_remove "$@" ;;
+      restart) cmd_restart "$@" ;;
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
@@ -1911,6 +1939,26 @@ extension SessionCLI {
     - `close self` returns at once (`closing: after this turn`) and the session ends when your
       turn is over; finish your reply first. The close is in the activity log; the session that
       started you is told only if the user turned that on (a message between its turns).
+    - Terminals you opened with `claudedeck open` are yours to close and remove too.
+
+    ### Restarting terminals
+
+    ```sh
+    claudedeck restart ID [--json]   # stop its process, re-run its command in the same pane
+    ```
+
+    - Like the user's Restart Terminal: the old process is stopped and the terminal's command
+      runs again in the same pane (never a new terminal). A stopped one is just started. Prints
+      `restarted` or `started` (`--json`: `{"restarted":true,"id":…,"running":true}`). Then
+      `claudedeck wait ID` / `capture ID` as usual.
+    - Always for terminals you opened. The terminals with a startup command in your own project
+      (e.g. "API · make run", the dev server you need restarted after a change) only when the
+      user turned on "Sessions may restart command terminals in their own project" (otherwise
+      exit 4 `restart_off`; don't retry); that setting also lets you `send … --enter` into them.
+      Never other projects, plain terminals without a command, or Claude sessions you didn't
+      start (exit 4 `not_yours`); a Claude session you started follows the close rules.
+    - Exit 1 `read_only` when it runs in another app's session helper. Every restart is in the
+      activity log.
 
     ### ServerPlan
 
