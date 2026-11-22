@@ -68,19 +68,26 @@ public struct Simulator: Identifiable, Hashable, Sendable {
     public let isAvailable: Bool
     public let deviceTypeIdentifier: String?
     public let runtime: SimulatorRuntime
+    /// simctl's `lastUsedAt`: when the device was last booted (nil if never).
+    public let lastUsedAt: Date?
+    /// simctl's `dataPathSize`: bytes its data folder takes on disk.
+    public let dataSize: UInt64?
 
     public var id: String { udid }
     public var isBooted: Bool { state == "Booted" }
     public var platform: SimulatorPlatform { runtime.platform }
 
     public init(udid: String, name: String, state: String, isAvailable: Bool = true,
-                deviceTypeIdentifier: String? = nil, runtime: SimulatorRuntime) {
+                deviceTypeIdentifier: String? = nil, runtime: SimulatorRuntime,
+                lastUsedAt: Date? = nil, dataSize: UInt64? = nil) {
         self.udid = udid.uppercased()
         self.name = name
         self.state = state
         self.isAvailable = isAvailable
         self.deviceTypeIdentifier = deviceTypeIdentifier
         self.runtime = runtime
+        self.lastUsedAt = lastUsedAt
+        self.dataSize = dataSize
     }
 }
 
@@ -95,6 +102,15 @@ public enum SimulatorList {
         let state: String
         let isAvailable: Bool?
         let deviceTypeIdentifier: String?
+        let lastUsedAt: String?
+        let dataPathSize: UInt64?
+    }
+
+    /// Devices whose runtime is gone (`isAvailable: false`): what `simctl delete unavailable` removes.
+    public static func unavailableCount(_ data: Data) throws -> Int {
+        try JSONDecoder().decode(Output.self, from: data).devices.values.reduce(0) { sum, devices in
+            sum + devices.filter { $0.isAvailable == false }.count
+        }
     }
 
     /// The iOS, watchOS and visionOS simulators in `simctl list -j devices` output that can be used
@@ -107,7 +123,9 @@ public enum SimulatorList {
             for device in devices {
                 let simulator = Simulator(udid: device.udid, name: device.name, state: device.state,
                                           isAvailable: device.isAvailable ?? true,
-                                          deviceTypeIdentifier: device.deviceTypeIdentifier, runtime: runtime)
+                                          deviceTypeIdentifier: device.deviceTypeIdentifier, runtime: runtime,
+                                          lastUsedAt: device.lastUsedAt.flatMap { ISO8601DateFormatter().date(from: $0) },
+                                          dataSize: device.dataPathSize)
                 if simulator.isAvailable || simulator.isBooted { result.append(simulator) }
             }
         }

@@ -161,6 +161,10 @@ public struct LoadSettings: Codable, Sendable, Equatable {
     /// "En fazla açık simülatör": `claudedeck sim acquire` is refused at this many booted
     /// simulators (nil: a fifth of the cores, 2–10; 4 on a 20-core Mac).
     public var maxSimulators: Int?
+    /// "Kullanılmayan havuz simülatörlerini sil: N gün sonra": the automatic prune deletes
+    /// ClaudeDeck's shut-down, unheld pool simulators unused this many days (0: never; the
+    /// per-type bound of cap + 2 still applies). SimulatorPrune.swift.
+    public var simulatorPruneDays = SimulatorPrune.defaultDays
     /// "Aynı anda en fazla derleme": build slots (`claudedeck slot` / `heavy`) (nil: a sixth of
     /// the cores, 1–8; 3 on a 20-core Mac).
     public var buildSlots: Int?
@@ -220,6 +224,7 @@ public struct LoadSettings: Codable, Sendable, Equatable {
         maxProcesses = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .maxProcesses)) ?? d.maxProcesses, Self.processRange)
         busyAction = (try? c.decodeIfPresent(LoadBusyAction.self, forKey: .busyAction)) ?? d.busyAction
         maxSimulators = (try? c.decodeIfPresent(Int.self, forKey: .maxSimulators))?.map { Self.clamp($0, Self.simulatorRange) }
+        simulatorPruneDays = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .simulatorPruneDays)) ?? d.simulatorPruneDays, SimulatorPrune.dayRange)
         buildSlots = (try? c.decodeIfPresent(Int.self, forKey: .buildSlots))?.map { Self.clamp($0, Self.slotRange) }
         overloadedBuildSlots = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .overloadedBuildSlots)) ?? d.overloadedBuildSlots, Self.slotRange)
         maxSlotHoldMinutes = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .maxSlotHoldMinutes)) ?? d.maxSlotHoldMinutes, Self.holdRange)

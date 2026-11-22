@@ -58,8 +58,30 @@ public struct SimulatorHoldBook: Codable, Sendable, Equatable {
     public private(set) var holds: [SimulatorHold] = []
     /// UDIDs of the devices ClaudeDeck created (its pool).
     public private(set) var created: Set<String> = []
+    /// UDID → when a pool device was last released (or first seen without a date): its age for `sim prune`.
+    public private(set) var lastUsed: [String: Date] = [:]
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey { case holds, created, lastUsed }
+
+    // Files written before `lastUsed` existed still load (every key is optional).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        holds = try c.decodeIfPresent([SimulatorHold].self, forKey: .holds) ?? []
+        created = try c.decodeIfPresent(Set<String>.self, forKey: .created) ?? []
+        lastUsed = try c.decodeIfPresent([String: Date].self, forKey: .lastUsed) ?? [:]
+    }
+
+    /// Records when `udid` was last in use (a release, or the first time prune saw it without a date).
+    public mutating func noteUsed(_ udid: String, at date: Date = Date()) { lastUsed[udid.uppercased()] = date }
+
+    /// Forgets a deleted device.
+    public mutating func forget(_ udid: String) {
+        let key = udid.uppercased()
+        created.remove(key)
+        lastUsed[key] = nil
+    }
 
     public func holder(of udid: String) -> UUID? { holds.first { $0.udid == udid.uppercased() }?.session }
     public func held(by session: UUID) -> [SimulatorHold] { holds.filter { $0.session == session } }
@@ -79,6 +101,8 @@ public struct SimulatorHoldBook: Codable, Sendable, Equatable {
         let wanted = udid?.uppercased()
         let released = holds.filter { $0.session == session && (wanted == nil || $0.udid == wanted) }
         holds.removeAll { hold in released.contains { $0.udid == hold.udid } }
+        let now = Date()
+        for hold in released { lastUsed[hold.udid] = now }
         return released
     }
 
@@ -87,7 +111,13 @@ public struct SimulatorHoldBook: Codable, Sendable, Equatable {
     public mutating func prune(sessions: Set<UUID>, devices: Set<String>?) -> [SimulatorHold] {
         let gone = holds.filter { hold in !sessions.contains(hold.session) || (devices.map { !$0.contains(hold.udid) } ?? false) }
         holds.removeAll { hold in gone.contains { $0.udid == hold.udid } }
-        if let devices { created = created.intersection(devices) }
+        // Their last use is now (a release by the session ending).
+        let now = Date()
+        for hold in gone { lastUsed[hold.udid] = now }
+        if let devices {
+            created = created.intersection(devices)
+            lastUsed = lastUsed.filter { devices.contains($0.key) }
+        }
         return gone
     }
 }

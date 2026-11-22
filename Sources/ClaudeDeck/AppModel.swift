@@ -97,6 +97,8 @@ final class AppModel {
     var simHolds = SimulatorHoldBook()
     /// One `sim acquire` at a time, so two sessions never pick the same device.
     @ObservationIgnored var simAcquireChain: Task<Void, Never>?
+    /// The automatic pool prune: shortly after launch, then once a day.
+    @ObservationIgnored var simPruneTask: Task<Void, Never>?
     /// Stall watch (AppModel+StallWatch): what is known per session, and the checking loop.
     @ObservationIgnored var stallTrackers: [UUID: StallTracker] = [:]
     @ObservationIgnored var stallTask: Task<Void, Never>?
@@ -260,6 +262,7 @@ final class AppModel {
         installAskScript()
         installCLIScript() // only while the command-line tool is on
         loadSimulatorHolds()
+        startSimulatorPoolPruning() // after the holds of gone sessions are dropped
         LoadController.shared.start(model: self) // the Mac's load, every 12 s off the main thread
         startStallWatch() // only checks while the setting is on
         loadAgentNotes()

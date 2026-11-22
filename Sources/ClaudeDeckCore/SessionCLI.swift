@@ -153,6 +153,8 @@ public enum SessionCLI {
         case simAcquire
         /// `POST /v1/cli/sim/release`.
         case simRelease
+        /// `POST /v1/cli/sim/prune`: deletes ClaudeDeck's unused pool simulators (`dry_run`, `older_than`).
+        case simPrune
         /// `GET /v1/cli/usage`.
         case usage
         /// `GET /v1/cli/sessions/{ref}/status`: state, who started it, stall watch, simulators.
@@ -183,7 +185,7 @@ public enum SessionCLI {
             case .decide, .decisions, .decision, .cancelDecision: .decide
             case .accounts, .currentAccount: .list
             case .switchAccount: .account
-            case .simList, .simAcquire, .simRelease: .simulators
+            case .simList, .simAcquire, .simRelease, .simPrune: .simulators
             case .usage: .usage
             case .status: .list
             case .close, .remove: .close
@@ -237,6 +239,7 @@ public enum SessionCLI {
         case 1 where rest[0] == "sim": return expect("GET", .simList)
         case 2 where rest[0] == "sim" && rest[1] == "acquire": return expect("POST", .simAcquire)
         case 2 where rest[0] == "sim" && rest[1] == "release": return expect("POST", .simRelease)
+        case 2 where rest[0] == "sim" && rest[1] == "prune": return expect("POST", .simPrune)
         case 1 where rest[0] == "usage": return expect("GET", .usage)
         case 1 where rest[0] == "load": return expect("GET", .load)
         case 3 where rest[0] == "slot" && rest[2] == "acquire": return expect("POST", .slotAcquire(AgentHTTP.percentDecode(rest[1])))
