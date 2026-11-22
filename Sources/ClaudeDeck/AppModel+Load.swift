@@ -41,7 +41,9 @@ extension AppModel {
             remote.pushNotice(title: title, body: body, collapseID: "load-overloaded", threadID: "load")
         }
         // Agents hear about it once per episode as a queued message (typed only once each is idle,
-        // never interrupting a turn); a note would reach the owner only.
+        // never interrupting a turn); a note would reach the owner only. Not with the brake off:
+        // the owner chose to let agents run through it.
+        guard settings.throttle else { return }
         let text = AgentNoticeRouting.overloadMessage
         let recipients = AgentNoticeRouting.overloadRecipients(deck.sessions.map {
             (id: $0.id, isClaude: $0.kind == .claude, startedBy: $0.startedBy, running: terminals.isRunning($0.id))
