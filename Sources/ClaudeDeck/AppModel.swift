@@ -285,7 +285,7 @@ final class AppModel {
             // If an update is waiting, ask about it first: installing relaunches the app, and the
             // sessions would otherwise start twice.
             launchDeferred = true
-            AppUpdater.shared.startHoldingForUpdate { [weak self] in
+            AppUpdater.shared.startHoldingForUpdate(model: self) { [weak self] in
                 guard let self else { return }
                 self.launchDeferred = false
                 self.launchInitialSessions()
@@ -326,7 +326,9 @@ final class AppModel {
         isQuitting = true
         // A terminal with a command whose "start automatically" is off doesn't stay in the session
         // helper: it would come back running at launch, which is what that switch says not to do.
-        for session in deck.sessions where session.kind == .shell && session.startupCommand != nil && !session.autoStart
+        // Not when relaunching into an update: that isn't the owner closing ClaudeDeck.
+        for session in deck.sessions where !AppUpdater.shared.relaunchingForUpdate
+            && session.kind == .shell && session.startupCommand != nil && !session.autoStart
             && terminals.isInHelper(session.id) {
             terminals.terminate(session.id)
         }

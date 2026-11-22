@@ -170,6 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var systemIsPoweringOff = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Relaunching into an update at a quiet moment: nothing to ask (the timing checked it).
+        if AppUpdater.shared.relaunchingForUpdate { return .terminateNow }
         guard systemIsPoweringOff || EditorRegistry.confirmQuit() else { return .terminateCancel }
         let running = model.deck.sessions.filter { model.terminals.isRunning($0.id) }
         guard model.deck.settings.confirmQuit, !systemIsPoweringOff, !running.isEmpty else { return .terminateNow }

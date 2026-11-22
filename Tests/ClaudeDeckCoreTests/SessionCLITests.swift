@@ -285,7 +285,7 @@ import Testing
     }
 
     private func run(_ args: [String], answers: [(body: String, status: String)] = [], session: Bool = true,
-                     home: URL? = nil, cwd: URL? = nil, slowFirstAnswer: Int? = nil) throws -> Run {
+                     home: URL? = nil, cwd: URL? = nil, slowFirstAnswer: Int? = nil, retries: String = "0") throws -> Run {
         let dir = FileManager.default.temporaryDirectory.appending(path: "claudedeck-cli-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -313,7 +313,7 @@ import Testing
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [script.path] + args
-        var env = ["PATH": dir.path + ":/usr/bin:/bin", "HOME": (home ?? dir).path]
+        var env = ["PATH": dir.path + ":/usr/bin:/bin", "HOME": (home ?? dir).path, "CLAUDEDECK_CONNECT_RETRIES": retries]
         if session {
             env["CLAUDEDECK_CLI_TOKEN"] = "tok-123"
             env["CLAUDEDECK_CLI_URL"] = "http://127.0.0.1:47832/v1/cli"
@@ -572,6 +572,12 @@ import Testing
         let off = try run(["new"], answers: [(#"{"error":"setting_off"}"#, "403 4")])
         #expect(off.code == 4 && off.err.contains("Settings"))
         #expect(try run(["new", "--project", "nope"], answers: [(#"{"error":"unknown_project"}"#, "404 5")]).code == 5)
+    }
+
+    /// ClaudeDeck relaunching (an update): a refused connection is tried again, the answer counts.
+    @Test func connectionRefusedIsRetried() throws {
+        let refusedOnce = try run(["list"], answers: [], retries: "1")
+        #expect(refusedOnce.curlCalls.count == 2 && refusedOnce.code == 1)
     }
 
     @Test func serverArguments() throws {

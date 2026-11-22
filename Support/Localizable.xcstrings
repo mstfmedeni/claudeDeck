@@ -24843,6 +24843,46 @@
           }
         }
       }
+    },
+    "Install updates automatically": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeleri otomatik yükle"
+          }
+        }
+      }
+    },
+    "Downloads updates in the background and relaunches into them when you're away. Sessions kept in the background helper keep running; while others are open, the update waits.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeleri arka planda indirir ve sen bilgisayarın başında değilken yeniden açılarak yükler. Arka plan yardımcısındaki oturumlar çalışmaya devam eder; başka açık oturum varsa güncelleme bekler."
+          }
+        }
+      }
+    },
+    "An update is downloaded and installs at a quiet moment.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir güncelleme indirildi, uygun bir anda yüklenecek."
+          }
+        }
+      }
+    },
+    "Install Now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şimdi Yükle"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

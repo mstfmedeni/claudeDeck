@@ -237,9 +237,16 @@ extension SessionCLI {
     # call PATH CURL-ARGS...: the answer's body in $body, its exit code in $code.
     call() {
       path=$1; shift
-      out=$(curl -sS -m "${max_time:-40}" \
-        -w '\n%{http_code} e=%header{x-claudedeck-exit} n=%header{x-claudedeck-next} m=%header{x-claudedeck-note}' \
-        -H "Authorization: Bearer $CLAUDEDECK_CLI_TOKEN" "$@" "$CLAUDEDECK_CLI_URL$path" 2>&1)
+      # Connection refused (curl 7): ClaudeDeck is relaunching (an update), up to ~40 s; the
+      # request never reached it, so sending it again is safe.
+      tries=0
+      while :; do
+        out=$(curl -sS -m "${max_time:-40}" \
+          -w '\n%{http_code} e=%header{x-claudedeck-exit} n=%header{x-claudedeck-next} m=%header{x-claudedeck-note}' \
+          -H "Authorization: Bearer $CLAUDEDECK_CLI_TOKEN" "$@" "$CLAUDEDECK_CLI_URL$path" 2>&1) && break
+        [ $? = 7 ] && [ "$tries" -lt "${CLAUDEDECK_CONNECT_RETRIES:-20}" ] || break
+        tries=$((tries + 1)); sleep 2
+      done
       status=$(printf '%s\n' "$out" | tail -n 1)
       body=$(printf '%s\n' "$out" | sed '$d')
       # "<http> e=<exit header> n=<next header> m=<note header>"; any header may be missing
