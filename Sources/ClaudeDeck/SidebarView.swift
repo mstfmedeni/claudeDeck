@@ -46,12 +46,13 @@ struct SidebarView: View {
             // Waiting tray above the footer, outside the list: it only shortens the list, never
             // pushes its rows around.
             VStack(spacing: 0) {
-                if model.approvals.pendingCount > 0 {
+                // Always there while sessions can ask (past ones stay reachable to look at or change).
+                if model.deck.settings.sessionCLIEnabled || model.approvals.pendingCount > 0 {
                     PendingApprovalsTray()
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                if model.decisions.pendingCount > 0 {
+                if model.deck.settings.sessionCLIEnabled || model.decisions.pendingCount > 0 {
                     PendingDecisionsTray()
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
