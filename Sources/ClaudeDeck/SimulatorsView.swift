@@ -231,11 +231,21 @@ final class SimulatorsController {
         cleanUp(targets.map { ["simctl", "delete", $0.udid] })
     }
 
+    /// Whether `udid` runs right now (its `launchd_sim` is in the process table): checked again
+    /// just before a delete, since a device can be booted after the list was read.
+    nonisolated static func isBootedNow(_ udid: String) -> Bool {
+        let table = ProcessTable.current()
+        return SimulatorProcesses.launchdSims(in: table, arguments: ProcessArguments.of)[udid.uppercased()] != nil
+    }
+
     private func cleanUp(_ steps: [[String]]) {
         cleaning = true
         Task {
             var failures: [String] = []
             for args in steps {
+                // A single device booted since it was selected is skipped.
+                if args.count == 3, args[1] == "delete", args[2] != "unavailable",
+                   await Task.detached(operation: { Self.isBootedNow(args[2]) }).value { continue }
                 let result = await Task.detached(priority: .utility) { Self.xcrun(args, timeout: 300) }.value
                 if result.status != 0 { failures.append(result.message.isEmpty ? args.joined(separator: " ") : result.message) }
             }

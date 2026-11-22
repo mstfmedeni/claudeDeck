@@ -369,9 +369,10 @@ extension AppModel {
         var items: [SimulatorPrune.Item] = []
         for candidate in candidates {
             guard !dryRun else { items.append(SimulatorPrune.Item(candidate, deleted: false)); continue }
-            // Taken meanwhile: kept.
+            // Taken meanwhile, or booted since the list was read (Simulator.app): kept.
             guard simHolds.holder(of: candidate.device.udid) == nil else { continue }
             let udid = candidate.device.udid
+            guard await !Task.detached(priority: .utility, operation: { SimulatorsController.isBootedNow(udid) }).value else { continue }
             let result = await Task.detached(priority: .utility) { SimulatorsController.xcrun(["simctl", "delete", udid], timeout: 120) }.value
             if result.status == 0 {
                 simHolds.forget(udid)

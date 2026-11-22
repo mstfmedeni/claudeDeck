@@ -524,8 +524,10 @@ drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; nev
     the Mac, the user's and other tools' too.
   - With slimming on and simslim installed the default cap on booted simulators (Settings ›
     Resources) is half again as high (4 → 6 on a 20-core Mac); a cap the owner set stays.
-- **prune (the pool stays small):** ClaudeDeck's pool is the devices it created (by UDID in
-  simulator-holds.json) or named `ClaudeDeck · …`. A pool device is deleted (`simctl delete`) when it
+- **prune (the pool stays small):** for deleting, ClaudeDeck's pool is the devices named
+  `ClaudeDeck · …` (a held one's `ClaudeDeck · <project> · …` too); a device ClaudeDeck created but
+  someone renamed away from that prefix is never deleted. Ages are tracked by UDID
+  (simulator-holds.json). A pool device is deleted (`simctl delete`) when it
   is shut down, held by nobody, and either unused for **N days** (Settings › Resources ›
   **Kullanılmayan havuz simülatörlerini sil: N gün sonra**, default **3**, `0` = never), or one of
   more than **cap + 2** pool devices of its device type (cap = the booted-simulator limit in

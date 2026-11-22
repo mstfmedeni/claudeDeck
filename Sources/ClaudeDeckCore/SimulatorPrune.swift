@@ -28,9 +28,12 @@ public enum SimulatorPrune {
         public let lastUsed: Date?
     }
 
-    /// ClaudeDeck's pool: devices it created (by UDID, from its records) or that carry its name prefix.
+    /// ClaudeDeck's pool for deleting: devices named "ClaudeDeck · …" (a held one's
+    /// "ClaudeDeck · <project> · …" too). Its UDID records confirm them where they exist, but a
+    /// device renamed away from the prefix (the owner adopted it) is never deleted, even if
+    /// ClaudeDeck created it. Stricter than `acquire`'s reuse on purpose.
     public static func isPool(_ device: Simulator, book: SimulatorHoldBook) -> Bool {
-        book.created.contains(device.udid) || device.name.hasPrefix(SimulatorAllocation.namePrefix)
+        device.name.hasPrefix(SimulatorAllocation.namePrefix)
     }
 
     /// When `device` was last used: the later of ClaudeDeck's release time and simctl's last boot.

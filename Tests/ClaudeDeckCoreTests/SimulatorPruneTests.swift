@@ -49,10 +49,12 @@ import Testing
         #expect(Self.select(devices, max: 0).isEmpty)
     }
 
-    @Test func poolMatchesByUDIDWhenRenamed() {
+    @Test func renamedAwayFromThePrefixIsNeverDeleted() {
         var book = SimulatorHoldBook()
         book.noteCreated(Self.udid(1))
-        #expect(Self.select([Self.device(1, name: "Renamed by hand", daysAgo: 5)], book: book) == [Self.udid(1)])
+        #expect(Self.select([Self.device(1, name: "Renamed by hand", daysAgo: 5)], book: book, max: 0).isEmpty)
+        // A held device's project name keeps the prefix.
+        #expect(Self.select([Self.device(2, name: "ClaudeDeck · Wakeroo · iPhone 17 Pro · 2", daysAgo: 5)]) == [Self.udid(2)])
     }
 
     @Test func zeroDaysTurnsTheAgeRuleOff() {
@@ -125,6 +127,10 @@ import Testing
         book.hold(SimulatorHold(udid: Self.udid(1), name: "n", session: session, created: true))
         book.release(session: session)
         #expect(book.lastUsed[Self.udid(1)] != nil)
+        // A hold dropped because its session is gone counts as a release too.
+        book.hold(SimulatorHold(udid: Self.udid(2), name: "n", session: UUID(), created: true))
+        book.prune(sessions: [], devices: nil)
+        #expect(book.lastUsed[Self.udid(2)] != nil)
         book.forget(Self.udid(1))
         #expect(book.lastUsed[Self.udid(1)] == nil)
         #expect(!book.created.contains(Self.udid(1)))
