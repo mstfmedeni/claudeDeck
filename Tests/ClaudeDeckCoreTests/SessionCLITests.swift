@@ -1339,4 +1339,77 @@ import Testing
         #expect(try run(["help"]).out.contains("claudedeck restart ID"))
         #expect(SessionCLI.skill.contains("claudedeck restart ID") && SessionCLI.skill.contains("restart_off"))
     }
+
+    // MARK: Compacting
+
+    @Test func compactRouteAndScope() throws {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/self/compact") == .route(.compact("self")))
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/q_0123456789/compact") == .route(.compact("q_0123456789")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd/compact") == .methodNotAllowed)
+        #expect(SessionCLI.Route.compact("x").scope == .compact)
+        #expect(SessionCLI.fullScopes.contains(.compact) && !SessionCLI.openedScopes.contains(.compact))
+        var book = SessionCLIBook()
+        let claude = UUID(), opened = UUID()
+        let claudeToken = book.token(for: claude, scopes: SessionCLI.scopes(openedBy: nil))
+        let openedToken = book.token(for: opened, scopes: SessionCLI.scopes(openedBy: claude))
+        func refusal(_ token: String) -> AgentHTTPResponse? {
+            if case .failure(let refusal) = SessionCLI.resolve(request("POST", "/v1/cli/sessions/self/compact", token: token), book: book) { return refusal.response }
+            return nil
+        }
+        #expect(refusal(claudeToken) == nil)
+        let refused = try #require(refusal(openedToken))
+        #expect(refused.status == 403 && refused.headers[SessionCLI.exitHeader] == "4")
+        let id = UUID(uuidString: "C0000000-0000-0000-0000-000000000003")!
+        let data = try JSONEncoder().encode(SessionCLICompacting(id: id, pending: true))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["compacting"] as? Bool == true && object["pending"] as? Bool == true && object["id"] as? String == id.uuidString)
+    }
+
+    @Test func compactOnlyItselfAndClaudeSessionsItStarted() {
+        let me = UUID(), child = UUID(), grandchild = UUID(), sibling = UUID(), parent = UUID(), owners = UUID(), terminal = UUID()
+        let startedBy = [child: me, grandchild: child, sibling: parent, me: parent]
+        let openedBy = [terminal: me]
+        func check(_ target: UUID, _ kind: SessionKind = .claude) -> SessionCLI.CompactCheck {
+            SessionCLI.mayCompact(caller: me, target: target, targetKind: kind, startedBy: startedBy, openedBy: openedBy)
+        }
+        #expect(check(me) == .allowed)
+        #expect(check(child) == .allowed)
+        #expect(check(grandchild) == .allowed)
+        #expect(check(sibling) == .notYours)
+        #expect(check(parent) == .notYours)
+        #expect(check(owners) == .notYours)
+        // Terminals, even its own, aren't Claude.
+        #expect(check(terminal, .shell) == .notClaude)
+        #expect(check(owners, .shell) == .notClaude)
+        // Idle (or at the limit) now, working after the turn, blocked refused.
+        #expect(SessionCLI.compactTiming(.finished(0)) == .now)
+        #expect(SessionCLI.compactTiming(.limited(nil)) == .now)
+        #expect(SessionCLI.compactTiming(.running) == .afterTurn)
+        #expect(SessionCLI.compactTiming(.blocked("needsPermission")) == .blocked)
+        #expect(SessionCLI.compactLimit == 30 * 60)
+    }
+
+    @Test func compactArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/sessions/"
+        let mine = try run(["compact"], answers: [("compacting after this turn", "200 0")])
+        #expect(mine.code == 0 && mine.out == "compacting after this turn\n")
+        let call = try #require(mine.curlCalls.first)
+        #expect(call.last == base + "self/compact" && call.contains("format=text") && !call.contains("-G"))
+        #expect(try run(["compact", "self"], answers: [("compacting after this turn", "200 0")]).curlCalls.first?.last == base + "self/compact")
+        #expect(try run(["compact", "d1234567"], answers: [("compacting", "200 0")]).curlCalls.first?.last == base + "d1234567/compact")
+        #expect(try run(["compact", "--json"], answers: [(#"{"compacting":true}"#, "200 0")]).curlCalls.first?.contains("format=json") == true)
+        for args in [["compact", "a", "b"], ["compact", "a/../b"], ["compact", "abcd", "--force"]] {
+            let usage = try run(args)
+            #expect(usage.code == 2 && usage.curlCalls.isEmpty, "\(args)")
+        }
+        #expect(try run(["compact"], session: false).code == 2)
+        let notYours = try run(["compact", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(notYours.code == 4 && notYours.err.contains("Claude sessions it started"))
+        let shell = try run(["compact", "abcd"], answers: [(#"{"error":"not_claude"}"#, "400 2")])
+        #expect(shell.code == 2 && shell.err.contains("only Claude sessions"))
+        let blocked = try run(["compact", "abcd"], answers: [(#"{"error":"blocked"}"#, "409 3")])
+        #expect(blocked.code == 3 && blocked.err.contains("permission or a question"))
+        #expect(try run(["help"]).out.contains("claudedeck compact [ID|self]"))
+        #expect(SessionCLI.skill.contains("When your context is low, update docs/HANDOFF.md, then run `claudedeck compact`"))
+    }
 }

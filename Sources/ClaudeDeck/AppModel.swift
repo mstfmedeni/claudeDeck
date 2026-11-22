@@ -161,6 +161,8 @@ final class AppModel {
     /// When the user last submitted input (Enter / a choice) while the session was blocked.
     private var answeredAt: [UUID: Date] = [:]
     @ObservationIgnored private var pendingCompact: Set<UUID> = []
+    /// Sessions with a `claudedeck compact` waiting for their turn to end (AppModel+SessionCLICompact).
+    @ObservationIgnored var cliCompactsPending: Set<UUID> = []
     /// Automatically resumed sessions that get the "continue" message once resumed (and compacted).
     @ObservationIgnored private var pendingContinue: Set<UUID> = []
     /// Hook files older than the terminal's launch belong to a previous process.
