@@ -31,7 +31,7 @@ import Testing
         #expect(t.pressureLevel == .critical && t.swapGrowthBytes == 2 << 30 && t.swapGrowthWindow == 300)
         #expect(t.enabled == [.pressure, .swapGrowth, .compilers, .load, .processes])
         // Busy: 2 × cores for a minute, or half the compiler limit.
-        #expect(t.busyLoad == 40 && t.busySustain == 60 && t.busyAction == .nothing)
+        #expect(t.busyLoad == 40 && t.busySustain == 60 && t.busyAction == .holdStarts)
         #expect(t.overloadCompilers == 12 && t.busyCompilers == 6)
         #expect(t.maxSimulators == 4 && t.buildSlots == 3 && t.overloadedBuildSlots == 1)
         #expect(t.maxSlotHold == 3600)
@@ -100,7 +100,7 @@ import Testing
         settings.alwaysShowInSidebar = true
         settings.overloadFactor = 4
         settings.maxProcesses = 900
-        settings.busyAction = .holdStarts
+        settings.busyAction = .nothing
         settings.buildSlots = 6
         settings.overloadedBuildSlots = 2
         settings.maxSimulators = 9
@@ -128,7 +128,7 @@ import Testing
         for i in 0..<60 { high.add(sample(Double(i) * 12, load: 50, simulators: 4, swapGB: 18, processes: 2043), thresholds: thresholds) }
         #expect(high.level == .busy && !high.overloaded)
         #expect(!LoadThrottle.holdsStarts(level: high.level, busyAction: .nothing, enabled: true))
-        #expect(LoadThrottle.slotCapacity(thresholds, level: high.level, enabled: true) == 3)
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.busyAction = .nothing }, level: high.level, enabled: true) == 3)
         #expect(LoadThrottle.simulator(level: high.level, enabled: true, booted: 3, wanted: 1, max: 4) == .allow)
         // 3 × cores for minutes is still only busy.
         var triple = LoadMonitor()
@@ -270,7 +270,7 @@ import Testing
         // overloaded again is no new episode (no second notification or message).
         #expect(!monitor.overloaded && monitor.inEpisode)
         #expect(!LoadThrottle.holdsStarts(level: monitor.level, busyAction: .nothing, enabled: true))
-        #expect(monitor.add(sample(180, load: 5, pressure: .warning, compilers: 20), thresholds: thresholds) == [.level(from: .busy, to: .overloaded)])
+        #expect(monitor.add(sample(180, load: 5, pressure: .critical), thresholds: thresholds) == [.level(from: .busy, to: .overloaded)])
         #expect(monitor.episode == 1)
         // Calm all the way: overloaded → ok directly once busy is clear too; the episode ends.
         monitor.add(sample(190, load: 5), thresholds: thresholds)
@@ -299,10 +299,11 @@ import Testing
         #expect(!monitor.overloaded && monitor.fired.isEmpty)
         #expect(!LoadThrottle.holdsStarts(level: monitor.level, busyAction: .nothing, enabled: true))
         #expect(LoadThrottle.drains(level: monitor.level, busyAction: .nothing, enabled: true))
-        #expect(LoadThrottle.slotCapacity(t, level: monitor.level, enabled: true) == 3)
+        // Busy with the default "hold new work": new work still waits, half the build slots.
+        #expect(LoadThrottle.slotCapacity(t, level: monitor.level, enabled: true) == 1)
         let report = SessionCLILoad(level: monitor.level, settings: LoadSettings(), sample: monitor.latest, thresholds: t,
-                                    triggers: monitor.triggers, capacity: 3, slots: [], waiting: 0)
-        #expect(report.level == "busy" && !report.throttled)
+                                    triggers: monitor.triggers, capacity: 1, slots: [], waiting: 0)
+        #expect(report.level == "busy" && report.holdsStarts && report.text.hasPrefix("level: busy (new work waits"))
     }
 
     @Test func busyNeedsThirtyCalmSecondsToClear() {
@@ -403,17 +404,72 @@ import Testing
 
     // MARK: Throttling
 
-    @Test func busyDoesNotThrottle() {
-        // Busy holds nothing back by default: new starts go, the queue drains, every build slot.
+    @Test func busyHoldsNewWorkOnly() {
+        // Busy (default "hold new work"): new starts queue, the queue doesn't drain, sim acquire
+        // waits, build slots drop to half (never below the overloaded count).
+        #expect(LoadThrottle.start(level: .busy, busyAction: .holdStarts, enabled: true, queue: true) == .queue)
+        #expect(LoadThrottle.start(level: .busy, busyAction: .holdStarts, enabled: true, queue: false) == .refuse)
+        #expect(!LoadThrottle.drains(level: .busy, busyAction: .holdStarts, enabled: true))
+        #expect(LoadThrottle.simulator(level: .busy, busyAction: .holdStarts, enabled: true, booted: 0, wanted: 1, max: 4) == .busy)
+        #expect(LoadThrottle.slotCapacity(thresholds, level: .busy, enabled: true) == 1)
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8 }, level: .busy, enabled: true) == 4)
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8; $0.overloadedBuildSlots = 5 }, level: .busy, enabled: true) == 5)
+        // Overloaded adds the calming rules: fewer slots still.
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.buildSlots = 8 }, level: .overloaded, enabled: true) == 1)
+        // Busy never sends agents anything: an episode (and its one message) starts only at overloaded.
+        var monitor = LoadMonitor()
+        for i in 0..<10 { monitor.add(sample(Double(i) * 12, load: 50), thresholds: thresholds) }
+        #expect(monitor.level == .busy && !monitor.inEpisode && monitor.episode == 0)
+        // "Do nothing (only show it)": busy holds nothing back.
         #expect(LoadThrottle.start(level: .busy, busyAction: .nothing, enabled: true, queue: false) == .allow)
         #expect(LoadThrottle.drains(level: .busy, busyAction: .nothing, enabled: true))
-        #expect(LoadThrottle.slotCapacity(thresholds, level: .busy, enabled: true) == 3)
-        #expect(LoadThrottle.simulator(level: .busy, enabled: true, booted: 0, wanted: 1, max: 4) == .allow)
-        // Unless the owner picked "hold new starts" for busy: then only starts wait.
-        #expect(LoadThrottle.start(level: .busy, busyAction: .holdStarts, enabled: true, queue: true) == .queue)
-        #expect(!LoadThrottle.drains(level: .busy, busyAction: .holdStarts, enabled: true))
-        #expect(LoadThrottle.slotCapacity(thresholds { $0.busyAction = .holdStarts }, level: .busy, enabled: true) == 3)
-        #expect(LoadThrottle.simulator(level: .busy, enabled: true, booted: 0, wanted: 1, max: 4) == .allow)
+        #expect(LoadThrottle.slotCapacity(thresholds { $0.busyAction = .nothing }, level: .busy, enabled: true) == 3)
+        #expect(LoadThrottle.simulator(level: .busy, busyAction: .nothing, enabled: true, booted: 0, wanted: 1, max: 4) == .allow)
+        // The brake off: nothing waits at any level.
+        #expect(LoadThrottle.simulator(level: .busy, busyAction: .holdStarts, enabled: false, booted: 0, wanted: 1, max: 4) == .allow)
+        #expect(LoadThrottle.slotCapacity(thresholds, level: .busy, enabled: false) == 3)
+    }
+
+    @Test func busyDefaultMigratesFromOlderSettings() throws {
+        // 0.6.19 and earlier saved "nothing" as the default: it moves to "hold new work".
+        let old = try JSONDecoder().decode(LoadSettings.self, from: Data(#"{"version":2,"busyAction":"nothing"}"#.utf8))
+        #expect(old.busyAction == .holdStarts)
+        let none = try JSONDecoder().decode(LoadSettings.self, from: Data(#"{"busyAction":"nothing"}"#.utf8))
+        #expect(none.busyAction == .holdStarts)
+        // Chosen after the change, it stays.
+        let kept = try JSONDecoder().decode(LoadSettings.self, from: Data(#"{"version":3,"busyAction":"nothing"}"#.utf8))
+        #expect(kept.busyAction == .nothing)
+        var settings = LoadSettings()
+        settings.busyAction = .nothing
+        let roundTrip = try JSONDecoder().decode(LoadSettings.self, from: JSONEncoder().encode(settings))
+        #expect(roundTrip.busyAction == .nothing)
+    }
+
+    @Test func compilersAreCountedSteady() {
+        // A Swift build's short-lived swift-frontend jobs: 22 in one sample, 6 in the next. The
+        // rules use the median of the last 3 samples, so one spike neither fires nor makes busy.
+        let t = thresholds
+        var monitor = LoadMonitor()
+        monitor.add(sample(0, load: 50, compilers: 6), thresholds: t)
+        monitor.add(sample(12, load: 50, compilers: 22), thresholds: t)
+        #expect(monitor.fired.isEmpty)
+        #expect(monitor.triggers.first { $0.trigger == .compilers }?.current == 6)
+        monitor.add(sample(24, load: 50, compilers: 6), thresholds: t)
+        #expect(monitor.fired.isEmpty)
+        // A fan-out that lasts (two of the last three samples) counts, with a busy load.
+        monitor.add(sample(36, load: 50, compilers: 6), thresholds: t)
+        monitor.add(sample(48, load: 50, compilers: 20), thresholds: t)
+        #expect(monitor.fired.isEmpty)
+        monitor.add(sample(60, load: 50, compilers: 22), thresholds: t)
+        #expect(monitor.fired == [.compilers] && monitor.level == .overloaded)
+        #expect(monitor.triggers.first { $0.trigger == .compilers }?.current == 20)
+        // Old samples (over a minute) don't count.
+        #expect(LoadMonitor.steadyCompilers(sample(200, load: 0, compilers: 3),
+                                            history: [sample(100, load: 0, compilers: 30), sample(110, load: 0, compilers: 30)]) == 3)
+        // The text shows both.
+        let report = SessionCLILoad(level: monitor.level, settings: LoadSettings(), sample: monitor.latest, thresholds: t,
+                                    triggers: monitor.triggers, capacity: 1, slots: [], waiting: 0)
+        #expect(report.text.contains("compilers: 22 processes now, 20 steady (median of the last 3 samples)"))
     }
 
     @Test func throttlingWhileOverloaded() {
@@ -516,7 +572,7 @@ import Testing
         let report = SessionCLILoad(level: monitor.level, settings: LoadSettings(), sample: s, thresholds: thresholds,
                                     triggers: monitor.triggers, capacity: 1, slots: [slot], waiting: 2, maxStartedSessions: 8,
                                     runningStartedSessions: 5, top: top, topProjects: [])
-        #expect(report.text.contains("level: overloaded (new sessions and simulators are held back; 1 build slot)"))
+        #expect(report.text.contains("level: overloaded (calming down: new sessions and simulators wait, 1 build slot, agents asked once to put heavy work off)"))
         #expect(report.text.contains("simulators: 11 booted") && report.text.contains("build slots: 1/1 used, 2 waiting (3 when not overloaded)"))
         #expect(report.text.contains("b_12345678  Build bot"))
         #expect(report.text.contains("FIRE compilers > 12 (now 30)") && report.text.contains("off  swap > 64.0 GB"))
@@ -528,12 +584,18 @@ import Testing
         #expect(json.contains(#""level":"overloaded""#) && json.contains(#""slots_available":0"#) && json.contains(#""load_per_core":6"#))
         #expect(json.contains(#""fired":["compilers"]"#) && json.contains(#""trigger":"swap_growth""#) && json.contains(#""enabled":false"#))
         #expect(json.contains(#""limits":{"build_slots":3,"build_slots_overloaded":1,"max_simulators":4,"max_started_sessions":8,"running_started_sessions":5}"#))
-        #expect(json.contains(#""top":[{"#) && json.contains(#""memory_mb":2140"#) && json.contains(#""busy_action":"nothing""#))
+        #expect(json.contains(#""top":[{"#) && json.contains(#""memory_mb":2140"#) && json.contains(#""busy_action":"hold_starts""#))
         #expect(json.contains(#""holds_starts":true"#))
-        // Busy: informational.
+        // Busy: new work waits (the default), or informational with "do nothing".
         let busy = SessionCLILoad(level: .busy, settings: LoadSettings(), sample: s, thresholds: thresholds, triggers: [],
-                                  capacity: 3, slots: [], waiting: 0)
-        #expect(busy.text.hasPrefix("level: busy (informational: nothing is held back)") && !busy.throttled && !busy.holdsStarts)
+                                  capacity: 1, slots: [], waiting: 0)
+        #expect(busy.text.hasPrefix("level: busy (new work waits: new sessions, simulators and builds beyond 1 slot; running agents go on)"))
+        #expect(busy.holdsStarts)
+        var shown = LoadSettings()
+        shown.busyAction = .nothing
+        let informational = SessionCLILoad(level: .busy, settings: shown, sample: s, thresholds: thresholds, triggers: [],
+                                           capacity: 3, slots: [], waiting: 0)
+        #expect(informational.text.hasPrefix("level: busy (informational: nothing is held back)") && !informational.throttled)
         let empty = SessionCLILoad(level: .ok, settings: LoadSettings(), sample: nil, thresholds: thresholds, triggers: [],
                                    capacity: 3, slots: [], waiting: 0)
         #expect(empty.text == "level: ok\nno sample yet")

@@ -341,8 +341,9 @@ ClaudeDeck samples the system every 12 seconds off the main thread (load average
 pressure and use, swap, booted simulators counted as `launchd_sim` processes, compiler and linker
 processes, the process count, its own running Claude sessions) and derives a level:
 
-The rule is **"only prevent freezes"**: `overloaded` means a real risk of the Mac locking up, and
-only `overloaded` holds anything back. Each overload trigger has its own switch and value in
+Two levels, two meanings: `busy` means **new work waits** (running agents are not told anything
+and go on); `overloaded` means a real risk of the Mac locking up, and **calming rules** kick in on
+top of that. Each overload trigger has its own switch and value in
 Settings › Resources ("Ne zaman fren yapılsın?"), shown there with its live value (red while it
 fires):
 
@@ -351,20 +352,25 @@ fires):
 | `pressure` | macOS memory pressure **critical** (or, by the setting, high/warning) |
 | `swap_growth` | swap grows by more than **2 GB within 5 minutes** while memory pressure is warning or worse |
 | `swap_size` | swap above 64 GB (**off** by default: a big swap alone doesn't freeze the Mac) |
-| `compilers` | more than **60 % of the cores** in compiler and linker processes (12 on a 20-core Mac) |
+| `compilers` | more than **60 % of the cores** in compiler and linker processes (12 on a 20-core Mac), counted steady: the median of the last 3 samples (a Swift build's short-lived `swift-frontend` jobs make one sample read 22 and the next 6), and only with a busy load or memory pressure |
 | `load` | the 1-minute load above **10 × cores** (200 on a 20-core Mac) for **3 minutes** |
 | `processes` | more than **3,000** processes |
 
 | Level | When |
 |---|---|
 | `overloaded` | any switched-on trigger fires |
-| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit. **Informational**: it holds nothing back unless Settings › Resources › "Meşgulken" is set to hold new agent sessions (then only `new` and the start queue wait). Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
+| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit (steady count). **New work waits** (with the brake on and Settings › Resources › "Meşgulken" on "Yeni işleri beklet", the default since 0.6.20): `new` answers `429 overloaded` / queues, the start queue doesn't drain, `sim acquire` answers `429 busy`, and build slots drop to half (never below the overloaded count). Running agents get no message. "Sadece göster" makes it informational. Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
 | `ok` | otherwise |
 
 Hysteresis: overloaded ends once no trigger fires and the load and process count have stayed
 under 80–90 % of their limits for a minute (its own margins, not busy's); busy ends after 30 calm
-seconds. Throttling follows the level: it stops the moment the Mac leaves `overloaded`, even while
-it is still busy. An **episode** starts when the level becomes `overloaded` and ends when it is back
+seconds. The level never stays frozen at overloaded: once its calm minute has run out it counts as
+ended even if the next sample is late, and `claudedeck load` samples afresh when the latest is
+older than 30 s. While overloaded with nothing firing, `claudedeck load` says why on the line under
+`level:` (`exiting: 48 s left (…); last fired 24 s ago: pressure`, or `exit held: load 170.0 not
+yet under 160.0 (exit margin)`; JSON `exit_in`, `exit_blocked_by`, `last_fired`, `last_fired_ago`,
+`sample_age`). The calming rules stop the moment the Mac leaves `overloaded`; busy's waiting goes
+on while it is still busy. An **episode** starts when the level becomes `overloaded` and ends when it is back
 to `ok` (a Mac swinging between busy and overloaded is one episode). Per episode, once: a
 notification on the Mac and on paired phones listing what's behind it ("11 simülatör açık, 30
 derleme, 37 oturum"), and a **message queued for every running Claude session another session
@@ -373,9 +379,13 @@ simülatörleri bırak.` It goes through the session's message queue, so it is t
 session is idle (between turns, never interrupting one), and not again while a copy still waits.
 
 Settings saved by 0.6.12 or earlier with the first defaults (overloaded at 2 × cores, busy at
-1 × cores) move to the new ones when read; values the owner had changed are kept.
+1 × cores) move to the new ones when read; values the owner had changed are kept. Settings saved
+by 0.6.19 or earlier with "Meşgulken: hiçbir şey yapma" (then the default) move to "Yeni işleri
+beklet".
 
-With **"Ajanlara fren yap"** (Settings › Resources, on by default), while overloaded:
+With **"Ajanlara fren yap"** (Settings › Resources, on by default), while overloaded (everything
+busy holds, plus the calming rules: the one queued message per episode above and the owner's
+notification):
 
 - `claudedeck new` answers `429 overloaded` (exit 4, checked before the rate limit, so it costs no
   start); `new --queue` queues instead (reason `overloaded`). The queue drains again as soon as the
@@ -387,11 +397,11 @@ With **"Ajanlara fren yap"** (Settings › Resources, on by default), while over
 
 ```sh
 claudedeck load [--json] [--detail]
-# level: overloaded (new sessions and simulators are held back; 1 build slot)
+# level: overloaded (calming down: new sessions and simulators wait, 1 build slot, agents asked once to put heavy work off)
 # load: 120.4 on 20 cores (6.02 per core), 5 min 98.1
 # memory: 92% used, pressure warning, swap 6144 MB
 # simulators: 11 booted (sim acquire allows 4)
-# compilers: 30
+# compilers: 30 processes now, 24 steady (median of the last 3 samples)
 # sessions: 37 Claude sessions (5/8 agent-started), 3400 processes
 # build slots: 1/1 used, 2 waiting (3 when not overloaded)
 #   b_1a2b3c4d  iOS build bot  12m  xcodebuild -scheme App build
@@ -413,7 +423,7 @@ claudedeck slot release build [SLOT_ID]
 ```
 
 - **Build slots** are a global semaphore: **"Aynı anda derleme"** (a sixth of the cores, 1–8: 3
-  on a 20-core Mac; 1 while overloaded, by its own setting). `slot acquire --wait` waits in line,
+  on a 20-core Mac; half while busy holds new work; 1 while overloaded, by its own setting). `slot acquire --wait` waits in line,
   first come first served: the command asks again every 25 s with the same ticket and keeps its
   place; a ticket not seen for 45 s gives it up. No slot in time: `429 no_slot`, exit 124.
 - `heavy` waits for a slot (default up to 3600 s), runs the command, releases the slot (also on

@@ -60,7 +60,7 @@ struct LoadDetailView: View {
                 Label(String(localized: "Overloaded: \(LoadStyle.firedText(load.monitor.triggers))"), systemImage: "flame.fill")
                     .foregroundStyle(.red)
             } else if load.level == .busy {
-                Text(load.holdsStarts ? "Busy: new agent sessions wait; everything else goes on."
+                Text(load.holdsStarts ? "Busy: new work waits (new sessions, simulators, extra builds); running agents carry on."
                      : "Busy is informational: nothing is held back.")
                     .font(.callout).foregroundStyle(.secondary)
             }
