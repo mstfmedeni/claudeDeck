@@ -77,6 +77,8 @@ extension AppModel {
             return await cliSimList(caller, json: json)
         case .simRelease:
             return cliSimRelease(caller, form: form, json: json)
+        case .simPrune:
+            return await cliSimPrune(caller, form: form, json: json)
         case .simAcquire:
             guard deck.settings.sessionsMayUseSimulators else { return SessionCLI.failure(403, "setting_off", exit: .refused) }
             // One acquire at a time: each picks among the devices the previous one left.
@@ -314,5 +316,101 @@ extension AppModel {
         // Warnings for stderr (codes without spaces; the script prints them).
         if !notes.isEmpty { response.headers[Decisions.noteHeader] = notes.joined(separator: ",") }
         return response
+    }
+
+    // MARK: Prune (SimulatorPrune.swift)
+
+    /// The automatic prune: a minute after launch, then every 24 hours. Logged only when it
+    /// deleted (or failed to delete) something. Never in demo mode.
+    func startSimulatorPoolPruning() {
+        guard !Self.isDemo, simPruneTask == nil else { return }
+        simPruneTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            while !Task.isCancelled {
+                guard let self else { return }
+                let days = deck.settings.load.simulatorPruneDays
+                _ = await pruneSimulatorPool(dryRun: false, olderThan: days > 0 ? Double(days) * 86_400 : nil,
+                                             actor: "ClaudeDeck", automatic: true)
+                try? await Task.sleep(for: .seconds(86_400))
+            }
+        }
+    }
+
+    /// Deletes ClaudeDeck's unused pool simulators (or, `dryRun`, only lists them). Runs on the
+    /// acquire chain, so it never deletes a device an acquire is picking. nil: simctl failed.
+    func pruneSimulatorPool(dryRun: Bool, olderThan: TimeInterval?, actor: String, automatic: Bool = false) async -> SimulatorPrune.Answer? {
+        let previous = simAcquireChain
+        var answer: SimulatorPrune.Answer?
+        let task = Task { @MainActor in
+            await previous?.value
+            answer = await self.runSimulatorPrune(dryRun: dryRun, olderThan: olderThan, actor: actor, automatic: automatic)
+        }
+        simAcquireChain = task
+        await task.value
+        return answer
+    }
+
+    private func runSimulatorPrune(dryRun: Bool, olderThan: TimeInterval?, actor: String, automatic: Bool) async -> SimulatorPrune.Answer? {
+        let read = await Task.detached(priority: .utility) { () -> [Simulator]? in
+            let result = SimulatorsController.xcrun(["simctl", "list", "-j", "devices"], timeout: 30)
+            guard result.status == 0 else { return nil }
+            return try? SimulatorList.parse(Data(result.stdout.utf8))
+        }.value
+        guard let devices = read else {
+            if !automatic { logAgent(actor, inbound: true, "claudedeck sim prune: simctl failed", ok: false) }
+            return nil
+        }
+        // Holds of deleted devices go; pool devices without any date start aging now.
+        simHolds.prune(sessions: Set(deck.sessions.map(\.id)), devices: Set(devices.map(\.udid)))
+        for udid in SimulatorPrune.undated(devices: devices, book: simHolds) { simHolds.noteUsed(udid) }
+        let maxPerType = systemLoad.thresholds.maxSimulators + SimulatorPrune.spare
+        let candidates = SimulatorPrune.select(devices: devices, book: simHolds, now: Date(),
+                                               olderThan: olderThan, maxPerType: maxPerType)
+        var items: [SimulatorPrune.Item] = []
+        for candidate in candidates {
+            guard !dryRun else { items.append(SimulatorPrune.Item(candidate, deleted: false)); continue }
+            // Taken meanwhile: kept.
+            guard simHolds.holder(of: candidate.device.udid) == nil else { continue }
+            let udid = candidate.device.udid
+            let result = await Task.detached(priority: .utility) { SimulatorsController.xcrun(["simctl", "delete", udid], timeout: 120) }.value
+            if result.status == 0 {
+                simHolds.forget(udid)
+                items.append(SimulatorPrune.Item(candidate, deleted: true))
+            } else {
+                items.append(SimulatorPrune.Item(candidate, deleted: false, error: String(result.message.prefix(200))))
+            }
+        }
+        saveSimulatorHolds()
+        let answer = SimulatorPrune.Answer(dryRun: dryRun, olderThanSeconds: olderThan, maxPerType: maxPerType, items: items)
+        if !dryRun, !items.isEmpty {
+            for item in items {
+                logAgent(actor, inbound: !automatic, "claudedeck sim prune" + (automatic ? " (automatic)" : "") + ": "
+                    + (item.deleted ? "deleted" : "couldn't delete") + " \(item.name) (\(item.udid), \(item.reason.rawValue))"
+                    + (item.error.map { ": \($0)" } ?? ""), ok: item.deleted)
+            }
+            await SimulatorsController.shared.reloadList()
+        } else if !automatic {
+            logAgent(actor, inbound: true, "claudedeck sim prune" + (dryRun ? " --dry-run" : "") + ": "
+                + (items.isEmpty ? "nothing to delete" : "\(items.count) would be deleted"))
+        }
+        return answer
+    }
+
+    private func cliSimPrune(_ caller: UUID, form: [String: String], json: Bool) async -> AgentHTTPResponse {
+        guard deck.settings.sessionsMayUseSimulators else { return SessionCLI.failure(403, "setting_off", exit: .refused) }
+        let dryRun = form["dry_run"] == "1"
+        var olderThan: TimeInterval?
+        let given = (form["older_than"] ?? "").trimmingCharacters(in: .whitespaces)
+        if !given.isEmpty {
+            guard let age = SimulatorPrune.parseAge(given) else { return SessionCLI.failure(400, "bad_age", exit: .usage) }
+            olderThan = age
+        } else if deck.settings.load.simulatorPruneDays > 0 {
+            olderThan = Double(deck.settings.load.simulatorPruneDays) * 86_400
+        }
+        let name = deck.session(caller)?.name ?? "claudedeck"
+        guard let answer = await pruneSimulatorPool(dryRun: dryRun, olderThan: olderThan, actor: name) else {
+            return SessionCLI.failure(500, "simctl_failed", exit: .failed)
+        }
+        return SessionCLI.answer(200, answer, text: SimulatorPrune.text(answer), exit: .ok, json: json)
     }
 }

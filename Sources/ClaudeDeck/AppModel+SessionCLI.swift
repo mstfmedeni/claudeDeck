@@ -116,7 +116,7 @@ extension AppModel {
             return cliCurrentAccount(caller, json: json)
         case .switchAccount:
             return await cliSwitchAccount(caller, form: form, json: json)
-        case .simList, .simAcquire, .simRelease:
+        case .simList, .simAcquire, .simRelease, .simPrune:
             return await cliSimulators(caller, route: route, form: form, json: json)
         case .usage:
             return await cliUsage(form: form, json: json)

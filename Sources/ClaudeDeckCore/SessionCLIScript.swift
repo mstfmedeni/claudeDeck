@@ -100,6 +100,11 @@ extension SessionCLI {
           overrides stay (the next acquire is fast); --unslim restores the device to stock.
       claudedeck sim list [--json]
           The held simulators (and their holders) and ClaudeDeck's free ones.
+      claudedeck sim prune [--dry-run] [--older-than 3d] [--json]
+          Deletes ClaudeDeck's own pool simulators that are shut down, held by nobody and unused for
+          --older-than (default: Settings > Resources, 3 days), plus the oldest ones past the booted
+          cap + 2 per device type. Prints what was (--dry-run: would be) deleted. Booted, held and
+          your own simulators are never deleted. ClaudeDeck also prunes at launch and once a day.
           While the Mac is overloaded, or with too many simulators booted (Settings > Resources),
           acquire is refused: overloaded / too_many_booted (exit 4). Release what you're done with.
 
@@ -270,6 +275,7 @@ extension SessionCLI {
             message=$(printf '%s' "$body" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
             case "$reason" in
               setting_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > Command-line tool)" ;;
+              bad_age) hint=" (--older-than takes a positive age: 3d, 12h, 90m)" ;;
               too_many_starts|too_many_projects|too_many_running) hint=" (rate limit or cap; try later, or new --queue)" ;;
               too_many_queued) hint=" (the queue is full; try later)" ;;
               bypass_off) hint=" (bypassPermissions is off in ClaudeDeck: Settings > Agents > Command-line tool)" ;;
@@ -784,7 +790,7 @@ extension SessionCLI {
 
     cmd_sim() {
       sub=${1:-}; [ $# -gt 0 ] && shift
-      device=""; duo=0; udid=""; keep=""; full=0; stock=0; keep_state=0; unslim=0; project=""
+      device=""; duo=0; udid=""; keep=""; full=0; stock=0; keep_state=0; unslim=0; project=""; dry_run=0; older_than=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --device) [ $# -ge 2 ] || die "sim: --device needs a device type (\"iPhone 17 Pro\")"; device=$2; shift ;;
@@ -796,6 +802,9 @@ extension SessionCLI {
           --stock) stock=1 ;;
           --keep-state) keep_state=1 ;;
           --unslim) unslim=1 ;;
+          --dry-run) dry_run=1 ;;
+          --older-than) [ $# -ge 2 ] || die "sim prune: --older-than needs an age (3d, 12h)"; older_than=$2; shift ;;
+          --older-than=*) older_than=${1#*=} ;;
           --project) [ $# -ge 2 ] || die "sim: --project needs a project"; project=$2; shift ;;
           --project=*) project=${1#*=} ;;
           --json) json=1 ;;
@@ -835,7 +844,12 @@ extension SessionCLI {
         list)
           need_session
           call /sim -G --data-urlencode "format=$(fmt)" ;;
-        *) die "sim: acquire, release or list (claudedeck help)" ;;
+        prune)
+          [ -z "$udid" ] || die "sim prune: no UDID argument (options: --dry-run, --older-than AGE)"
+          need_session
+          max_time=900
+          call /sim/prune --data-urlencode "dry_run=$dry_run" --data-urlencode "older_than=$older_than" --data-urlencode "format=$(fmt)" ;;
+        *) die "sim: acquire, release, list or prune (claudedeck help)" ;;
       esac
       finish
     }
