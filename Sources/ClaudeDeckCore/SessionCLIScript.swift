@@ -353,6 +353,11 @@ extension SessionCLI {
                   new) hint=" (the Mac is overloaded: try later, or new --queue to start once it no longer is; see claudedeck load)" ;;
                   *) hint=" (the Mac is overloaded: try later and release simulators you're done with; see claudedeck load)" ;;
                 esac ;;
+              busy) case "$command_name" in
+                  new) hint=" (the Mac is busy, so new work waits: try later, or new --queue to start once it isn't; see claudedeck load)" ;;
+                  sim) hint=" (the Mac is busy, so new simulators wait: try later; see claudedeck load)" ;;
+                  *) hint="" ;;
+                esac ;;
               too_many_booted) hint=" (too many simulators are booted: release yours, or try later; see claudedeck load)" ;;
               no_slot) hint=" (every build slot is taken; slot acquire --wait SECONDS, or see claudedeck load)" ;;
               unknown_slot) hint=" (the only kind is build)" ;;

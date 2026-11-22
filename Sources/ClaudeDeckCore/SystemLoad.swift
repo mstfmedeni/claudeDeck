@@ -110,7 +110,8 @@ public enum LoadTrigger: String, Codable, Sendable, CaseIterable {
 public enum LoadBusyAction: String, Codable, Sendable, CaseIterable {
     /// Nothing: busy is only shown.
     case nothing
-    /// New starts (`claudedeck new` and the start queue) wait as they do while overloaded.
+    /// New work waits (the default): `claudedeck new` and the start queue, `sim acquire`, and
+    /// build slots beyond half. Running agents are not told anything and go on.
     case holdStarts = "hold_starts"
 }
 
@@ -119,7 +120,9 @@ public struct LoadSettings: Codable, Sendable, Equatable {
     /// The defaults' generation. Files without it (2), or older, were written with the first
     /// defaults (overloaded at 2 × cores, busy at 1 × cores); a value still equal to those old
     /// defaults is moved to the new one when read, anything else the owner set is kept.
-    public static let currentVersion = 2
+    /// 3: busy holds new work by default (it used to be only shown); a saved "do nothing" from
+    /// an older file was that old default and moves to "hold new work".
+    public static let currentVersion = 3
     public var version = LoadSettings.currentVersion
 
     /// "Mac yüklüyken ajanları yavaşlat": while overloaded, `claudedeck new`, the start queue and
@@ -154,8 +157,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
 
     /// Busy (informational) above this many times the core count for a minute.
     public var busyFactor: Double = 2
-    /// What busy does: nothing (default) or hold new starts.
-    public var busyAction: LoadBusyAction = .nothing
+    /// What busy does: hold new work (default) or nothing.
+    public var busyAction: LoadBusyAction = .holdStarts
 
     // Limits.
     /// "En fazla açık simülatör": `claudedeck sim acquire` is refused at this many booted
@@ -222,7 +225,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
         overloadMinutes = Self.clamp((try? c.decodeIfPresent(Double.self, forKey: .overloadMinutes)) ?? d.overloadMinutes, Self.overloadMinutesRange)
         processesEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .processesEnabled)) ?? d.processesEnabled
         maxProcesses = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .maxProcesses)) ?? d.maxProcesses, Self.processRange)
-        busyAction = (try? c.decodeIfPresent(LoadBusyAction.self, forKey: .busyAction)) ?? d.busyAction
+        let savedBusyAction = (try? c.decodeIfPresent(LoadBusyAction.self, forKey: .busyAction)) ?? d.busyAction
+        busyAction = savedVersion < 3 && savedBusyAction == .nothing ? .holdStarts : savedBusyAction
         maxSimulators = (try? c.decodeIfPresent(Int.self, forKey: .maxSimulators))?.map { Self.clamp($0, Self.simulatorRange) }
         simulatorPruneDays = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .simulatorPruneDays)) ?? d.simulatorPruneDays, SimulatorPrune.dayRange)
         buildSlots = (try? c.decodeIfPresent(Int.self, forKey: .buildSlots))?.map { Self.clamp($0, Self.slotRange) }
@@ -405,8 +409,8 @@ public enum LoadEvent: Equatable, Sendable {
 ///
 /// - overloaded: any enabled trigger fires (`LoadTriggerState`). It ends once none fires and the
 ///   numbers have stayed under `exitMargin` of their thresholds for `overloadCalm`.
-/// - busy (informational): the load above `busyLoad` for `busySustain`, memory pressure warning or
-///   worse, or more compilers than `busyCompilers`. It ends once all of that has been clear (load
+/// - busy (new work waits, `LoadBusyAction`): the load above `busyLoad` for `busySustain`, memory
+///   pressure warning or worse, or more steady compilers (`steadyCompilers`) than `busyCompilers`. It ends once all of that has been clear (load
 ///   under `exitMargin` of `busyLoad`) for `busyCalm`. Booted simulators never make the Mac busy:
 ///   their cap only refuses `sim acquire`.
 /// - Throttling follows the level (`LoadThrottle`): it ends as soon as the level leaves
@@ -425,7 +429,16 @@ public struct LoadMonitor: Sendable, Equatable {
 
     private var highLoadSince: Date?
     private var busyLoadSince: Date?
-    private var calmSince: Date?
+    /// Since when the level's exit condition holds (overloaded: nothing fires and the numbers are
+    /// under the exit margin; busy: busy is clear). Reset by a sample that breaks it.
+    public private(set) var calmSince: Date?
+    /// Overloaded and calm: the level it will move to once `overloadCalm` has passed.
+    public private(set) var exitTarget: LoadLevel?
+    /// Overloaded, nothing fires, but a number is still within the exit margin (why it stays).
+    public private(set) var exitBlockedBy: String?
+    /// The latest sample at which an overload trigger fired, and which ones.
+    public private(set) var lastFiredAt: Date?
+    public private(set) var lastFired: [LoadTrigger] = []
 
     public init() {}
 
@@ -434,6 +447,46 @@ public struct LoadMonitor: Sendable, Equatable {
     public var overloaded: Bool { level == .overloaded }
     /// The triggers firing now.
     public var fired: [LoadTrigger] { triggers.filter(\.firing).map(\.trigger) }
+
+    /// Overloaded and calm: the seconds until the level leaves overloaded (0 when due at the next
+    /// sample). Nil otherwise.
+    public func exitSecondsLeft(now: Date) -> TimeInterval? {
+        guard level == .overloaded, let calmSince else { return nil }
+        return max(0, LoadThresholds.overloadCalm - now.timeIntervalSince(calmSince))
+    }
+
+    /// The level as of `now`: `level`, except that an overloaded level whose calm period has
+    /// already run out counts as its exit target even before the next sample arrives, so a
+    /// sampler that stalls (App Nap, a hidden app) never leaves the Mac stuck at overloaded.
+    public func effectiveLevel(now: Date) -> LoadLevel {
+        if level == .overloaded, let exitTarget, let left = exitSecondsLeft(now: now), left <= 0 { return exitTarget }
+        return level
+    }
+
+    /// Why overloaded holds while nothing fires (nil when it doesn't apply).
+    static func exitBlock(_ sample: LoadSample, thresholds t: LoadThresholds) -> String? {
+        let m = LoadThresholds.exitMargin
+        if t.enabled.contains(.load), sample.load1 >= t.overloadLoad * m {
+            return String(format: "load %.1f not yet under %.1f (exit margin)", sample.load1, t.overloadLoad * m)
+        }
+        let processes = Double(t.maxProcesses) * (1 - (1 - m) / 2)
+        if t.enabled.contains(.processes), Double(sample.processes) >= processes {
+            return "processes \(sample.processes) not yet under \(Int(processes)) (exit margin)"
+        }
+        return nil
+    }
+
+    /// Samples the compiler count is smoothed over.
+    public static let compilerWindow = 3
+
+    /// The compiler count the rules use: the median of the latest `compilerWindow` samples. A Swift
+    /// build fans out short-lived `swift-frontend` jobs, so one sample may catch 22 and the next 6;
+    /// a fan-out has to last about half a minute to count.
+    public static func steadyCompilers(_ sample: LoadSample, history: [LoadSample]) -> Int {
+        let recent = (history.suffix(compilerWindow - 1).filter { $0.at <= sample.at && sample.at.timeIntervalSince($0.at) <= 60 }
+                      .map(\.compilers) + [sample.compilers]).sorted()
+        return recent[(recent.count - 1) / 2] // the lower middle (of two samples, the smaller)
+    }
 
     /// The triggers for `sample` given the samples before it and since when the load is high.
     public static func evaluate(_ sample: LoadSample, history: [LoadSample], highLoadSince: Date?,
@@ -454,11 +507,12 @@ public struct LoadMonitor: Sendable, Equatable {
         list.append(.init(trigger: .swapSize, enabled: t.enabled.contains(.swapSize), threshold: Double(t.swapSizeBytes) / gb,
                           current: Double(sample.swapUsedBytes) / gb, unit: "gb",
                           firing: t.enabled.contains(.swapSize) && sample.swapUsedBytes > t.swapSizeBytes))
+        let compilers = steadyCompilers(sample, history: history)
         list.append(.init(trigger: .compilers, enabled: t.enabled.contains(.compilers), threshold: Double(t.overloadCompilers),
-                          current: Double(sample.compilers), unit: "processes",
+                          current: Double(compilers), unit: "processes",
                           // Many compilers alone is one build fanning out over the cores, not freeze risk:
                           // it counts only together with a busy load or memory pressure.
-                          firing: t.enabled.contains(.compilers) && sample.compilers > t.overloadCompilers
+                          firing: t.enabled.contains(.compilers) && compilers > t.overloadCompilers
                               && (sample.load1 > t.busyLoad || sample.pressure >= .warning)))
         let above = highLoadSince.map { sample.at.timeIntervalSince($0) }
         list.append(.init(trigger: .load, enabled: t.enabled.contains(.load), threshold: t.overloadLoad / Double(t.cores),
@@ -473,11 +527,7 @@ public struct LoadMonitor: Sendable, Equatable {
 
     /// Every enabled trigger well under its threshold (the exit margin), so overloaded may end.
     static func clearWithMargin(_ sample: LoadSample, triggers: [LoadTriggerState], thresholds t: LoadThresholds) -> Bool {
-        guard !triggers.contains(where: \.firing) else { return false }
-        let m = LoadThresholds.exitMargin
-        if t.enabled.contains(.load), sample.load1 >= t.overloadLoad * m { return false }
-        if t.enabled.contains(.processes), Double(sample.processes) >= Double(t.maxProcesses) * (1 - (1 - m) / 2) { return false }
-        return true
+        !triggers.contains(where: \.firing) && exitBlock(sample, thresholds: t) == nil
     }
 
     @discardableResult
@@ -498,8 +548,12 @@ public struct LoadMonitor: Sendable, Equatable {
         }
         triggers = Self.evaluate(sample, history: history, highLoadSince: highLoadSince, thresholds: t)
         let overloadedNow = triggers.contains(where: \.firing)
+        if overloadedNow {
+            lastFiredAt = sample.at
+            lastFired = fired
+        }
         let busyLoad = busyLoadSince.map { sample.at.timeIntervalSince($0) >= t.busySustain } ?? false
-        let busyNow = busyLoad || sample.pressure >= .warning || sample.compilers > t.busyCompilers
+        let busyNow = busyLoad || sample.pressure >= .warning || Self.steadyCompilers(sample, history: history) > t.busyCompilers
         let overloadClear = Self.clearWithMargin(sample, triggers: triggers, thresholds: t)
         let busyClear = !busyNow && sample.load1 < t.busyLoad * LoadThresholds.exitMargin
 
@@ -532,6 +586,8 @@ public struct LoadMonitor: Sendable, Equatable {
         }
         if next != previous { calmSince = nil }
         level = next
+        exitTarget = next == .overloaded && calmSince != nil ? (busyClear ? .ok : .busy) : nil
+        exitBlockedBy = next == .overloaded && !overloadedNow ? Self.exitBlock(sample, thresholds: t) : nil
 
         var events: [LoadEvent] = []
         if next != previous { events.append(.level(from: previous, to: next)) }
@@ -621,21 +677,33 @@ public enum LoadThrottle {
         case allow
         /// `429 overloaded`.
         case overloaded
+        /// `429 busy`: busy holds new work (`LoadBusyAction.holdStarts`).
+        case busy
         /// `429 too_many_booted`: `maxSimulators` would be exceeded.
         case tooManyBooted
     }
 
     /// `claudedeck sim acquire` for `wanted` devices with `booted` simulators running: refused
-    /// while overloaded (with throttling on), and whenever the cap would be exceeded.
-    public static func simulator(level: LoadLevel, enabled: Bool, booted: Int, wanted: Int, max: Int) -> Simulator {
+    /// while overloaded or busy holding new work (with throttling on), and whenever the cap would
+    /// be exceeded.
+    public static func simulator(level: LoadLevel, busyAction: LoadBusyAction = .nothing, enabled: Bool, booted: Int, wanted: Int,
+                                 max: Int) -> Simulator {
         if enabled, level == .overloaded { return .overloaded }
+        if enabled, level == .busy, busyAction == .holdStarts { return .busy }
         return booted + wanted > max ? .tooManyBooted : .allow
     }
 
-    /// Build slots handed out right now: the overloaded count while overloaded with throttling
-    /// on, the full count otherwise (busy included).
+    /// Build slots handed out right now (with throttling on): the overloaded count while
+    /// overloaded, half the full count (never fewer than the overloaded count) while busy holds
+    /// new work, the full count otherwise.
     public static func slotCapacity(_ t: LoadThresholds, level: LoadLevel, enabled: Bool) -> Int {
-        enabled && level == .overloaded ? max(1, min(t.overloadedBuildSlots, t.buildSlots)) : max(1, t.buildSlots)
+        let overloaded = max(1, min(t.overloadedBuildSlots, t.buildSlots))
+        guard enabled else { return max(1, t.buildSlots) }
+        switch level {
+        case .overloaded: return overloaded
+        case .busy where t.busyAction == .holdStarts: return max(overloaded, t.buildSlots / 2)
+        default: return max(1, t.buildSlots)
+        }
     }
 }
 
@@ -776,9 +844,10 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
         let note: String
         switch level {
         case LoadLevel.overloaded.rawValue:
-            note = throttle ? " (new sessions and simulators are held back; \(buildSlots) build slot\(buildSlots == 1 ? "" : "s"))" : ""
+            note = throttle ? " (calming down: new sessions and simulators wait, \(buildSlots) build slot\(buildSlots == 1 ? "" : "s"), agents asked once to put heavy work off)" : ""
         case LoadLevel.busy.rawValue:
-            note = holdsStarts ? " (new sessions wait; simulators and builds go on)" : " (informational: nothing is held back)"
+            note = holdsStarts ? " (new work waits: new sessions, simulators and builds beyond \(buildSlots) slot\(buildSlots == 1 ? "" : "s"); running agents go on)"
+                : " (informational: nothing is held back)"
         default:
             note = ""
         }
@@ -787,10 +856,13 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
             lines.append("no sample yet")
             return lines.joined(separator: "\n")
         }
+        if let exitLine { lines.append(exitLine) }
+        if let sampleAge, sampleAge > 36 { lines.append("sample: \(sampleAge) s old (the sampler has stalled)") }
         lines.append(String(format: "load: %.1f on %d cores (%.2f per core), 5 min %.1f", load1, cores, loadPerCore, load5))
         lines.append(String(format: "memory: %.0f%% used, pressure %@, swap %d MB", memoryUsedPercent, memoryPressure, swapUsedMB))
         lines.append("simulators: \(simulators) booted (sim acquire allows \(maxSimulators))")
-        lines.append("compilers: \(compilers)")
+        let steady = triggers.first { $0.trigger == .compilers }.map { Int($0.current) } ?? compilers
+        lines.append("compilers: \(compilers) processes now" + (steady != compilers ? ", \(steady) steady (median of the last \(LoadMonitor.compilerWindow) samples)" : ""))
         lines.append("sessions: \(sessions) Claude sessions (\(limits.runningStartedSessions)/\(limits.maxStartedSessions) agent-started), \(processes) processes")
         lines.append("build slots: \(slots.count)/\(buildSlots) used" + (slotsWaiting > 0 ? ", \(slotsWaiting) waiting" : "")
                      + (buildSlots != limits.buildSlots ? " (\(limits.buildSlots) when not overloaded)" : ""))
@@ -825,6 +897,44 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
     /// `--detail` / `--json`: each booted simulator with its memory and simslim state; nil when
     /// not read. Set after init (keeps the initializer other code calls unchanged).
     public var bootedSimulators: [LoadSimulator]?
+
+    /// Overloaded while nothing fires: the seconds until it ends (`exitIn`), or what still holds it
+    /// (`exitBlockedBy`), and the last triggers that fired. Set with `explainExit`; nil otherwise.
+    public var exitIn: Int?
+    public var exitBlockedBy: String?
+    public var lastFired: [String]?
+    public var lastFiredAgo: Int?
+    /// How old the sample behind these numbers is, in seconds.
+    public var sampleAge: Int?
+
+    /// Fills the exit fields from the monitor, so an overloaded level with nothing firing says why.
+    public mutating func explainExit(_ monitor: LoadMonitor, now: Date = Date()) {
+        sampleAge = monitor.latest.map { max(0, Int(now.timeIntervalSince($0.at).rounded())) }
+        guard level == LoadLevel.overloaded.rawValue, fired.isEmpty else { return }
+        exitIn = monitor.exitSecondsLeft(now: now).map { Int($0.rounded(.up)) }
+        exitBlockedBy = monitor.exitBlockedBy
+        if let at = monitor.lastFiredAt {
+            lastFired = monitor.lastFired.map(\.rawValue)
+            lastFiredAgo = max(0, Int(now.timeIntervalSince(at).rounded()))
+        }
+    }
+
+    /// The `exiting: …` line under `level:` (nil unless overloaded with nothing firing).
+    var exitLine: String? {
+        guard level == LoadLevel.overloaded.rawValue, fired.isEmpty else { return nil }
+        var why: String
+        if let exitIn {
+            why = "exiting: \(exitIn) s left (nothing fires; calm for \(Int(LoadThresholds.overloadCalm)) s ends it)"
+        } else if let exitBlockedBy {
+            why = "exit held: \(exitBlockedBy)"
+        } else {
+            why = "exiting: waits for the next sample"
+        }
+        if let lastFired, let lastFiredAgo, !lastFired.isEmpty {
+            why += "; last fired \(lastFiredAgo) s ago: \(lastFired.joined(separator: ", "))"
+        }
+        return why
+    }
 }
 
 /// A booted simulator in `claudedeck load --detail`.

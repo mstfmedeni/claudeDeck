@@ -171,16 +171,21 @@ extension AppModel {
             logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (at most \(SimulatorAllocation.maxPerSession) per session)", ok: false)
             return SessionCLI.failure(429, "too_many_simulators", exit: .refused)
         }
-        // Settings › Resources: not while the Mac is overloaded, nor past the cap on booted
+        // Settings › Resources: not while the Mac is overloaded or busy holding new work, nor past the cap on booted
         // simulators (counted now, not from the last sample: acquires run one after another).
         if deck.settings.load.throttle {
+            await systemLoad.sampleIfStale()
             let booted = await Task.detached(priority: .utility) { SystemLoadSampler.bootedSimulators() }.value
-            switch LoadThrottle.simulator(level: systemLoad.level, enabled: true, booted: booted, wanted: wanted.count,
+            switch LoadThrottle.simulator(level: systemLoad.level, busyAction: deck.settings.load.busyAction, enabled: true,
+                                          booted: booted, wanted: wanted.count,
                                           max: systemLoad.thresholds.maxSimulators) {
             case .allow: break
             case .overloaded:
                 logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (the Mac is overloaded)", ok: false)
                 return SessionCLI.failure(429, "overloaded", exit: .refused)
+            case .busy:
+                logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (the Mac is busy: new work waits)", ok: false)
+                return SessionCLI.failure(429, "busy", exit: .refused)
             case .tooManyBooted:
                 logAgent(callerName, inbound: true, "claudedeck sim acquire: refused (\(booted) simulators booted, at most \(systemLoad.thresholds.maxSimulators))", ok: false)
                 return SessionCLI.failure(429, "too_many_booted", exit: .refused)

@@ -156,7 +156,7 @@ struct LoadDetails: View {
                           systemImage: "tortoise.fill")
                         .font(.caption).foregroundStyle(.orange)
                 } else if load.level == .busy {
-                    Text(load.holdsStarts ? "Busy: new agent sessions wait; everything else goes on."
+                    Text(load.holdsStarts ? "Busy: new work waits (new sessions, simulators, extra builds); running agents carry on."
                          : "Busy is informational: nothing is held back.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -331,9 +331,9 @@ struct ResourcesSettingsSection: View {
             }
             Picker("While busy", selection: binding(\.busyAction)) {
                 Text("Do nothing (only show it)").tag(LoadBusyAction.nothing)
-                Text("Hold new agent sessions").tag(LoadBusyAction.holdStarts)
+                Text("Hold new work").tag(LoadBusyAction.holdStarts)
             }
-            Text("Busy means the Mac is working hard but isn't at risk. By default it is only shown in the sidebar.")
+            Text("Busy means the Mac is working hard but isn't at risk. New work waits: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds the calming rules: fewer builds, one message to each agent and a notification to you.")
                 .font(.caption).foregroundStyle(.secondary)
         } header: {
             Text("What happens when braking?")
@@ -416,7 +416,7 @@ struct LoadStatusLine: View {
         case .ok:
             return String(localized: "Status: Normal, no brake")
         case .busy:
-            return load.holdsStarts ? String(localized: "Status: Busy, new agent sessions wait")
+            return load.holdsStarts ? String(localized: "Status: Busy, new work waits")
                 : String(localized: "Status: Busy, no brake (only shown)")
         case .overloaded:
             let why = load.monitor.triggers.filter(\.firing).map(LoadStyle.reason).joined(separator: ", ")

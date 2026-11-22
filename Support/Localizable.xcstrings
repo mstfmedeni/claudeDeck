@@ -24883,6 +24883,46 @@
           }
         }
       }
+    },
+    "Hold new work": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni işleri beklet"
+          }
+        }
+      }
+    },
+    "Busy means the Mac is working hard but isn't at risk. New work waits: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds the calming rules: fewer builds, one message to each agent and a notification to you.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yoğun: Mac çok çalışıyor ama risk yok. Yeni işler bekler: yeni ajan oturumları, simülatörler ve fazladan derlemeler. Çalışan ajanlar devam eder, onlara mesaj gitmez. Aşırı yükte (fren) sakinleştirme kuralları da devreye girer: daha az derleme, her ajana bir mesaj ve sana bildirim."
+          }
+        }
+      }
+    },
+    "Busy: new work waits (new sessions, simulators, extra builds); running agents carry on.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yoğun: yeni işler bekliyor (yeni oturumlar, simülatörler, fazladan derlemeler); çalışan ajanlar devam ediyor."
+          }
+        }
+      }
+    },
+    "Status: Busy, new work waits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durum: Yoğun, yeni işler bekliyor"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
