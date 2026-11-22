@@ -57,6 +57,10 @@ struct SidebarView: View {
                         .sidebarStyle(scale: textScale, density: density)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                if model.deck.settings.simulators {
+                    SimulatorsTray()
+                        .sidebarStyle(scale: textScale, density: density)
+                }
                 if !agentGroups.isEmpty {
                     AgentsOverviewTray(running: model.cliRunningStarted)
                         .sidebarStyle(scale: textScale, density: density)
@@ -1051,5 +1055,31 @@ struct NewSessionItems: View {
         } label: {
             Label("New Terminal with Command…", systemImage: "bolt")
         }
+    }
+}
+
+
+/// The Simulators tab one click away, like Decisions and Agents (also File › Simulators…).
+struct SimulatorsTray: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button { model.showSimulators() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "iphone").foregroundStyle(.green)
+                    Text("Simulators").sidebarFont(.callout, weight: .semibold)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .sidebarRowPadding(7)
+            .help("Simulators (File › Simulators…)")
+        }
+        .background(.bar)
     }
 }
