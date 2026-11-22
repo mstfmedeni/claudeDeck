@@ -1389,7 +1389,7 @@ import Testing
         #expect(check(owners, .shell) == .notClaude)
         // Idle (or at the limit) now, working after the turn, blocked refused.
         #expect(SessionCLI.compactTiming(.finished(0)) == .now)
-        #expect(SessionCLI.compactTiming(.limited(nil)) == .now)
+        #expect(SessionCLI.compactTiming(.limited(nil)) == .afterTurn)
         #expect(SessionCLI.compactTiming(.running) == .afterTurn)
         #expect(SessionCLI.compactTiming(.blocked("needsPermission")) == .blocked)
         #expect(SessionCLI.compactLimit == 30 * 60)

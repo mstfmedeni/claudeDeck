@@ -450,10 +450,12 @@ public enum SessionCLI {
     }
 
     public static func compactTiming(_ progress: Progress) -> CompactTiming {
+        // At a usage limit /compact (an API call) would fail: it waits for the turn the session
+        // runs once it is resumed (after the reset or an account switch).
         switch progress {
-        case .finished, .stopped, .limited: .now
+        case .finished, .stopped: .now
         case .blocked: .blocked
-        case .running, .failed: .afterTurn
+        case .running, .failed, .limited: .afterTurn
         }
     }
 
