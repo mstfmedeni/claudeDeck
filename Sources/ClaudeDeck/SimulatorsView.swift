@@ -67,6 +67,10 @@ final class SimulatorsController {
     private(set) var devices: [Simulator] = []
     private(set) var loaded = false
     private(set) var listError: String?
+    /// Devices whose runtime was removed (`simctl delete unavailable` removes them).
+    private(set) var unavailableCount = 0
+    /// The owner's cleanup (unavailable devices, or the selected ones) is running.
+    private(set) var cleaning = false
     private(set) var memory: [String: SimulatorMemory] = [:]
     /// UDID → its `launchd_sim` pid, from the latest sample (the load tab reads the uptime off it).
     private(set) var launchdPIDs: [String: pid_t] = [:]
@@ -118,6 +122,7 @@ final class SimulatorsController {
         }
         do {
             devices = try SimulatorList.parse(Data(result.stdout.utf8))
+            unavailableCount = (try? SimulatorList.unavailableCount(Data(result.stdout.utf8))) ?? 0
             listError = nil
         } catch {
             listError = error.localizedDescription
@@ -188,6 +193,56 @@ final class SimulatorsController {
             + [["simctl", "erase", device.udid]]
         lastUse[device.udid] = nil
         perform(device, String(localized: "Erasing…"), steps)
+    }
+
+    // MARK: Owner cleanup (never reachable from the agents' CLI)
+
+    /// "Kullanılamayan simülatörleri temizle": `simctl delete unavailable` after a confirmation
+    /// that shows how many devices it removes.
+    func confirmDeleteUnavailable() {
+        guard unavailableCount > 0, !cleaning else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = String(localized: "Delete \(unavailableCount) unavailable simulators?")
+        alert.informativeText = String(localized: "Their runtime is no longer installed, so they can’t run. Their apps and data are deleted. This can’t be undone.")
+        alert.addButton(withTitle: String(localized: "Delete"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.buttons[0].hasDestructiveAction = true
+        guard alert.runAsSheet() == .alertFirstButtonReturn else { return }
+        cleanUp([["simctl", "delete", "unavailable"]])
+    }
+
+    /// "Seçilenleri sil": deletes the chosen simulators after a confirmation; booted ones are left out.
+    func confirmDelete(_ chosen: [Simulator]) {
+        let targets = chosen.filter { $0.state == "Shutdown" }
+        guard !targets.isEmpty, !cleaning else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = targets.count == 1
+            ? String(localized: "Delete “\(targets[0].name)”?")
+            : String(localized: "Delete \(targets.count) simulators?")
+        alert.informativeText = String(localized: "All apps, data and settings on them are deleted. This can’t be undone.")
+            + "\n\n" + targets.prefix(12).map { "• \($0.name) (\($0.runtime.displayName))" }.joined(separator: "\n")
+            + (targets.count > 12 ? "\n…" : "")
+        alert.addButton(withTitle: String(localized: "Delete"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.buttons[0].hasDestructiveAction = true
+        guard alert.runAsSheet() == .alertFirstButtonReturn else { return }
+        cleanUp(targets.map { ["simctl", "delete", $0.udid] })
+    }
+
+    private func cleanUp(_ steps: [[String]]) {
+        cleaning = true
+        Task {
+            var failures: [String] = []
+            for args in steps {
+                let result = await Task.detached(priority: .utility) { Self.xcrun(args, timeout: 300) }.value
+                if result.status != 0 { failures.append(result.message.isEmpty ? args.joined(separator: " ") : result.message) }
+            }
+            cleaning = false
+            if !failures.isEmpty { actionError = failures.prefix(3).joined(separator: "\n") }
+            await reloadList()
+        }
     }
 
     /// simslim categories kept on in slim mode: push notifications are in `store`, widgets and Live
@@ -327,6 +382,7 @@ extension AppModel {
 struct SimulatorsView: View {
     @Environment(AppModel.self) private var model
     @State private var controller = SimulatorsController.shared
+    @State private var showCleanup = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -349,6 +405,7 @@ struct SimulatorsView: View {
             guard model.deck.settings.simulators else { return }
             await controller.run(model: model)
         }
+        .sheet(isPresented: $showCleanup) { SimulatorCleanupView(controller: controller) }
         .alert("Simulator", isPresented: Binding(get: { controller.actionError != nil }, set: { if !$0 { controller.actionError = nil } })) {
             Button("OK") { controller.actionError = nil }
         } message: {
@@ -369,6 +426,8 @@ struct SimulatorsView: View {
                     .help("Memory of all running simulators (sum of their processes’ footprint)")
             }
             Spacer()
+            Button("Clean Up…") { showCleanup = true }
+                .help("Delete unavailable simulators, or simulators you don’t need any more")
             TextField("Filter", text: $controller.filter, prompt: Text("Filter"))
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 200)
@@ -624,4 +683,93 @@ struct SimulatorSettingsSection: View {
     }
 
     @State private var simslimInstalled: Bool?
+}
+
+/// The owner's cleanup (Simulators tab › Clean Up…): devices whose runtime was removed, and the
+/// simulators outside ClaudeDeck's pool, which the automatic prune never touches. Owner only:
+/// no agent route leads here.
+private struct SimulatorCleanupView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let controller: SimulatorsController
+    @State private var selected: Set<String> = []
+
+    private var others: [Simulator] {
+        controller.devices.filter { !SimulatorPrune.isPool($0, book: model.simHolds) }
+            .sorted { ($0.lastUsedAt ?? .distantPast) < ($1.lastUsedAt ?? .distantPast) }
+    }
+
+    var body: some View {
+        let projects = model.deck.projects.map(\.name)
+        let devices = others
+        let deletable = devices.filter { selected.contains($0.udid) && $0.state == "Shutdown" }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Clean Up Simulators").font(.headline)
+            HStack {
+                Text(controller.unavailableCount == 0
+                     ? "No unavailable simulators."
+                     : "\(controller.unavailableCount) simulators can’t run: their runtime was removed.")
+                Spacer()
+                Button("Delete Unavailable Simulators…") { controller.confirmDeleteUnavailable() }
+                    .disabled(controller.unavailableCount == 0 || controller.cleaning)
+            }
+            Divider()
+            Text("Simulators outside ClaudeDeck’s pool")
+                .font(.subheadline.weight(.semibold))
+            Text("Yours, other tools’ and the ones sessions created (named “Project · purpose”). ClaudeDeck never deletes these by itself. Running ones can’t be selected.")
+                .font(.caption).foregroundStyle(.secondary)
+            List(devices) { device in
+                HStack(spacing: 8) {
+                    Toggle("", isOn: Binding(
+                        get: { selected.contains(device.udid) },
+                        set: { on in if on { selected.insert(device.udid) } else { selected.remove(device.udid) } }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .disabled(device.state != "Shutdown")
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(device.name)
+                            if let project = SimulatorPrune.sessionProject(device.name, projects: projects) {
+                                Text(project)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(.tint.opacity(0.15), in: Capsule())
+                                    .help("Created by a session of \(project)")
+                            }
+                        }
+                        Text(device.runtime.displayName + (device.state == "Shutdown" ? "" : " · " + String(localized: "running")))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(device.dataSize.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "–")
+                            .monospacedDigit()
+                        Group {
+                            if let date = device.lastUsedAt {
+                                Text("Booted \(date, format: .relative(presentation: .named))")
+                            } else {
+                                Text("Never booted")
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .listStyle(.inset)
+            HStack {
+                Text("\(deletable.count) selected").foregroundStyle(.secondary)
+                if controller.cleaning { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Delete Selected…") {
+                    controller.confirmDelete(deletable)
+                    selected.subtract(deletable.map(\.udid))
+                }
+                .disabled(deletable.isEmpty || controller.cleaning)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 620, minHeight: 480)
+    }
 }

@@ -352,6 +352,13 @@ struct ResourcesSettingsSection: View {
             }
             Text("Agents can open at most \(t.maxSimulators) iPhone simulators; the ones you opened count too. Reaching it doesn't brake anything else.")
                 .font(.caption).foregroundStyle(.secondary)
+            Stepper(value: binding(\.simulatorPruneDays), in: SimulatorPrune.dayRange) {
+                Text(settings.simulatorPruneDays == 0
+                     ? "Delete unused pool simulators: never"
+                     : "Delete unused pool simulators after \(settings.simulatorPruneDays) days")
+            }
+            Text("At launch and once a day, ClaudeDeck deletes the simulators it created for agents that are shut down and haven't been used this long, and keeps at most \(t.maxSimulators + SimulatorPrune.spare) of each device type. Booted and reserved ones, and your own simulators, are never deleted.")
+                .font(.caption).foregroundStyle(.secondary)
             Stepper(value: Binding(get: { model.deck.settings.maxStartedSessions },
                                    set: { value in
                                        model.mutate(userInitiated: false) { $0.settings.maxStartedSessions = min(max(value, 1), 40) }

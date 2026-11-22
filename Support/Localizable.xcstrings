@@ -24633,6 +24633,196 @@
           }
         }
       }
+    },
+    "Delete unused pool simulators: never": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılmayan havuz simülatörlerini sil: hiçbir zaman"
+          }
+        }
+      }
+    },
+    "Delete unused pool simulators after %lld days": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılmayan havuz simülatörlerini sil: %lld gün sonra"
+          }
+        }
+      }
+    },
+    "At launch and once a day, ClaudeDeck deletes the simulators it created for agents that are shut down and haven't been used this long, and keeps at most %lld of each device type. Booted and reserved ones, and your own simulators, are never deleted.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck açılışta ve günde bir kez, ajanlar için oluşturduğu simülatörlerden kapalı olup bu süre boyunca kullanılmayanları siler ve her cihaz türünden en fazla %lld tane tutar. Açık ve ayrılmış olanlar ile senin simülatörlerin hiçbir zaman silinmez."
+          }
+        }
+      }
+    },
+    "Delete %lld unavailable simulators?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılamayan %lld simülatör silinsin mi?"
+          }
+        }
+      }
+    },
+    "Their runtime is no longer installed, so they can’t run. Their apps and data are deleted. This can’t be undone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma ortamları artık yüklü olmadığı için çalışamıyorlar. Uygulamaları ve verileri silinir. Bu geri alınamaz."
+          }
+        }
+      }
+    },
+    "Delete %lld simulators?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld simülatör silinsin mi?"
+          }
+        }
+      }
+    },
+    "All apps, data and settings on them are deleted. This can’t be undone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üzerlerindeki tüm uygulamalar, veriler ve ayarlar silinir. Bu geri alınamaz."
+          }
+        }
+      }
+    },
+    "Delete unavailable simulators, or simulators you don’t need any more": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılamayan simülatörleri ya da artık gerekmeyenleri sil"
+          }
+        }
+      }
+    },
+    "Clean Up Simulators": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Simülatörleri Temizle"
+          }
+        }
+      }
+    },
+    "No unavailable simulators.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılamayan simülatör yok."
+          }
+        }
+      }
+    },
+    "%lld simulators can’t run: their runtime was removed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld simülatör çalışamıyor: çalışma ortamları kaldırılmış."
+          }
+        }
+      }
+    },
+    "Delete Unavailable Simulators…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılamayan simülatörleri temizle…"
+          }
+        }
+      }
+    },
+    "Simulators outside ClaudeDeck’s pool": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck havuzu dışındaki simülatörler"
+          }
+        }
+      }
+    },
+    "Yours, other tools’ and the ones sessions created (named “Project · purpose”). ClaudeDeck never deletes these by itself. Running ones can’t be selected.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seninkiler, başka araçlarınkiler ve oturumların oluşturdukları (“Proje · amaç” adlı). ClaudeDeck bunları kendiliğinden hiçbir zaman silmez. Açık olanlar seçilemez."
+          }
+        }
+      }
+    },
+    "Created by a session of %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ projesinin bir oturumu oluşturdu"
+          }
+        }
+      }
+    },
+    "Booted %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son açılış: %@"
+          }
+        }
+      }
+    },
+    "Never booted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiç açılmadı"
+          }
+        }
+      }
+    },
+    "%lld selected": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld seçili"
+          }
+        }
+      }
+    },
+    "Delete Selected…": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçilenleri sil…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -463,6 +463,7 @@ claudedeck sim acquire [--device "iPhone 17 Pro"] [--duo] [--keep|--keep-cat CAT
                        [--stock] [--keep-state] [--project P] [--json]
 claudedeck sim release [UDID] [--unslim] [--json]
 claudedeck sim list [--json]
+claudedeck sim prune [--dry-run] [--older-than 3d] [--json]
 ```
 
 They need **Sessions may reserve simulators** (Settings › Agents › Command-line tool; off by
@@ -523,6 +524,29 @@ drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; nev
     the Mac, the user's and other tools' too.
   - With slimming on and simslim installed the default cap on booted simulators (Settings ›
     Resources) is half again as high (4 → 6 on a 20-core Mac); a cap the owner set stays.
+- **prune (the pool stays small):** ClaudeDeck's pool is the devices it created (by UDID in
+  simulator-holds.json) or named `ClaudeDeck · …`. A pool device is deleted (`simctl delete`) when it
+  is shut down, held by nobody, and either unused for **N days** (Settings › Resources ›
+  **Kullanılmayan havuz simülatörlerini sil: N gün sonra**, default **3**, `0` = never), or one of
+  more than **cap + 2** pool devices of its device type (cap = the booted-simulator limit in
+  Settings › Resources; booted and held devices count toward it), least recently used first.
+  "Last used" is the later of the release time ClaudeDeck records per UDID and simctl's
+  `lastUsedAt` (last boot); a pool device with neither starts aging when prune first sees it.
+  **Never deleted:** booted or held devices, and anything outside the pool (the user's own, other
+  tools', and sessions' `<Project> · <purpose>` devices). It runs a minute after launch and then
+  once a day (silent unless it deleted something; each deletion is in the activity log), and on
+  `claudedeck sim prune`, which prints what it deleted (`--dry-run`: what it would delete,
+  nothing changes) with the reason (`unused`, `over_cap`), days unused, runtime and name.
+  `--older-than 3d|12h|90m` replaces the setting's age for that run (positive only, else `400
+  bad_age`); with the setting at 0 and no `--older-than` only the per-type bound applies.
+  `--json`: `dry_run`, `older_than_seconds`, `max_per_type`, `items` (`udid`, `name`, `runtime`,
+  `reason`, `last_used`, `data_bytes`, `deleted`, `error`). It shares the acquire queue, so it never
+  deletes a device an acquire is handing out. Needs the same setting as acquire.
+- **Owner only (Simulators tab › Clean Up…; no CLI route):** "Kullanılamayan simülatörleri
+  temizle" runs `simctl delete unavailable` (devices whose runtime was removed) after showing the
+  count; the list of simulators outside the pool (runtime, last boot, data size, and the project
+  for a session's `<Project> · <purpose>` device) deletes the checked ones after a confirmation.
+  Booted devices can't be selected.
 - **list:** the held devices (state, holder, whether ClaudeDeck created them, simslim's
   `slim 109/173` daemons-disabled count and memory from `simslim list --json`) and ClaudeDeck's free ones.
 - Holds are kept in Application Support/ClaudeDeck/simulator-holds.json. Every acquire and release
