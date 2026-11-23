@@ -25253,6 +25253,46 @@
           }
         }
       }
+    },
+    "Resume a stopped session when a message or a decision answer arrives for it": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durmuş oturuma mesaj ya da karar cevabı gelince oturumu devam ettir"
+          }
+        }
+      }
+    },
+    "A Claude session a session stopped with claudedeck close (also one removed from the list, for 30 days) resumes its conversation when claudedeck send or your answer to its claudedeck decide question is for it, and gets that as its first message. Sessions you stopped yourself stay stopped. It waits in the start queue when the running cap or the Mac's load says so.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir oturumun claudedeck close ile durdurduğu Claude oturumu (listeden kaldırılmışsa da 30 gün boyunca), ona claudedeck send ile mesaj geldiğinde ya da claudedeck decide sorusunu cevapladığında konuşmasına kaldığı yerden devam eder ve bunu ilk mesajı olarak alır. Senin kendin durdurduğun oturumlar durmuş kalır. Çalışan oturum sınırı ya da Mac'in yükü izin vermezse başlatma kuyruğunda bekler."
+          }
+        }
+      }
+    },
+    "the stopped session resumed with it": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "durmuş oturum bununla devam etti"
+          }
+        }
+      }
+    },
+    "the stopped session resumes with it once there's room": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "durmuş oturum yer açılınca bununla devam edecek"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

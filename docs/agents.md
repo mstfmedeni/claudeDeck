@@ -161,6 +161,7 @@ claudedeck wait --all|--any ID... [--timeout SECONDS] [--json]
 claudedeck close ID|self [--force] [--remove|--keep] [--json]
 claudedeck remove ID [--json]
 claudedeck restart ID [--json]
+claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]
 claudedeck compact [ID|self] [--json]
 claudedeck remote-control off ID|self|--all [--no-wait] [--json]
 claudedeck notify TEXT
@@ -221,7 +222,8 @@ claudedeck skill setup [--user|--project] [--force]
   removes it from the list); **remove:** removes one that has already stopped; see
   [Closing sessions](#closing-sessions) below. **restart:** stops a terminal's process and
   re-runs its command in the same pane; see [Restarting terminals](#restarting-terminals).
-  **compact:** types `/compact` into itself (the default) or a Claude session it started; see
+  **resume:** restarts a stopped (or removed) Claude session it started with its conversation;
+  see [Resuming sessions](#resuming-sessions). **compact:** types `/compact` into itself (the default) or a Claude session it started; see
   [Compacting](#compacting). **remote-control off:** asks the owner to turn Claude Code's
   Remote Control off; see [Remote Control](#remote-control).
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
@@ -263,14 +265,17 @@ token, and the API's token isn't accepted here). Its scopes:
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
-`start` (project add, new), `server`, `simulators` (sim) and `close` also need their settings (below).
+`start` (project add, new, resume), `server`, `simulators` (sim) and `close` also need their settings (below).
 `status` and `load` are under `list`; `slot` and `heavy` need `slots`.
 
 `send` types into a plain terminal the caller opened, or one in a pane beside it. Another Claude
 session gets the text **as a note** unless **May type into Claude: sessions may send text to other
 Claude sessions** is on (off by default); then it's typed like `/v1/sessions/{id}/prompt` would
 (`409` while a permission or question is on screen). Anyone else's terminal, and the caller itself,
-are refused. The output starts with what happened: `terminal:`, `claude:` or `note:`.
+are refused. The output starts with what happened: `terminal:`, `claude:` or `note:`. A stopped
+Claude session the caller may resume (see [Resuming sessions](#resuming-sessions)) is resumed
+for the text when a session closed it: `resumed:` or `resume_queued:` (`--json`:
+`{"delivered":"resumed"}`, `{"delivered":"resume_queued","queue_id":"q_…"}`).
 
 **Environment.** While the setting is on, every terminal ClaudeDeck starts gets `CLAUDEDECK_SESSION`
 (its session id; a pane shows one session, so there's no separate pane id), `CLAUDEDECK_CLI_TOKEN`,
@@ -315,6 +320,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/restart` | `{ref}` may be a started queue id | restart |
 | POST | `/v1/cli/sessions/{ref}/compact` | `{ref}` may be `self` or a started queue id | compact |
+| POST | `/v1/cli/sessions/{ref}/resume` | `prompt`, `queue=1`; `{ref}` may be a removed session's id (or a unique prefix) | start |
 | POST | `/v1/cli/remote-control/off` | `target` (a session ref, `self`, or `all`); 202 `pending approval a_…` (exit 75) until the owner answers | remoteControl |
 | GET | `/v1/cli/load` | | list |
 | POST | `/v1/cli/slot/build/acquire` | `ticket` (wait in line), `timeout` (seconds, at most 25 per request), `label` | slots |
@@ -336,6 +342,9 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `400 cannot_restart_self`, `403 restart_off` / `close_off` / `not_yours`, `404 unknown_session`,
 `409 read_only` / `busy` / `not_running` / `not_restarted` / `switching_account`; for `compact` `400 not_claude`,
 `403 not_yours`, `404 unknown_session`, `409 read_only` / `blocked` / `not_running` / `switching_account`; for
+`resume` `400 not_claude` / `too_long`, `403 setting_off` / `not_yours`, `404 unknown_session`, `409 running` /
+`not_resumable` / `switching_account` / `busy`, `429 too_many_running` / `too_many_starts` / `overloaded` /
+`busy` / `too_many_queued`; for
 `remote-control off` `400 not_claude`, `403 owner_refused` / `approval_expired`, `404 unknown_session`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`; while the Mac is
 overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_many_booted` for `sim acquire`; for slots
@@ -676,6 +685,58 @@ sessions they started (`startedBy` / `openedBy` all the way up); never one the o
 - **Agents:** remove the sessions you no longer need once their work is merged and handed off
   (`close ID`, which removes by default; `remove ID` for ones that already stopped), and close
   yourself with `close self` when you are done. Idle leftover sessions crowd the owner's sidebar.
+  Stop idle sessions you may need again with `close ID --keep` (or `close self --keep` while you
+  wait for the owner's decision or other sessions) and bring them back with `resume`.
+- **Who stopped it** is kept with the session (`stoppedBy`: `agent` after a session's `close`,
+  `owner` after End Session, `/exit` typed in its pane or the process ending by itself; cleared
+  when it runs again). Only `agent` stops resume automatically (below).
+
+### Resuming sessions
+
+`claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]` restarts a stopped Claude session
+with its conversation (`claude --resume <its Claude session id>`, the same start path as the
+owner's Resume) and the **same ClaudeDeck id**, so `send`, `wait`, `capture` and answers to its
+`decide` questions keep reaching it. It needs **Sessions may add projects and start Claude
+sessions** (the `start` scope; `403 setting_off`, exit 4).
+
+- **Whose:** the sessions `close` may end: ones the caller started, directly or through sessions
+  they started (`startedBy` all the way up); never the owner's (`403 not_yours`). The caller itself
+  is running (`409 running`). A plain terminal is `400 not_claude` (`restart` is for those).
+- **Removed ones:** a Claude session a session removed from the list (`close --remove`, `remove`,
+  or `close` with **Closed sessions are removed from the list too**) leaves a small record in
+  deck.json (`removedSessions`: id, project, name, Claude session id and transcript path, working
+  folder / worktree, `startedBy`, launch options, account, `stoppedBy`, `removedAt`), kept for
+  **30 days** (at most 200, pruned on launch and on each removal). `resume ID` puts it back in the
+  list and resumes it while its project is still in the deck and `claude --resume` can find its
+  transcript (and its worktree folder still exists); otherwise `409 not_resumable` (exit 1).
+  Sessions the owner removes by hand leave no record. Sessions the removed one had started were
+  handed to its own starter on removal and stay there after it comes back.
+- **The cap:** it counts like `new`: the Mac's load (`429 overloaded` / `busy`), the running cap
+  (`429 too_many_running`) and the caller's rate limit (`429 too_many_starts`). With `--queue` it
+  waits in the start queue instead (`queue list` shows `kind: resume`; prints the queue id;
+  `wait q_…` follows it). A second `resume --queue` while one waits answers the same queue id.
+- **`--prompt`** is its first message: put first in its prompt queue and typed at its first "your
+  turn" (messages already queued follow, one per turn). A session cut off mid-turn doesn't also get
+  the "continue" message. Prints `resumed` (`resumed (restored to the list)` for a removed one;
+  `--json`: `{"resumed":true,"id":…,"name":…,"restored":false}`).
+- Every resume (and refusal) is in the agent Activity Log.
+
+**Automatic resume** (**Settings › Agents › Resume a stopped session when a message or a decision
+answer arrives for it**, on by default): a stopped Claude session whose `stoppedBy` is `agent`
+(never one the owner stopped) is resumed when
+
+- `claudedeck send ID TEXT` (with Return) comes from a session that may resume it (the rule
+  above, with the `start` scope and its setting): `delivered: resumed`, or `resume_queued` with a
+  `queue_id` when the cap, the rate limit or the Mac's load says wait. A removed one (by its id) is
+  restored first. When it isn't eligible, `send` is `409 not_running` as before.
+- the owner answers (or changes the answer to, or dismisses) its `claudedeck decide` question:
+  `delivery` `resumed` or `resume_queued` instead of `queued`. When it isn't eligible the answer
+  stays in its queue as before (`queued`, or `no_session` when it's gone).
+
+The text becomes its first message (first in its queue), so it waits with the session whatever
+the start queue does; an automatic resume isn't held up by its sender closing, but it fails
+(`not_agent_closed`, kept in the queue) if the owner started and stopped the session meanwhile.
+With the start queue full, the text just waits in the session's queue (`delivered: queued`).
 
 ### Restarting terminals
 
@@ -881,7 +942,10 @@ can't ask.
   and kept in the queue if the session isn't running until it is. It's one line:
   `[ClaudeDeck decision d_…] The owner answered your question "…": ANSWER`. `decision get` shows
   it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
-  `no_session` when the session is gone).
+  `no_session` when the session is gone). A stopped (or removed) session a session closed is
+  resumed for it when **Resume a stopped session when a message or a decision answer arrives for
+  it** is on: `resumed`, or `resume_queued` while it waits for room (see
+  [Resuming sessions](#resuming-sessions)); one the owner stopped keeps it queued.
   The first answer counts; one from the other device a moment later is ignored (Activity Log).
 - **Recent answers, changeable:** under the pending ones, the last 5 answered decisions (muted:
   question, answer, when) and a collapsed **Other decisions today** with the rest of today's;

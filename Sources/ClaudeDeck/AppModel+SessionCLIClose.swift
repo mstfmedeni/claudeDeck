@@ -134,6 +134,8 @@ extension AppModel {
         }
         logAgent(callerName, inbound: true, "claudedeck remove · \(target.name): removed from the list (transcript kept)")
         notifyStarter(of: target, by: caller, callerName: callerName, removed: true, ended: false)
+        // Restorable with `claudedeck resume` for 30 days (who stopped it is kept with it).
+        mutate(userInitiated: false) { $0.addTombstone(for: id) }
         removeSession(id, userInitiated: false)
         if deck.cliQueue.contains(where: { $0.status == .queued }) { drainCLIQueueSoon() }
         return SessionCLI.answer(200, SessionCLIRemoved(removed: true, id: id), text: "removed", exit: .ok, json: json)
@@ -219,7 +221,11 @@ extension AppModel {
         logAgent(callerName, inbound: true, "claudedeck close · " + (byItself ? "itself" : session.name) + how
                  + (remove ? "; removed from the list (transcript kept)" : ""))
         if ended || remove { notifyStarter(of: session, by: caller, callerName: callerName, removed: remove, ended: ended) }
+        // A session ended it: a message or the owner's answer for it may resume it later.
+        if ended, session.kind == .claude { mutate(userInitiated: false) { $0.updateSession(session.id) { $0.stoppedBy = .agent } } }
         if remove {
+            // Restorable with `claudedeck resume` for 30 days.
+            mutate(userInitiated: false) { $0.addTombstone(for: session.id) }
             removeSession(session.id, userInitiated: false)
         } else if deck.panes.contains(session.id) {
             // Like the pane's close button; the owner's selection only moves if it was this one.

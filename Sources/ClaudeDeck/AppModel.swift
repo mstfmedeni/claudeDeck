@@ -748,7 +748,7 @@ final class AppModel {
         if sid != nil, session.busyAtQuit || (automatic && deck.settings.continueAllOnResume) {
             pendingContinue.insert(id)
         }
-        deck.updateSession(id) { $0.busyAtQuit = false }
+        deck.updateSession(id) { $0.busyAtQuit = false; $0.stoppedBy = nil }
         transcriptSignals[id] = nil
         usageLimitHits[id] = nil
         answeredAt[id] = nil
@@ -865,6 +865,8 @@ final class AppModel {
 
     func stop(_ id: UUID) {
         noteUserLayoutAction()
+        // The owner's stop: never resumed automatically (AppModel+SessionCLIResume.swift).
+        if terminals.isRunning(id) { deck.updateSession(id) { $0.stoppedBy = .owner } }
         terminals.terminate(id)
     }
 
@@ -884,6 +886,13 @@ final class AppModel {
             stallTrackers[id] = nil
         }
         deck.updateSession(id) { $0.isOpen = false; $0.busyAtQuit = false; $0.helperHost = nil }
+        // Ended without a session's `close` (End Session, /exit typed in the pane, a crash): the
+        // owner's, so a message for it doesn't resume it. A restart or an account move starts it
+        // again right away (and `launch` clears this).
+        if deck.session(id)?.kind == .claude, deck.session(id)?.stoppedBy == nil,
+           !restartingSessions.contains(id), !switchingAccounts.contains(id) {
+            deck.updateSession(id) { $0.stoppedBy = .owner }
+        }
         scheduleSave()
         onCountsChanged?()
     }

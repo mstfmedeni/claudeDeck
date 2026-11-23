@@ -60,7 +60,14 @@ extension AppModel {
         case .open:
             return cliOpen(caller, form: form, json: json)
         case .send(let ref):
-            return target(ref, caller: caller).flatMapResponse { cliSend(caller, to: $0, form: form, json: json) }
+            switch target(ref, caller: caller) {
+            case .success(let session): return cliSend(caller, to: session, form: form, json: json)
+            case .failure(let refusal):
+                // A session removed from the list may come back for it (automatic resume).
+                if SessionCLI.errorCode(of: refusal.response) == "unknown_session",
+                   let resumed = cliSendToRemoved(caller, ref: ref, form: form, json: json) { return resumed }
+                return refusal.response
+            }
         case .capture(let ref):
             return target(ref, caller: caller).flatMapResponse { cliCapture($0, form: form, json: json) }
         case .wait(let ref) where SessionCLI.isQueueID(ref):
@@ -130,6 +137,8 @@ extension AppModel {
             return await cliRestart(caller, ref: ref, json: json)
         case .compact(let ref):
             return cliCompact(caller, ref: ref, json: json)
+        case .resume(let ref):
+            return await cliResume(caller, ref: ref, form: form, json: json)
         case .remoteControlOff:
             return await cliRemoteControlOff(caller, form: form, json: json)
         case .load:
@@ -292,6 +301,11 @@ extension AppModel {
         let enter = form["enter"] == "1" || (target.kind == .claude && form["enter"] != "0")
         guard text.count <= SessionCLI.maxText else { return SessionCLI.failure(400, "too_long", exit: .usage) }
         guard !text.isEmpty || enter else { return SessionCLI.failure(400, "bad_request", exit: .usage) }
+        // A stopped Claude session a session closed resumes for it when the caller may resume it
+        // (the close chain, not only the sessions it started itself; Settings › Agents).
+        if target.kind == .claude, enter, !terminals.isRunning(target.id),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let resumed = cliSendResume(caller, to: target.id, text: text, json: json) { return resumed }
         let sender = deck.session(caller)?.name ?? "claudedeck"
         let panes = deck.visiblePanes
         // A command terminal of the caller's own project (a dev server it restarts) takes text

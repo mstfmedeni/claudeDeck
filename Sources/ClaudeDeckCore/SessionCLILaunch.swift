@@ -131,6 +131,12 @@ public struct CLIQueuedStart: Codable, Sendable, Equatable, Identifiable {
     public var finishedAt: Date?
     /// `new --account NAME|auto`; nil: the project's pin, else the account new sessions use.
     public var account: String?
+    /// `claudedeck resume --queue`, or an automatic resume (`auto`): this stopped (or removed)
+    /// Claude session is resumed instead of a new one started; `prompt` is its first message.
+    public var resumeSessionID: UUID?
+    /// An automatic resume for a message or the owner's answer: under its own setting, not
+    /// "Sessions may start sessions", and never held up by its caller going away.
+    public var auto: Bool?
 
     public init(id: String, caller: UUID, callerName: String, projectID: UUID, name: String, prompt: String, worktree: String,
                 skill: String?, options: ClaudeLaunchOptions, queuedAt: Date = Date()) {
@@ -161,6 +167,8 @@ public struct SessionCLIQueueInfo: Encodable, Sendable, Equatable {
     public var position: Int?
     public var queuedAt: Date
     public var reason: String?
+    /// `new` or `resume`.
+    public var kind: String
 
     public init(_ entry: CLIQueuedStart, project: String, mine: Bool, position: Int?) {
         queueId = entry.id
@@ -174,10 +182,11 @@ public struct SessionCLIQueueInfo: Encodable, Sendable, Equatable {
         self.position = position
         queuedAt = entry.queuedAt
         reason = entry.reason
+        kind = entry.resumeSessionID == nil ? "new" : "resume"
     }
 
     private enum CodingKeys: String, CodingKey {
-        case queueId, status, sessionId, projectId, project, name, caller, mine, position, queuedAt, reason
+        case queueId, status, sessionId, projectId, project, name, caller, mine, position, queuedAt, reason, kind
     }
 
     /// Every key is always there (null when unknown).
@@ -194,6 +203,7 @@ public struct SessionCLIQueueInfo: Encodable, Sendable, Equatable {
         try c.encode(position, forKey: .position)
         try c.encode(queuedAt, forKey: .queuedAt)
         try c.encode(reason, forKey: .reason)
+        try c.encode(kind, forKey: .kind)
     }
 }
 

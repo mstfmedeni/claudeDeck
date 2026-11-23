@@ -111,6 +111,9 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
     public var account: String?
     /// Never moved to another account automatically (Settings › Accounts).
     public var accountPinned: Bool = false
+    /// Claude sessions: who ended its process last (`claudedeck close` or the owner); nil once it
+    /// runs again. Only sessions a session closed resume on their own for a message or an answer.
+    public var stoppedBy: SessionStopper?
 
     public init(id: UUID = UUID(), projectID: UUID, name: String, kind: SessionKind = .claude, claudeSessionID: String? = nil,
                 createdAt: Date = Date(), lastActivityAt: Date? = nil, isOpen: Bool = true, worktreeName: String? = nil) {
@@ -158,6 +161,7 @@ public struct DeckSession: Codable, Identifiable, Sendable, Equatable {
         helperHost = try? c.decodeIfPresent(PtydHost.self, forKey: .helperHost)
         account = try? c.decodeIfPresent(String.self, forKey: .account)
         accountPinned = (try? c.decodeIfPresent(Bool.self, forKey: .accountPinned)) ?? false
+        stoppedBy = try? c.decodeIfPresent(SessionStopper.self, forKey: .stoppedBy)
     }
 }
 
@@ -298,6 +302,10 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     /// one-line message for the starter. Off by default: the starter knows when it closes a child,
     /// and the close is in the Activity Log either way (never a note for the owner).
     public var tellStarterOnClose = false
+    /// A stopped Claude session a session closed (never one the owner stopped) is resumed when
+    /// `claudedeck send` or the owner's answer to its `claudedeck decide` question is for it, and
+    /// gets that as its first message. On by default; under the running cap and the Mac's load.
+    public var autoResumeOnDelivery = true
     /// The cap on Claude sessions started with `claudedeck new` running at once (1–40).
     public var maxStartedSessions = SessionCLI.maxRunningStarted
     /// A session started with `claudedeck new` finishing its turn is news for the session that
@@ -403,6 +411,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayRestartProjectTerminals = (try? c.decodeIfPresent(Bool.self, forKey: .sessionsMayRestartProjectTerminals))
             ?? d.sessionsMayRestartProjectTerminals
         tellStarterOnClose = (try? c.decodeIfPresent(Bool.self, forKey: .tellStarterOnClose)) ?? d.tellStarterOnClose
+        autoResumeOnDelivery = (try? c.decodeIfPresent(Bool.self, forKey: .autoResumeOnDelivery)) ?? d.autoResumeOnDelivery
         startedSessionsTurnGoesToStarter = try c.decodeIfPresent(Bool.self, forKey: .startedSessionsTurnGoesToStarter) ?? d.startedSessionsTurnGoesToStarter
         maxStartedSessions = min(max(try c.decodeIfPresent(Int.self, forKey: .maxStartedSessions) ?? d.maxStartedSessions, 1), 40)
         agentRegistrations = (try? c.decodeIfPresent([AgentRegistration].self, forKey: .agentRegistrations)) ?? d.agentRegistrations
@@ -450,6 +459,9 @@ public struct DeckData: Codable, Sendable, Equatable {
     public var cliPresets: [CLIPreset] = []
     /// `claudedeck new --queue`: starts waiting for room (and recently finished ones).
     public var cliQueue: [CLIQueuedStart] = []
+    /// Claude sessions a session removed from the list, restorable by `claudedeck resume` for
+    /// 30 days (SessionCLIResume.swift).
+    public var removedSessions: [SessionTombstone] = []
 
     public static let maxPanes = 4
 
@@ -472,6 +484,7 @@ public struct DeckData: Codable, Sendable, Equatable {
         dismissedServerIssues = (try? c.decodeIfPresent([Lossy<DismissedServerIssue>].self, forKey: .dismissedServerIssues))?.compactMap(\.value) ?? []
         cliPresets = (try? c.decodeIfPresent([Lossy<CLIPreset>].self, forKey: .cliPresets))?.compactMap(\.value) ?? []
         cliQueue = (try? c.decodeIfPresent([Lossy<CLIQueuedStart>].self, forKey: .cliQueue))?.compactMap(\.value) ?? []
+        removedSessions = (try? c.decodeIfPresent([Lossy<SessionTombstone>].self, forKey: .removedSessions))?.compactMap(\.value) ?? []
     }
 
     // MARK: Mutations
@@ -623,6 +636,10 @@ public struct DeckData: Codable, Sendable, Equatable {
         guard let parent = session(id)?.startedBy else { return }
         for index in sessions.indices where sessions[index].startedBy == id {
             sessions[index].startedBy = parent == sessions[index].id ? nil : parent
+        }
+        // Removed ones it started too, so the same session can still resume them.
+        for index in removedSessions.indices where removedSessions[index].startedBy == id {
+            removedSessions[index].startedBy = parent == removedSessions[index].id ? nil : parent
         }
     }
 

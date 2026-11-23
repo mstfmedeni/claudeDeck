@@ -109,8 +109,9 @@ extension AppModel {
 
     func cliEnqueue(_ request: CLIQueuedStart, reason: String, json: Bool) -> AgentHTTPResponse {
         let project = deck.project(request.projectID)?.name ?? ""
+        let command = request.resumeSessionID == nil ? "claudedeck new --queue · \(project)" : "claudedeck resume --queue · \(request.name)"
         if let refusal = SessionCLI.admitQueued(caller: request.caller, queue: deck.cliQueue) {
-            logAgent(request.callerName, inbound: true, "claudedeck new --queue · \(project): refused (queue full)", ok: false)
+            logAgent(request.callerName, inbound: true, "\(command): refused (queue full)", ok: false)
             return refusal
         }
         mutate(userInitiated: false) { deck in
@@ -118,7 +119,7 @@ extension AppModel {
             deck.cliQueue.append(request)
         }
         let position = SessionCLI.queuePosition(request.id, in: deck.cliQueue) ?? 1
-        logAgent(request.callerName, inbound: true, "claudedeck new --queue · \(project): queued \(request.id) (#\(position), \(reason))")
+        logAgent(request.callerName, inbound: true, "\(command): queued \(request.id) (#\(position), \(reason))")
         drainCLIQueueSoon()
         let queued = SessionCLIQueued(queueId: request.id, position: position, reason: reason)
         return SessionCLI.answer(200, queued, text: request.id, exit: .ok, json: json)
@@ -126,6 +127,7 @@ extension AppModel {
 
     /// On launch: what was queued before the quit drains once there's room.
     func resumeCLIQueue() {
+        pruneTombstones()
         let pruned = SessionCLI.pruneQueue(deck.cliQueue)
         if pruned != deck.cliQueue { mutate(userInitiated: false) { $0.cliQueue = pruned } }
         if deck.cliQueue.contains(where: { $0.status == .queued }) { drainCLIQueueSoon() }
@@ -153,6 +155,11 @@ extension AppModel {
                                   enabled: deck.settings.load.throttle) else { return }
         for entry in deck.cliQueue where entry.status == .queued {
             guard deck.cliQueue.first(where: { $0.id == entry.id })?.status == .queued else { continue }
+            // `resume --queue` and automatic resumes (AppModel+SessionCLIResume.swift).
+            if let target = entry.resumeSessionID {
+                if drainResume(entry, target: target) { continue }
+                return
+            }
             if !deck.settings.sessionsMayStartSessions || !deck.settings.sessionCLIEnabled {
                 finishQueued(entry.id, .failed, reason: "setting_off")
                 continue

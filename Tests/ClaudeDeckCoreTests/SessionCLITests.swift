@@ -1419,3 +1419,64 @@ import Testing
         #expect(SessionCLI.skill.contains("When your context is low, update docs/HANDOFF.md, then run `claudedeck compact`"))
     }
 }
+
+// MARK: - resume
+
+extension SessionCLITests {
+    @Test func resumeRouteAndScope() throws {
+        #expect(SessionCLI.match(method: "POST", path: "/v1/cli/sessions/abcd1234/resume") == .route(.resume("abcd1234")))
+        #expect(SessionCLI.match(method: "GET", path: "/v1/cli/sessions/abcd1234/resume") == .methodNotAllowed)
+        // The same scope (and setting) as `new`; never for a terminal a session opened.
+        #expect(SessionCLI.Route.resume("x").scope == .start)
+        #expect(!SessionCLI.openedScopes.contains(.start))
+        var book = SessionCLIBook()
+        let opener = UUID(), opened = UUID()
+        let token = book.token(for: opened, scopes: SessionCLI.scopes(openedBy: opener))
+        guard case .failure(let refusal) = SessionCLI.resolve(request("POST", "/v1/cli/sessions/abcd/resume", token: token), book: book) else {
+            Issue.record("a terminal a session opened may not resume")
+            return
+        }
+        #expect(refusal.response.status == 403)
+    }
+
+    @Test func resumeArguments() throws {
+        let base = "http://127.0.0.1:47832/v1/cli/sessions/"
+        let plain = try run(["resume", "d1234567"], answers: [("resumed", "200 0")])
+        #expect(plain.code == 0 && plain.out == "resumed\n")
+        let call = try #require(plain.curlCalls.first)
+        #expect(call.last == base + "d1234567/resume" && !call.contains("-G"))
+        #expect(call.contains("prompt=") && call.contains("queue=0") && call.contains("format=text"))
+
+        let full = try run(["resume", "--queue", "d1234567", "--prompt", "go on", "--json"], answers: [(#"{"queued":true}"#, "200 0")])
+        let fullCall = try #require(full.curlCalls.first)
+        #expect(fullCall.contains("prompt=go on") && fullCall.contains("queue=1") && fullCall.contains("format=json"))
+        #expect(try run(["resume", "--prompt=next step", "abcd"], answers: [("resumed", "200 0")]).curlCalls.first?.contains("prompt=next step") == true)
+        // `-` reads stdin (empty here).
+        #expect(try run(["resume", "abcd", "--prompt", "-"], answers: [("resumed", "200 0")]).curlCalls.first?.contains("prompt=") == true)
+        #expect(try run(["resume", "q_0123456789"], answers: [("resumed", "200 0")]).curlCalls.first?.last == base + "q_0123456789/resume")
+
+        // Usage: nothing reaches the API.
+        for args in [["resume"], ["resume", "a", "b"], ["resume", "a/../b"], ["resume", "abcd", "--bogus"],
+                     ["resume", "abcd", "--prompt"], ["resume", "self"]] {
+            let usage = try run(args)
+            #expect(usage.code == 2 && usage.curlCalls.isEmpty, "\(args)")
+        }
+        #expect(try run(["resume", "abcd"], session: false).code == 2)
+
+        // The API's refusals, with hints.
+        let running = try run(["resume", "abcd"], answers: [(#"{"error":"running"}"#, "409 1")])
+        #expect(running.code == 1 && running.err.contains("running already"))
+        let gone = try run(["resume", "abcd"], answers: [(#"{"error":"not_resumable"}"#, "409 1")])
+        #expect(gone.code == 1 && gone.err.contains("can't be resumed"))
+        let notMine = try run(["resume", "abcd"], answers: [(#"{"error":"not_yours"}"#, "403 4")])
+        #expect(notMine.code == 4 && notMine.err.contains("only Claude sessions this session started"))
+        let cap = try run(["resume", "abcd"], answers: [(#"{"error":"too_many_running"}"#, "429 4")])
+        #expect(cap.code == 4 && cap.err.contains("--queue"))
+        let unknown = try run(["resume", "abcd"], answers: [(#"{"error":"unknown_session"}"#, "404 5")])
+        #expect(unknown.code == 5)
+
+        #expect(try run(["help"]).out.contains("claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]"))
+        #expect(SessionCLI.skill.contains("claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]"))
+        #expect(SessionCLI.skill.contains("claudedeck close ID --keep"))
+    }
+}
