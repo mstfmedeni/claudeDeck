@@ -363,6 +363,12 @@ struct AnsweredDecisionRow: View {
             if decision.delivery == "queued" {
                 Text("·")
                 Text("sent to the session")
+            } else if decision.delivery == "resumed" {
+                Text("·")
+                Text("the stopped session resumed with it")
+            } else if decision.delivery == "resume_queued" {
+                Text("·")
+                Text("the stopped session resumes with it once there's room")
             } else if decision.delivery == "terminal" {
                 Text("·")
                 Text("kept for claudedeck decision get")

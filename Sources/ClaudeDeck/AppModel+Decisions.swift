@@ -165,7 +165,10 @@ extension AppModel {
         case .answered(let decision):
             // A plain terminal asked (a user's own shell): typing the answer there would run it.
             var delivery = "no_session"
-            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+            // A stopped (or removed) session a session closed resumes with it as its first message.
+            if let sessionID = decision.sessionID, let resumed = deliverDecisionByResume(sessionID, text: Decisions.message(for: decision), decision: decision.id) {
+                delivery = resumed
+            } else if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
                 if session.kind == .claude {
                     enqueue(sessionID, text: Decisions.message(for: decision))
                     delivery = "queued"
@@ -177,7 +180,7 @@ extension AppModel {
             decisionsChanged(added: nil)
             let target = decision.session.isEmpty ? decision.project : decision.session
             logAgent(target, inbound: false, "decision \(decision.id) answered on the \(from == "phone" ? "phone" : "Mac") · "
-                + (delivery == "queued" ? "queued for the session" : "kept for claudedeck decision get (\(delivery))"))
+                + Self.decisionDeliveryLog(delivery))
         }
     }
 
@@ -195,7 +198,10 @@ extension AppModel {
                 + "the change from the \(device) was ignored", ok: false)
         case .changed(let decision, let old):
             var delivery = "no_session"
-            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+            // A stopped (or removed) session a session closed resumes with it as its first message.
+            if let sessionID = decision.sessionID, let resumed = deliverDecisionByResume(sessionID, text: Decisions.changedMessage(for: decision, was: old), decision: decision.id) {
+                delivery = resumed
+            } else if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
                 if session.kind == .claude {
                     enqueue(sessionID, text: Decisions.changedMessage(for: decision, was: old))
                     delivery = "queued"
@@ -207,7 +213,7 @@ extension AppModel {
             decisionsChanged(added: nil)
             let target = decision.session.isEmpty ? decision.project : decision.session
             logAgent(target, inbound: false, "decision \(decision.id) answer changed on the \(device) · "
-                + (delivery == "queued" ? "queued for the session" : "kept for claudedeck decision get (\(delivery))"))
+                + Self.decisionDeliveryLog(delivery))
         }
     }
 
@@ -226,7 +232,10 @@ extension AppModel {
             return
         case .cancelled(let decision):
             var delivery = "no_session"
-            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+            // A stopped (or removed) session a session closed resumes with it as its first message.
+            if let sessionID = decision.sessionID, let resumed = deliverDecisionByResume(sessionID, text: Decisions.dismissedMessage(for: decision), decision: decision.id) {
+                delivery = resumed
+            } else if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
                 if session.kind == .claude {
                     enqueue(sessionID, text: Decisions.dismissedMessage(for: decision))
                     delivery = "queued"
@@ -238,7 +247,17 @@ extension AppModel {
             decisionsChanged(added: nil)
             let target = decision.session.isEmpty ? decision.project : decision.session
             logAgent(target, inbound: false, "decision \(decision.id) dismissed by the owner on the \(device) · "
-                + (delivery == "queued" ? "the session was told" : "kept for claudedeck decision get (\(delivery))"))
+                + Self.decisionDeliveryLog(delivery, told: true))
+        }
+    }
+
+    /// The Activity Log's words for where an answer went.
+    static func decisionDeliveryLog(_ delivery: String, told: Bool = false) -> String {
+        switch delivery {
+        case "queued": told ? "the session was told" : "queued for the session"
+        case "resumed": "the stopped session resumes with it"
+        case "resume_queued": "the stopped session resumes with it once there's room"
+        default: "kept for claudedeck decision get (\(delivery))"
         }
     }
 

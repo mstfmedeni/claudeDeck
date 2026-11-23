@@ -73,8 +73,8 @@ public enum SessionCLI {
         case ask
         /// The deck's projects (`claudedeck projects`).
         case projects
-        /// Adding projects and starting Claude sessions (also needs Settings › "Sessions may add
-        /// projects and start Claude sessions").
+        /// Adding projects, starting Claude sessions and resuming stopped ones it started (also
+        /// needs Settings › "Sessions may add projects and start Claude sessions").
         case start
         /// ServerPlan through the app (also needs "Sessions may use ServerPlan").
         case server
@@ -176,6 +176,9 @@ public enum SessionCLI {
         case restart(String)
         /// `POST /v1/cli/sessions/{ref}/compact`: `/compact` is typed into it (after its turn when busy).
         case compact(String)
+        /// `POST /v1/cli/sessions/{ref}/resume`: a stopped (or removed) Claude session it started
+        /// is resumed with its conversation (`prompt`, `queue=1`).
+        case resume(String)
         /// `POST /v1/cli/remote-control/off` (`target`: a session ref or `all`): an approval for
         /// the owner; once approved, Remote Control is turned off there.
         case remoteControlOff
@@ -195,7 +198,7 @@ public enum SessionCLI {
             case .notify: .notify
             case .ask: .ask
             case .projects: .projects
-            case .addProject, .newSession, .presets, .showPreset, .setPreset, .queue, .queueItem, .cancelQueued: .start
+            case .addProject, .newSession, .presets, .showPreset, .setPreset, .queue, .queueItem, .cancelQueued, .resume: .start
             case .server, .approval, .waitApproval, .cancelApproval: .server
             case .waitMany: .wait
             case .decide, .decisions, .decision, .cancelDecision: .decide
@@ -275,6 +278,7 @@ public enum SessionCLI {
             case "remove": return expect("POST", .remove(ref))
             case "restart": return expect("POST", .restart(ref))
             case "compact": return expect("POST", .compact(ref))
+            case "resume": return expect("POST", .resume(ref))
             default: return .notFound
             }
         default: return .notFound
@@ -852,11 +856,16 @@ public struct SessionCLIOpened: Encodable, Sendable, Equatable {
 
 /// `POST /v1/cli/sessions/{ref}/send`: `terminal`, `claude` or `note`.
 public struct SessionCLISent: Encodable, Sendable, Equatable {
+    /// `claude`, `terminal`, `note`; for a stopped Claude session a session closed: `resumed`
+    /// (it's resuming with the text as its first message) or `resume_queued` (it waits in the
+    /// start queue, `queueId`, and the text with it).
     public var delivered: String
     public var noteId: UUID?
-    public init(delivered: String, noteId: UUID? = nil) {
+    public var queueId: String?
+    public init(delivered: String, noteId: UUID? = nil, queueId: String? = nil) {
         self.delivered = delivered
         self.noteId = noteId
+        self.queueId = queueId
     }
 }
 

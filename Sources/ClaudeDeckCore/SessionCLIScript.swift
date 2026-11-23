@@ -43,7 +43,8 @@ extension SessionCLI {
           or doesn't leave. "self" ends after the current turn (--force: right away).
           --remove also removes it from the list (its Claude transcript is kept); --keep leaves
           it in the sidebar to be resumed. Without either, the user's setting decides (on by
-          default: removed). Needs "Sessions may close sessions they started".
+          default: removed). Needs "Sessions may close sessions they started". Either way
+          claudedeck resume ID brings it back (a removed one for 30 days).
       claudedeck remove ID [--json]
           Removes a session this one started that has already stopped from the list (the
           transcript is kept). A running one: close it (close --remove).
@@ -164,6 +165,11 @@ extension SessionCLI {
           Options new uses in PROJECT when it isn't given them (a flag replaces that field).
       claudedeck queue list [--json] | queue show QID [--json] | queue cancel QID
           Queued starts; show prints the session id once it started.
+      claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]
+          Resumes a stopped Claude session this one started (or one they started) with its
+          conversation and the same id, so send, wait and decide answers reach it again. One
+          removed from the list comes back for 30 days while its transcript exists. --prompt is
+          its first message. Counts like new (cap, rate limit, load); --queue waits for room.
 
     ServerPlan (Settings > Agents: "Sessions may use ServerPlan"):
       claudedeck server list | projects | dirs | features | cloudflare | deployments [--project P]
@@ -320,6 +326,7 @@ extension SessionCLI {
               not_allowed) hint=" (this session's token doesn't allow that)" ;;
               not_yours) case "$command_name" in
                   close|remove) hint=" (only this session, the sessions it started and the terminals it opened)" ;;
+                  resume) hint=" (only Claude sessions this session started, or ones they started)" ;;
                   restart) hint=" (only terminals this session opened, or command terminals of its own project)" ;;
                   compact) hint=" (only this session and the Claude sessions it started)" ;;
                   decide|decision) hint=" (only the session that asked it, or one that started that session)" ;;
@@ -328,6 +335,8 @@ extension SessionCLI {
               close_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may close sessions they started\")" ;;
               restart_off) hint=" (not allowed in ClaudeDeck: Settings > Agents > \"Sessions may restart command terminals in their own project\")" ;;
               cannot_restart_self) hint=" (a session can't restart itself)" ;;
+              running) hint=" (it is running already; send or wait instead)" ;;
+              not_resumable) hint=" (its conversation can't be resumed: no transcript, or its folder or project is gone)" ;;
               not_restarted) hint=" (ClaudeDeck couldn't stop it; try again)" ;;
               busy) hint=" (Claude is working; wait for it, or close --force)" ;;
               still_running) case "$command_name" in
@@ -340,6 +349,7 @@ extension SessionCLI {
               not_running) hint=" (it isn't running)" ;;
               not_claude) case "$command_name" in
                   remote-control) hint=" (only Claude sessions have Remote Control)" ;;
+                  resume) hint=" (only Claude sessions can be resumed; restart is for terminals)" ;;
                   *) hint=" (only Claude sessions can be compacted)" ;;
                 esac ;;
               blocked) hint=" (a permission or a question is on screen)" ;;
@@ -664,6 +674,28 @@ extension SessionCLI {
       # Up to ~10 s for the old process to go (SIGTERM, then SIGKILL).
       max_time=60
       call "/sessions/$id/restart" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_resume() {
+      id=""; prompt=""; queue=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --prompt) [ $# -ge 2 ] || die "resume: --prompt needs text (- reads stdin)"; prompt=$2; shift ;;
+          --prompt=*) prompt=${1#*=} ;;
+          --queue) queue=1 ;;
+          --json) json=1 ;;
+          -*) die "resume: unknown option $1" ;;
+          *) [ -z "$id" ] || die "resume: one ID only"; id=$1 ;;
+        esac
+        shift
+      done
+      check_id "$id" resume
+      [ "$id" = self ] && die "resume: a session can't resume itself (it is running)"
+      [ "$prompt" = "-" ] && prompt=$(cat)
+      need_session
+      call "/sessions/$id/resume" --data-urlencode "prompt=$prompt" --data-urlencode "queue=$queue" \
+        --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1762,6 +1794,7 @@ extension SessionCLI {
       close) cmd_close "$@" ;;
       remove) cmd_remove "$@" ;;
       restart) cmd_restart "$@" ;;
+      resume) cmd_resume "$@" ;;
       compact) cmd_compact "$@" ;;
       remote-control) cmd_remote_control "$@" ;;
       notify) cmd_notify "$@" ;;
@@ -2012,6 +2045,39 @@ extension SessionCLI {
       turn is over; finish your reply first. The close is in the activity log; the session that
       started you is told only if the user turned that on (a message between its turns).
     - Terminals you opened with `claudedeck open` are yours to close and remove too.
+
+    ### Idle sessions: stop them, resume them later
+
+    The user wants idle sessions stopped: a stopped session costs nothing, and it comes back
+    with its whole conversation and the same id.
+
+    ```sh
+    claudedeck close ID --keep        # may be needed again: stays in the list, stopped
+    claudedeck close ID --remove      # done (merged, handed off): leaves the list
+    claudedeck close self --keep      # you wait on answers (decide) or on other sessions
+    claudedeck resume ID [--prompt TEXT|-] [--queue] [--json]
+    ```
+
+    - `--keep` when you (or the session) will likely need it again: a lead waiting for the
+      owner's decision, a worker you may send follow-ups to. `--remove` when its work is
+      finished; it can still be resumed for 30 days if you turn out to need it.
+    - `resume ID` (needs "Sessions may add projects and start Claude sessions", like `new`)
+      restarts a stopped Claude session you started (or one they started) with
+      `claude --resume`: same id, same conversation, so `send`, `wait` and `decide` answers
+      keep working. A removed one is put back in the list first. `--prompt` is its first
+      message; messages already queued for it follow, one per turn. Prints `resumed`
+      (`--json`: `{"resumed":true,"id":…,"name":…,"restored":false}`).
+    - It counts like `new`: the running cap, your rate limit and the Mac's load (exit 4
+      `too_many_…`, `overloaded`); `--queue` waits for room and prints a queue id (`wait QID`).
+      Exit 1 `running` when it already runs (just `send`); exit 1 `not_resumable` when its
+      transcript, folder or project is gone (start a `new` one); exit 4 `not_yours` for sessions
+      you didn't start; exit 5 for an unknown id.
+    - Usually you don't need `resume` at all: unless the user turned it off, `claudedeck send`
+      to a stopped session that a session closed resumes it with your text as its first
+      message (`resumed`, or `resume_queued` with a queue id when there's no room), and so does
+      the owner's answer to its `claudedeck decide` question. So a lead can `decide`, then
+      `close self --keep`, and continue when the answer comes. Sessions the user stopped
+      themselves are never resumed that way (`send` gives exit 1 `not_running`).
 
     ### Restarting terminals
 

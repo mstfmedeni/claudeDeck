@@ -60,7 +60,14 @@ extension AppModel {
         case .open:
             return cliOpen(caller, form: form, json: json)
         case .send(let ref):
-            return target(ref, caller: caller).flatMapResponse { cliSend(caller, to: $0, form: form, json: json) }
+            switch target(ref, caller: caller) {
+            case .success(let session): return cliSend(caller, to: session, form: form, json: json)
+            case .failure(let refusal):
+                // A session removed from the list may come back for it (automatic resume).
+                if SessionCLI.errorCode(of: refusal.response) == "unknown_session",
+                   let resumed = cliSendToRemoved(caller, ref: ref, form: form, json: json) { return resumed }
+                return refusal.response
+            }
         case .capture(let ref):
             return target(ref, caller: caller).flatMapResponse { cliCapture($0, form: form, json: json) }
         case .wait(let ref) where SessionCLI.isQueueID(ref):
@@ -130,6 +137,8 @@ extension AppModel {
             return await cliRestart(caller, ref: ref, json: json)
         case .compact(let ref):
             return cliCompact(caller, ref: ref, json: json)
+        case .resume(let ref):
+            return await cliResume(caller, ref: ref, form: form, json: json)
         case .remoteControlOff:
             return await cliRemoteControlOff(caller, form: form, json: json)
         case .load:
@@ -313,7 +322,12 @@ extension AppModel {
             return SessionCLI.answer(200, SessionCLISent(delivered: "note", noteId: note),
                                      text: "note: \(target.name) gets it as a note for the user (sessions may not type into Claude)", exit: .ok, json: json)
         case .type:
-            guard terminals.isRunning(target.id) else { return SessionCLI.failure(409, "not_running", exit: .failed) }
+            guard terminals.isRunning(target.id) else {
+                // A stopped Claude session a session closed resumes for it (Settings › Agents).
+                if target.kind == .claude, enter, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let resumed = cliSendResume(caller, to: target.id, text: text, json: json) { return resumed }
+                return SessionCLI.failure(409, "not_running", exit: .failed)
+            }
             let delivered: String
             if target.kind == .claude {
                 guard !status(of: target.id).display.isBlocked else { return SessionCLI.failure(409, "blocked", exit: .blocked) }

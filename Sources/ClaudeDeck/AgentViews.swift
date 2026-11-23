@@ -206,6 +206,12 @@ struct AgentsSettingsSection: View {
                  ? "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. A closed session is also removed from the list (unless the session says --keep); its Claude conversation is kept and can be reopened from the project's \"Resume Previous Conversation…\" menu. claudedeck remove removes such a session once it has stopped. Each close and removal is in the activity log."
                  : "claudedeck close: a session may end itself and the sessions it started (and theirs), never yours. Each close is in the activity log; the session stays in the sidebar and can be resumed (unless the session says --remove).")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Resume a stopped session when a message or a decision answer arrives for it", isOn: Binding(
+                get: { model.deck.settings.autoResumeOnDelivery },
+                set: { on in model.mutate(userInitiated: false) { $0.settings.autoResumeOnDelivery = on } }
+            ))
+            Text("A Claude session a session stopped with claudedeck close (also one removed from the list, for 30 days) resumes its conversation when claudedeck send or your answer to its claudedeck decide question is for it, and gets that as its first message. Sessions you stopped yourself stay stopped. It waits in the start queue when the running cap or the Mac's load says so.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Sessions may restart command terminals in their own project", isOn: Binding(
                 get: { model.deck.settings.sessionsMayRestartProjectTerminals },
                 set: { on in model.mutate(userInitiated: false) { $0.settings.sessionsMayRestartProjectTerminals = on } }
