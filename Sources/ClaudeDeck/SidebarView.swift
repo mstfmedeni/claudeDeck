@@ -1068,9 +1068,13 @@ struct SimulatorsTray: View {
             Divider()
             Button { model.showSimulators() } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "iphone").foregroundStyle(.green)
+                    Image(systemName: "iphone").foregroundStyle(booted.isEmpty ? Color.secondary : Color.green)
                     Text("Simulators").sidebarFont(.callout, weight: .semibold)
                     Spacer()
+                    // "3 running · 7.2 GB" as plain text: booted ones (shut-down ones don't count) and their memory together; nothing when none are open.
+                    if !booted.isEmpty {
+                        Text(summary).sidebarFont(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
@@ -1081,5 +1085,24 @@ struct SimulatorsTray: View {
             .help("Simulators (File › Simulators…)")
         }
         .background(.bar)
+        // The list and memory every 30 s while the row shows; the list again when the load
+        // sampler counts a different number of booted simulators.
+        .task {
+            let sims = SimulatorsController.shared
+            while !Task.isCancelled {
+                if let counted = model.systemLoad.latest?.simulators, counted != sims.booted.count { await sims.reloadList() }
+                await sims.sampleForRemote(model: model, every: .seconds(30))
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+    }
+
+    private var booted: [Simulator] { SimulatorsController.shared.booted }
+
+    private var summary: String {
+        let total = SimulatorsController.shared.totalMemory
+        let count = String(localized: "\(booted.count) running")
+        guard total > 0 else { return count }
+        return count + " · " + ByteCountFormatter.string(fromByteCount: Int64(total), countStyle: .memory)
     }
 }

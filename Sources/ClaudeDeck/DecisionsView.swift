@@ -419,13 +419,16 @@ struct PendingDecisionsTray: View {
             Divider()
             Button { model.showDecisions() } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "signpost.right.and.left").foregroundStyle(.orange)
+                    // Nothing waiting: a plain row, no orange and no "0" badge.
+                    Image(systemName: "signpost.right.and.left").foregroundStyle(pending.isEmpty ? Color.secondary : Color.orange)
                     Text("Your Decisions").sidebarFont(.callout, weight: .semibold)
                     Spacer()
-                    Text("\(pending.count)").sidebarFont(.caption, weight: .bold).monospacedDigit()
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7).padding(.vertical, 1)
-                        .background(Color.orange, in: Capsule())
+                    if !pending.isEmpty {
+                        Text("\(pending.count)").sidebarFont(.caption, weight: .bold).monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7).padding(.vertical, 1)
+                            .background(Color.orange, in: Capsule())
+                    }
                 }
                 .contentShape(Rectangle())
             }
