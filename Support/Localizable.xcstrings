@@ -25423,6 +25423,36 @@
           }
         }
       }
+    },
+    "Refuse this request?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu istek reddedilsin mi?"
+          }
+        }
+      }
+    },
+    "The session is told no; it would have to ask again.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturuma hayır denir; tekrar sorması gerekir."
+          }
+        }
+      }
+    },
+    "Make this purchase?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu satın alma yapılsın mı?"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

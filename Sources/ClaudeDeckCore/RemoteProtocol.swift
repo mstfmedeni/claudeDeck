@@ -1200,11 +1200,10 @@ public struct OwnerApproval: Codable, Sendable, Equatable, Identifiable {
     public var createdAt: Date
     /// No answer by then: refused.
     public var expiresAt: Date
-    /// Whether a phone may approve it. False for purchases (they're approved on the Mac only)
-    /// and, for now, for every ServerPlan gate (those were only ever approved on the Mac).
+    /// Whether a phone may approve it. The Mac sets it for every approval since 0.6.28 (the
+    /// paired phone is the owner's); the phone asks once more before approving a purchase.
     public var phoneMayApprove: Bool
-    /// Whether a phone may refuse it (refusing never changes anything; purchases stay read-only
-    /// on the phone all the same).
+    /// Whether a phone may refuse it (refusing never changes anything).
     public var phoneMayRefuse: Bool
 
     public init(id: String, kind: Kind, title: String, summary: String, command: String, target: String,
@@ -1221,8 +1220,8 @@ public struct OwnerApproval: Codable, Sendable, Equatable, Identifiable {
         self.project = project
         self.createdAt = createdAt
         self.expiresAt = expiresAt
-        self.phoneMayApprove = kind == .domainPurchase ? false : phoneMayApprove
-        self.phoneMayRefuse = kind == .domainPurchase ? false : (phoneMayRefuse ?? true)
+        self.phoneMayApprove = phoneMayApprove
+        self.phoneMayRefuse = phoneMayRefuse ?? true
     }
 
     public var isPurchase: Bool { kind == .domainPurchase }

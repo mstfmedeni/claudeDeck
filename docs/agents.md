@@ -1458,7 +1458,7 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 A `claudedeck server` command the owner must approve (a ServerPlan 428 gate, a domain purchase)
 puts a card in the Mac's **Approvals** tab (a sidebar tray, a notification, and the **Approvals**
 row on the iPhone and iPad, which also lists the last 7 days of answered, refused, expired and
-cancelled ones). Purchases are approved on the Mac only; nothing is ever approved automatically.
+cancelled ones). The Mac card and the paired phone approve everything (the phone asks once more for a purchase or a refusal); a notification never approves a purchase; nothing is ever approved automatically.
 
 - **How long:** Settings › Agents › **Approval wait time** ("Onay bekleme süresi"): 15 min, 1 hour,
   4 hours, **24 hours** (default) or no limit. Purchases use the same setting. No answer by then:

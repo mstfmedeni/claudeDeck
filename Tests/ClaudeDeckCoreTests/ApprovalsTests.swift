@@ -63,11 +63,11 @@ import Testing
         #expect(!Approvals.isValidID("a_../x"))
     }
 
-    @Test func purchaseIsNeverPhoneApprovable() {
+    @Test func phoneMayAnswerWhatTheMacAllows() {
         let buy = OwnerApproval(id: "a_1", kind: .domainPurchase, title: "", summary: "", command: "domain-buy", target: "x.com",
                                 sessionID: nil, session: "", project: "", createdAt: Self.t0, expiresAt: Self.t0,
                                 phoneMayApprove: true, phoneMayRefuse: true)
-        #expect(!buy.phoneMayApprove && !buy.phoneMayRefuse)
+        #expect(buy.phoneMayApprove && buy.phoneMayRefuse)
         let gate = approval("a_2")
         #expect(!gate.phoneMayApprove && gate.phoneMayRefuse)
     }

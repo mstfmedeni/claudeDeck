@@ -2,9 +2,8 @@ import SwiftUI
 
 // Approvals a session on the Mac waits on (ServerPlan gates, domain purchases), from a Mac with
 // `Feature.approvals`, and the week's resolved ones (`Feature.approvalHistory`). The phone mostly
-// shows them: a purchase is approved on the Mac only, and so is every ServerPlan gate for now
-// (`phoneMayApprove`); what may be refused from here has a Refuse button (refusing never changes
-// anything on the servers).
+// approves or refuses them (`phoneMayApprove` / `phoneMayRefuse`): a purchase and a refusal each
+// ask once more before they're sent.
 
 extension RemoteStore {
     /// Pending approvals, the one expiring first on top (nil: the Mac doesn't send them).
@@ -158,6 +157,10 @@ struct ApprovalCardPhone: View {
     let approval: OwnerApproval
     let sending: Bool
     let answer: (Bool) -> Void
+    /// Refusing asks once: a tap meant for Approve shouldn't refuse it for good.
+    @State private var confirmRefuse = false
+    /// A purchase is real money: approving it asks once more.
+    @State private var confirmPurchase = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -188,12 +191,24 @@ struct ApprovalCardPhone: View {
                     ProgressView()
                 } else {
                     if approval.phoneMayRefuse {
-                        Button("Refuse", role: .destructive) { answer(false) }
+                        Button("Refuse", role: .destructive) { confirmRefuse = true }
                             .buttonStyle(.bordered)
+                            .confirmationDialog("Refuse this request?", isPresented: $confirmRefuse, titleVisibility: .visible) {
+                                Button("Refuse", role: .destructive) { answer(false) }
+                            } message: {
+                                Text("The session is told no; it would have to ask again.")
+                            }
                     }
                     if approval.phoneMayApprove {
-                        Button("Approve") { answer(true) }
-                            .buttonStyle(.borderedProminent)
+                        Button(approval.isPurchase ? String(localized: "Buy") : String(localized: "Approve")) {
+                            if approval.isPurchase { confirmPurchase = true } else { answer(true) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .confirmationDialog("Make this purchase?", isPresented: $confirmPurchase, titleVisibility: .visible) {
+                            Button("Buy") { answer(true) }
+                        } message: {
+                            Text(approval.summary.isEmpty ? approval.title : approval.summary)
+                        }
                     }
                 }
             }

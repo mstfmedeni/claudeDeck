@@ -82,7 +82,10 @@ extension AppModel {
         return OwnerApproval(id: id, kind: kind, title: title, summary: text, command: command, target: target,
                              sessionID: session == nil ? nil : caller, session: session?.name ?? "claudedeck",
                              project: session.flatMap { deck.project($0.projectID)?.name } ?? "",
-                             createdAt: now, expiresAt: deck.settings.approvalWait.expiry(from: now))
+                             createdAt: now, expiresAt: deck.settings.approvalWait.expiry(from: now),
+                             // The paired phone is the owner's: it may approve everything, purchases
+                             // too (it asks once more for those). A notification still can't buy.
+                             phoneMayApprove: true)
     }
 
     /// Queues the approval, waits for the owner (or the expiry), logs how it ended. `replay` is
@@ -116,7 +119,8 @@ extension AppModel {
     }
 
     /// The owner's answer. `from`: "mac" (the card), "notification" or "phone". A purchase is
-    /// approved only from the card on the Mac; a phone gets only what the approval allows it.
+    /// approved only from the card on the Mac; a phone gets what the approval allows it
+    /// (everything since 0.6.28).
     @discardableResult
     func answerApproval(_ id: String, approve: Bool, from: String) -> Bool {
         guard let approval = approvals.book.approval(id) else { return false }
