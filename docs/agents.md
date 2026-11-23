@@ -1084,7 +1084,7 @@ claudedeck project status clear PROJECT [--json]
   terminals; not terminals a session opened with `claudedeck open`). Reading needs only `list`.
 - **Routes:** `GET /v1/cli/project-status` (every project), `GET /v1/cli/projects/{ref}/status`,
   `POST /v1/cli/projects/{ref}/status` (`text`, `summary`, `tone`; `clear=1` removes it). JSON:
-  `{"projectId","project","text","summary","tone","updatedAt","updatedBy","stale","coordinator"}`
+  `{"project_id","project","text","summary","tone","updated_at","updated_by","stale","coordinator"}`
   (every key always there, null when unset; the list is an array of these for every project).
 - Stored on the project in deck.json (`status`: `text`, `summary`, `tone`, `updatedAt`,
   `updatedBy` = the session's name); older files without it decode as no status. Every set,
