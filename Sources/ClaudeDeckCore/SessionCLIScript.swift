@@ -126,7 +126,7 @@ extension SessionCLI {
 
     The Mac's load and build slots (Settings > Resources):
       claudedeck load [--json] [--detail]
-          ok, busy or overloaded, with the load, memory, booted simulators, compiler processes,
+          ok, busy or overloaded, with the load, memory, booted simulators, running builds,
           Claude sessions, who holds the build slots and which overload trigger fired. --detail
           adds CPU and memory per session (with its child processes) and per project. Busy holds
           nothing back; only overloaded does. Check it before heavy work.
@@ -1926,7 +1926,7 @@ extension SessionCLI {
       runs the command, so it's always safe to use.
     - Slots also go back when your session ends, or after 60 minutes (Settings > Resources).
     - `overloaded` means a real risk of the Mac freezing: critical memory pressure, swap growing
-      fast under pressure, too many compilers, an extreme load (10 x cores for 3 minutes) or
+      fast under pressure, too many builds at once, an extreme load (10 x cores for 3 minutes) or
       process count (3,000) by default. `busy` (a high load average) is informational: nothing is
       held back. Work normally while busy.
     - Before starting heavy work, `claudedeck load`: when it says `overloaded`, put off builds and

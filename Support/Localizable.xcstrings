@@ -21464,16 +21464,6 @@
         }
       }
     },
-    "%lld compiler processes · slots %lld/%lld": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld derleyici süreci · yuva %lld/%lld"
-          }
-        }
-      }
-    },
     "%lld Claude sessions · %lld processes": {
       "localizations": {
         "tr": {
@@ -22024,26 +22014,6 @@
         }
       }
     },
-    "more than %lld build processes": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld derleme işleminden fazla"
-          }
-        }
-      }
-    },
-    "Every app build runs several of these (compiler, linker).": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her uygulama derlemesi bunlardan birkaçını çalıştırır."
-          }
-        }
-      }
-    },
     "above %lld": {
       "localizations": {
         "tr": {
@@ -22420,16 +22390,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Takas alanı"
-          }
-        }
-      }
-    },
-    "Compilers": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Derleyiciler"
           }
         }
       }
@@ -24894,16 +24854,6 @@
         }
       }
     },
-    "Busy means the Mac is working hard but isn't at risk. New work waits: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds the calming rules: fewer builds, one message to each agent and a notification to you.": {
-      "localizations": {
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Yoğun: Mac çok çalışıyor ama risk yok. Yeni işler bekler: yeni ajan oturumları, simülatörler ve fazladan derlemeler. Çalışan ajanlar devam eder, onlara mesaj gitmez. Aşırı yükte (fren) sakinleştirme kuralları da devreye girer: daha az derleme, her ajana bir mesaj ve sana bildirim."
-          }
-        }
-      }
-    },
     "Busy: new work waits (new sessions, simulators, extra builds); running agents carry on.": {
       "localizations": {
         "tr": {
@@ -25210,6 +25160,96 @@
           "stringUnit": {
             "state": "translated",
             "value": "Yeni ajan oturumları bekliyor: %@"
+          }
+        }
+      }
+    },
+    "%lld running (limit %lld) · %lld compiler processes · slots %lld/%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld çalışıyor (sınır %lld) · %lld derleyici süreci · yuva %lld/%lld"
+          }
+        }
+      }
+    },
+    "more than %lld builds at once": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aynı anda %lld derlemeden fazla"
+          }
+        }
+      }
+    },
+    "Each xcodebuild, swift build or Xcode build counts once, however many compiler processes it runs (usually one per core). Counts only while the load is high or memory is tight.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her xcodebuild, swift build ya da Xcode derlemesi, kaç derleyici süreci çalıştırırsa çalıştırsın (genelde çekirdek başına bir) tek derleme sayılır. Yalnızca yük yüksekken ya da bellek darken hesaba katılır."
+          }
+        }
+      }
+    },
+    "Busy means the Mac is working hard but isn't at risk. With this choice new work waits while busy: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds fewer builds, one message to each agent and a notification to you.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yoğun: Mac çok çalışıyor ama risk yok. Bu seçimle yoğunken yeni işler bekler: yeni ajan oturumları, simülatörler ve fazladan derlemeler. Çalışan ajanlar devam eder, onlara mesaj gitmez. Aşırı yükte (fren) buna daha az derleme, her ajana bir mesaj ve sana bildirim eklenir."
+          }
+        }
+      }
+    },
+    "Busy means the Mac is working hard but isn't at risk: it is only shown and nothing waits. New work waits only while braking (overloaded), which also means fewer builds, one message to each agent and a notification to you.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yoğun: Mac çok çalışıyor ama risk yok; sadece gösterilir, hiçbir şey beklemez. Yeni işler yalnızca fren varken (aşırı yükte) bekler; o zaman daha az derleme yapılır, her ajana bir mesaj ve sana bildirim gider."
+          }
+        }
+      }
+    },
+    "%lld (%lld compiler processes)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld (%lld derleyici süreci)"
+          }
+        }
+      }
+    },
+    "%lld builds running, %lld compiler processes · overloaded above %lld builds": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld derleme çalışıyor, %lld derleyici süreci · %lld derlemenin üstü aşırı yük"
+          }
+        }
+      }
+    },
+    "limit %lld · slots %lld/%lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "sınır %lld · slot %lld/%lld"
+          }
+        }
+      }
+    },
+    "Compiler processes: %lld": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derleyici süreçleri: %lld"
           }
         }
       }

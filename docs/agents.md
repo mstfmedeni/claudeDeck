@@ -347,12 +347,28 @@ overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_ma
 Many sessions share one Mac; thirty compiles, a dozen simulators and forty Claude sessions with
 their MCP servers can push it to a load of 1,000, where ClaudeDeck itself stops answering.
 ClaudeDeck samples the system every 12 seconds off the main thread (load average, memory
-pressure and use, swap, booted simulators counted as `launchd_sim` processes, compiler and linker
-processes, the process count, its own running Claude sessions) and derives a level:
+pressure and use, swap, booted simulators counted as `launchd_sim` processes, running builds and
+the compiler and linker processes under them, the process count, its own running Claude sessions)
+and derives a level:
 
-Two levels, two meanings: `busy` means **new work waits** (running agents are not told anything
-and go on); `overloaded` means a real risk of the Mac locking up, and **calming rules** kick in on
-top of that. Each overload trigger has its own switch and value in
+**Builds, not compiler processes.** One `xcodebuild` or `swift build` runs one `swift-frontend` per
+core, so the compiler process count (45 with 2–3 builds on a 20-core Mac) says nothing about how
+many builds run. A build is one running build driver, found with one pass over the process table
+(pid, parent, name):
+
+- `xcodebuild` and `swift-build` always count (also while resolving packages or running tests);
+- `swiftc` / `swift-driver` / `clang` / `clang++` count when started on their own (`swiftc a.swift`);
+- Xcode.app's build service (`SWBBuildService`, older `XCBBuildService`), `swift test` / `swift run`
+  and `cmake` / `make` / `ninja` count only while compiler processes run under them (the build
+  service stays alive idle; `swift test` goes on running the tests);
+- any of these counts only when none of them is above it, so `xcodebuild → SWBBuildService →
+  swift-frontend × 20` is one build; compiler processes with none of them above count once per
+  parent process;
+- Gradle and the Kotlin daemon are not counted: they run as `java` and compile inside the JVM.
+
+Two levels, two meanings: `busy` is **informational** by default (nothing waits; it can be set to
+hold new work); `overloaded` means a real risk of the Mac locking up: new work waits and
+**calming rules** kick in. Each overload trigger has its own switch and value in
 Settings › Resources ("Ne zaman fren yapılsın?"), shown there with its live value (red while it
 fires):
 
@@ -361,14 +377,14 @@ fires):
 | `pressure` | macOS memory pressure **critical** (or, by the setting, high/warning) |
 | `swap_growth` | swap grows by more than **2 GB within 5 minutes** while memory pressure is warning or worse |
 | `swap_size` | swap above 64 GB (**off** by default: a big swap alone doesn't freeze the Mac) |
-| `compilers` | more than **60 % of the cores** in compiler and linker processes (12 on a 20-core Mac), counted steady: the median of the last 3 samples (a Swift build's short-lived `swift-frontend` jobs make one sample read 22 and the next 6), and only with a busy load or memory pressure |
+| `compilers` | more than **a third of the cores** in builds at once (at least 3; 7 on a 20-core Mac; settable 1–64), counted steady: the median of the last 3 samples (a short build shows in one sample only), and only with a busy load or memory pressure. The name stays `compilers`; until 0.6.24 it counted compiler processes (`unit` was `processes`, now `builds`) |
 | `load` | the 1-minute load above **10 × cores** (200 on a 20-core Mac) for **3 minutes** |
 | `processes` | more than **3,000** processes |
 
 | Level | When |
 |---|---|
 | `overloaded` | any switched-on trigger fires |
-| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the compiler limit (steady count). **New work waits** (with the brake on and Settings › Resources › "Meşgulken" on "Yeni işleri beklet", the default since 0.6.20): `new` answers `429 busy` (exit 4) or, with `--queue`, queues (reason `busy`), the start queue doesn't drain, `sim acquire` answers `429 busy`, and build slots drop to half, rounded up (more than while overloaded when there are enough). Running agents get no message. "Sadece göster" makes it informational. Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
+| `busy` | the load above **2 × cores** for a minute, memory pressure warning, or more than half the build limit (steady count; 4 builds on a 20-core Mac). **Informational** by default (Settings › Resources › "Meşgulken" on "Sadece göster"): nothing waits, every build slot is handed out. With "Yeni işleri beklet" (and the brake on) new work waits: `new` answers `429 busy` (exit 4) or, with `--queue`, queues (reason `busy`), the start queue doesn't drain, `sim acquire` answers `429 busy`, and build slots drop to half, rounded up (more than while overloaded when there are enough). Running agents get no message either way. Booted simulators never make the Mac busy: their cap only refuses `sim acquire` |
 | `ok` | otherwise |
 
 Hysteresis: overloaded ends once no trigger fires and the load and process count have stayed
@@ -389,11 +405,13 @@ session is idle (between turns, never interrupting one), and not again while a c
 
 Settings saved by 0.6.12 or earlier with the first defaults (overloaded at 2 × cores, busy at
 1 × cores) move to the new ones when read; values the owner had changed are kept. Settings saved
-by 0.6.19 or earlier with "Meşgulken: hiçbir şey yapma" (then the default) move to "Yeni işleri
-beklet".
+by 0.6.24 or earlier (settings version 3 or older) go to "Meşgulken: Sadece göster" (0.6.20 had
+moved everyone to "Yeni işleri beklet"; pick it again to have it), and their overload limit for
+`compilers` goes back to the default: it was a compiler process count (12, 30…) and means nothing
+as a build count.
 
-With **"Ajanlara fren yap"** (Settings › Resources, on by default), while overloaded (everything
-busy holds, plus the calming rules: the one queued message per episode above and the owner's
+With **"Ajanlara fren yap"** (Settings › Resources, on by default), while overloaded (new work
+waits, plus the calming rules: the one queued message per episode above and the owner's
 notification):
 
 - `claudedeck new` answers `429 overloaded` (exit 4, checked before the rate limit, so it costs no
@@ -410,7 +428,7 @@ claudedeck load [--json] [--detail]
 # load: 120.4 on 20 cores (6.02 per core), 5 min 98.1
 # memory: 92% used, pressure warning, swap 6144 MB
 # simulators: 11 booted (sim acquire allows 4)
-# compilers: 30 processes now, 24 steady (median of the last 3 samples)
+# builds: 9 now, 8 steady (median of the last 3 samples), 120 compiler processes
 # sessions: 37 Claude sessions (5/8 agent-started), 3400 processes
 # build slots: 1/1 used, 2 waiting (3 when not overloaded)
 #   b_1a2b3c4d  iOS build bot  12m  xcodebuild -scheme App build
@@ -418,7 +436,7 @@ claudedeck load [--json] [--detail]
 #   ok   memory pressure >= critical (now warning)
 #   ok   swap +2.0 GB in 5 min under pressure (now +0.4)
 #   off  swap > 64.0 GB (now 6.0)
-#   FIRE compilers > 12 (now 30)
+#   FIRE builds > 7 (now 8)
 #   ok   load > 10.0 x cores for 3.0 min (now 6.02)
 #   FIRE processes > 3000 (now 3400)
 # --detail adds:
@@ -432,7 +450,7 @@ claudedeck slot release build [SLOT_ID]
 ```
 
 - **Build slots** are a global semaphore: **"Aynı anda derleme"** (a sixth of the cores, 1–8: 3
-  on a 20-core Mac; half, rounded up, while busy holds new work (2 of 3); 1 while overloaded, by its own setting). `slot acquire --wait` waits in line,
+  on a 20-core Mac; half, rounded up, while busy holds new work, if set (2 of 3); 1 while overloaded, by its own setting). `slot acquire --wait` waits in line,
   first come first served: the command asks again every 25 s with the same ticket and keeps its
   place; a ticket not seen for 45 s gives it up. No slot in time: `429 no_slot`, exit 124.
 - `heavy` waits for a slot (default up to 3600 s), runs the command, releases the slot (also on
@@ -445,8 +463,9 @@ claudedeck slot release build [SLOT_ID]
 - `claudedeck status ID` lists the slots a session holds; `load --json` has `level`,
   `throttled` (something is held back now), `holds_starts`, `throttle`, `busy_action`
   (`nothing` / `hold_starts`), `load1`, `load5`, `cores`, `load_per_core`, `memory_pressure`,
-  `memory_used_percent`, `swap_used_mb`, `simulators`, `max_simulators`, `compilers`, `max_compilers`,
-  `processes`, `sessions`, `build_slots` (handed out now), `slots_available`, `slots_waiting`, `slots`
+  `memory_used_percent`, `swap_used_mb`, `simulators`, `max_simulators`, `builds` (running now),
+  `max_builds` (the `compilers` trigger's limit), `compiler_processes`, `compilers` and `max_compilers`
+  (the same as `builds` and `max_builds` after 0.6.24; they counted compiler processes before), `processes`, `sessions`, `build_slots` (handed out now), `slots_available`, `slots_waiting`, `slots`
   (`id`, `session`, `session_name`, `label`, `since`), `sampled_at`, `contributors`, `triggers`
   (each `trigger`, `enabled`, `threshold`, `current`, `unit`, `firing`, and `minutes` /
   `above_for` where they apply), `fired` (the trigger names firing now), `limits` (`build_slots`,
@@ -463,12 +482,15 @@ claudedeck slot release build [SLOT_ID]
   memory; Shut Down, with confirmation, only for ClaudeDeck-held ones), running builds and build
   slot holders, agent sessions idle for 15 minutes with "Boşta olanları kapat" (agent-started
   sessions only, never the owner's), the last hour as charts (load per core, memory, swap,
-  simulators, compilers) and the ten heaviest processes outside ClaudeDeck. Processes are only
+  simulators, builds, compiler processes) and the ten heaviest processes outside ClaudeDeck. Processes are only
   measured while that tab is on screen (every 3 s), while a phone is connected, or on `load
   --detail`/`--json`; the 12-second background sample stays a few sysctls.
 - Phone: the dashboard's load card (snapshot field `load`, hosts with the `load` feature); with
   `loadDetail`, `load.top` (heaviest sessions), `load.booted_simulators` and `load.fired` add an
-  optional "What is using the Mac" list. Older phones ignore the new fields.
+  optional "What is using the Mac" list. Older phones ignore the new fields. `load.builds` (and
+  `history[].builds`) are builds now (compiler processes from Macs up to 0.6.24); the optional
+  `load.max_builds` (the limit) and `load.compiler_processes` (set with `running_builds`, while
+  measured) come with them.
 - Testing: in demo mode with `CLAUDEDECK_SNAPSHOT_DIR`, a file `load.inject` containing
   `overloaded`, `busy`, `ok`, a JSON sample, or `real` replaces the measured numbers; an empty
   file `load.tab` opens the "Mac Yükü" tab.

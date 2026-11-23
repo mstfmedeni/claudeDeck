@@ -189,7 +189,8 @@ public struct RemoteLoad: Codable, Sendable, Equatable {
     public var memoryPercent: Int
     public var memoryPressure: String
     public var simulators: Int
-    /// Compiler and linker processes.
+    /// Builds running (one per build driver, `LoadSample.builds`). Macs before builds were counted
+    /// sent compiler and linker processes here.
     public var builds: Int
     /// Claude sessions running on the Mac.
     public var sessions: Int
@@ -210,6 +211,10 @@ public struct RemoteLoad: Codable, Sendable, Equatable {
     public var slotHolders: [SlotHolder]?
     /// Compiler and linker processes running now, the busiest first (hosts with `Feature.loadHistory`, while measured).
     public var runningBuilds: [Build]?
+    /// The overload limit for `builds` (nil from Macs before builds were counted).
+    public var maxBuilds: Int?
+    /// How many compiler and linker processes run now (set with `runningBuilds`, while measured).
+    public var compilerProcesses: Int?
 
     public static let maxHistory = 60
     public static let maxBuilds = 8

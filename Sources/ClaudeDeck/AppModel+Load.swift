@@ -58,14 +58,14 @@ extension AppModel {
         if told > 0 { logAgent("ClaudeDeck", inbound: false, "Mac overloaded: queued a message for \(told) agents to postpone heavy work") }
     }
 
-    /// "11 simulators booted, 30 builds, 37 sessions · load 42 on 20 cores" (localized).
+    /// "11 simulators booted, 3 builds, 37 sessions · load 42 on 20 cores" (localized).
     static func overloadSummary(_ sample: LoadSample, thresholds: LoadThresholds) -> String {
         var parts: [String] = []
         var loadText: String?
         for contributor in LoadContributor.of(sample, thresholds: thresholds) {
             switch contributor {
             case .simulators(let n): parts.append(String(localized: "\(n) simulators booted"))
-            case .compilers(let n): parts.append(String(localized: "\(n) builds"))
+            case .builds(let n): parts.append(String(localized: "\(n) builds"))
             case .sessions(let n): parts.append(String(localized: "\(n) sessions"))
             case .memory(let pressure):
                 parts.append(pressure == .critical ? String(localized: "memory pressure critical") : String(localized: "memory pressure high"))
@@ -88,7 +88,7 @@ extension AppModel {
             if systemLoad.level == .overloaded {
                 let monitor = systemLoad.monitor
                 let triggers = monitor.fired.isEmpty ? monitor.lastFired : monitor.fired
-                // "too many builds 45/30": the number now against the limit, as the Load tab shows it.
+                // "too many builds 8/7": the number now against the limit, as the Load tab shows it.
                 let names = triggers.map { trigger in
                     let name = Self.triggerName(trigger)
                     guard let state = monitor.triggers.first(where: { $0.trigger == trigger }),

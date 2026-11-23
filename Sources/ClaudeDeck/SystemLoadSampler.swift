@@ -9,19 +9,19 @@ enum SystemLoadSampler {
     nonisolated static func sample(at date: Date = Date()) -> LoadSample {
         var averages = [Double](repeating: 0, count: 3)
         let read = getloadavg(&averages, 3)
-        let names = processNames()
-        let counted = LoadProcesses.count(names)
+        let counted = LoadProcesses.count(processTable())
         return LoadSample(at: date, load1: read >= 1 ? averages[0] : 0, load5: read >= 2 ? averages[1] : 0,
                           cores: ProcessInfo.processInfo.activeProcessorCount, pressure: MemoryPressure(kernelLevel: pressureLevel()),
                           memoryUsedPercent: memoryUsedPercent(), swapUsedBytes: swapUsed(), simulators: counted.simulators,
-                          compilers: counted.compilers, processes: names.count)
+                          compilers: counted.compilers, builds: counted.builds, processes: counted.processes)
     }
 
     /// Booted simulators right now (`claudedeck sim acquire` checks this, not a sample).
-    nonisolated static func bootedSimulators() -> Int { LoadProcesses.count(processNames()).simulators }
+    nonisolated static func bootedSimulators() -> Int { LoadProcesses.count(processTable()).simulators }
 
-    /// Every process's short name (`proc_name`, at most 16 characters).
-    nonisolated static func processNames() -> [String] {
+    /// Every process with its parent and short name: one `proc_pidinfo(PROC_PIDT_SHORTBSDINFO)`
+    /// each (as cheap as `proc_name`, and it carries the parent the build count needs).
+    nonisolated static func processTable() -> [LoadProcess] {
         // proc_listallpids answers in bytes with a nil buffer on some releases and in pids on others:
         // room for either, plus processes started between the two calls (zeros are skipped).
         let estimate = proc_listallpids(nil, 0)
@@ -29,15 +29,16 @@ enum SystemLoadSampler {
         var pids = [pid_t](repeating: 0, count: Int(estimate) + 256)
         let count = pids.withUnsafeMutableBytes { proc_listallpids($0.baseAddress, Int32($0.count)) }
         guard count > 0 else { return [] }
-        var names: [String] = []
-        names.reserveCapacity(Int(count))
-        var buffer = [CChar](repeating: 0, count: 64)
+        var table: [LoadProcess] = []
+        table.reserveCapacity(Int(count))
+        var info = proc_bsdshortinfo()
+        let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
         for pid in pids.prefix(Int(count)) where pid > 0 {
-            let length = proc_name(pid, &buffer, UInt32(buffer.count))
-            guard length > 0 else { continue }
-            names.append(String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self))
+            guard proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size else { continue }
+            let name = withUnsafeBytes(of: &info.pbsi_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            table.append(LoadProcess(pid: pid, ppid: Int32(info.pbsi_ppid), name: name))
         }
-        return names
+        return table
     }
 
     /// Every process with its parent, name, start time, CPU time and resident memory (libproc:
