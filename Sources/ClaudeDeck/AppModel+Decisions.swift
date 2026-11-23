@@ -232,10 +232,9 @@ extension AppModel {
             return
         case .cancelled(let decision):
             var delivery = "no_session"
-            // A stopped (or removed) session a session closed resumes with it as its first message.
-            if let sessionID = decision.sessionID, let resumed = deliverDecisionByResume(sessionID, text: Decisions.dismissedMessage(for: decision), decision: decision.id) {
-                delivery = resumed
-            } else if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
+            // A dismissal alone doesn't wake a stopped session (it would take a place just to hear
+            // "the owner removed it"): the note waits in its queue for when it runs again.
+            if let sessionID = decision.sessionID, let session = deck.session(sessionID) {
                 if session.kind == .claude {
                     enqueue(sessionID, text: Decisions.dismissedMessage(for: decision))
                     delivery = "queued"
