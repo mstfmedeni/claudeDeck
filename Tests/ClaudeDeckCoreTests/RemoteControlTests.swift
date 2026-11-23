@@ -69,31 +69,31 @@ import Testing
 
     // MARK: The dialog
 
-    /// The bottom of the screen with the dialog open, as Claude Code 2.1.283 draws it.
+    /// The bottom of the screen with the dialog open: a real Claude Code 2.1.283 session's output
+    /// rendered by SwiftTerm at 120 columns (trailing spaces trimmed).
     private let dialog = [
-        "❯ /remote-control",
-        "────────────────────────────────",
-        " Remote Control",
+        "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Advisor Tool (experimental) is on and may use more tokens · /advisor ▔",
+        "   Remote Control",
         "",
-        " This session is available in the Claude mobile app and at https://claude.ai/code/session_01.",
+        "   This session is available in the Claude mobile app and at https://claude.ai/code/session_01R81gZDGpgHvgXWdge4crND.",
         "",
-        "   Disconnect this session",
-        "   Show QR code  Scan with your phone to open this session",
-        " ❯ Continue",
+        "     Disconnect this session",
+        "     Show QR code   Scan with your phone to open this session",
+        "   ❯ Continue",
         "",
-        " Enter to select · Esc to continue",
+        "   Enter to select · Esc to continue",
     ]
 
     @Test func spotsTheDisconnectDialog() {
         #expect(RemoteControl.showsDisconnectDialog(dialog))
         // QR code shown: the row's label changes.
         var shown = dialog
-        shown[7] = "   Hide QR code"
+        shown[6] = "     Hide QR code"
         #expect(RemoteControl.showsDisconnectDialog(shown))
         // Focus moved to the first row.
         var moved = dialog
-        moved[6] = " ❯ Disconnect this session"
-        moved[8] = "   Continue"
+        moved[5] = "   ❯ Disconnect this session"
+        moved[7] = "     Continue"
         #expect(RemoteControl.showsDisconnectDialog(moved))
     }
 
@@ -110,10 +110,10 @@ import Testing
         ]
         #expect(!RemoteControl.showsDisconnectDialog(chat))
         // Only the title and the first row (drawn halfway, or a different dialog).
-        #expect(!RemoteControl.showsDisconnectDialog(Array(dialog.prefix(7))))
+        #expect(!RemoteControl.showsDisconnectDialog(Array(dialog.prefix(6))))
         // Rows out of order.
         var shuffled = dialog
-        shuffled.swapAt(6, 8)
+        shuffled.swapAt(5, 7)
         #expect(!RemoteControl.showsDisconnectDialog(shuffled))
         // No footer: not the select dialog.
         #expect(!RemoteControl.showsDisconnectDialog(Array(dialog.dropLast())))

@@ -175,6 +175,8 @@ final class AppModel {
     /// When ClaudeDeck resumed each session ("Keep Remote Control off" watches the next minute and a half).
     @ObservationIgnored var remoteControlResumedAt: [UUID: Date] = [:]
     @ObservationIgnored var remoteControlTask: Task<Void, Never>?
+    /// Sessions whose `/compact` or continue message after a resume is still being typed (afterResume).
+    @ObservationIgnored var resumeTyping: Set<UUID> = []
     // MARK: Remote Control — end
     /// Hook files older than the terminal's launch belong to a previous process.
     @ObservationIgnored private var launchedAt: [UUID: Date] = [:]
@@ -802,7 +804,10 @@ final class AppModel {
         let wantsContinue = pendingContinue.remove(id) != nil
         guard wantsCompact || wantsContinue else { return }
         let threshold = deck.settings.compactThresholdTokens
+        // Until the last of it is typed, nothing else types into it (the Remote Control off).
+        resumeTyping.insert(id)
         Task { @MainActor in
+            defer { resumeTyping.remove(id) }
             // Give the TUI a moment to draw its prompt; then type like the user would.
             try? await Task.sleep(for: .seconds(2))
             if wantsCompact, let transcript {

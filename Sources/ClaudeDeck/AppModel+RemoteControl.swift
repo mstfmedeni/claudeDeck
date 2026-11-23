@@ -111,7 +111,8 @@ extension AppModel {
                 readOnly: terminals.readOnlySessions.contains(id),
                 on: sid.flatMap { registry[$0] }?.isOn == true,
                 switching: switchingAccounts.contains(id) || accountSwitchPending(id),
-                typingPending: pendingCompact.contains(id) || pendingContinue.contains(id) || cliCompactsPending.contains(id),
+                typingPending: pendingCompact.contains(id) || pendingContinue.contains(id) || resumeTyping.contains(id)
+                    || cliCompactsPending.contains(id),
                 progress: cliProgress(id))
             switch step {
             case .skip(.alreadyOff): return nil
