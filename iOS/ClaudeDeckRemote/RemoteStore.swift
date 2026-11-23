@@ -170,8 +170,10 @@ final class RemoteStore {
 
     static let deviceName = UIDevice.current.name
     /// Poll intervals (s) with a Mac that pushes conversation changes (`Feature.conversationPush`):
-    /// long, to save battery; 4 s without.
-    static let pushedConversationPoll: Double = 20
+    /// longer, to save battery; 4 s without. The conversation's is short all the same: it is the
+    /// only thing that brings a reply whose notice got lost, and a poll the Mac answers from its
+    /// cache costs one file size check and an empty page.
+    static let pushedConversationPoll: Double = 5
     static let pushedEditsPoll: Double = 15
 
     var connectedVia: String? { hostConnection?.connectedAddress }
