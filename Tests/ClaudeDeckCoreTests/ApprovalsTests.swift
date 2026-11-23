@@ -280,6 +280,148 @@ import Testing
         #expect(week.map(\.id) == ["a_1"])
     }
 
+    // MARK: Approve anyway (changing a refused or expired answer)
+
+    static let replay = ApprovalReplay(caller: UUID(), command: "container-recreate", method: "POST", form: ["server": "s1"], json: false)
+    static let refusedCall = ApprovalCallResult(SessionCLI.failure(403, "owner_refused", exit: .refused))
+
+    /// A book with `id` resolved as `outcome` at t0, its call attached, and the asking call's answer set.
+    func resolvedBook(_ outcome: ApprovalOutcome, id: String = "a_1", kind: OwnerApproval.Kind = .serverPlan,
+                      replay: Bool = true) -> ApprovalBook {
+        var book = ApprovalBook()
+        book.add(approval(id, kind: kind))
+        if replay { book.attach(Self.replay, to: id) }
+        _ = book.resolve(id, outcome, from: "phone", at: Self.t0)
+        book.setResult(id, outcome == .approved ? ApprovalCallResult(AgentHTTPResponse(status: 200, body: Data("ok".utf8))) : Self.refusedCall,
+                       line: outcome == .approved ? "ok" : nil)
+        return book
+    }
+
+    @Test func reapproveWindowAndEligibility() {
+        let window = Approvals.changeWindow
+        #expect(window == 24 * 3600)
+        let refused = resolvedBook(.refused)
+        #expect(refused.replays["a_1"] == Self.replay)  // kept after the refusal's answer
+        #expect(refused.mayReapprove("a_1", now: Self.t0))
+        #expect(refused.mayReapprove("a_1", now: Self.t0.addingTimeInterval(window - 1)))
+        #expect(!refused.mayReapprove("a_1", now: Self.t0.addingTimeInterval(window)))  // the window's end is out
+        #expect(resolvedBook(.expired).mayReapprove("a_1", now: Self.t0))
+        #expect(resolvedBook(.refused, kind: .domainPurchase).mayReapprove("a_1", now: Self.t0))  // purchases too
+        #expect(!resolvedBook(.approved).mayReapprove("a_1", now: Self.t0))
+        #expect(!resolvedBook(.cancelled).mayReapprove("a_1", now: Self.t0))
+        // Nothing kept to run (an approval with no call behind it, or one refused by 0.6.28 or earlier).
+        #expect(!resolvedBook(.refused, replay: false).mayReapprove("a_1", now: Self.t0))
+        #expect(!refused.mayReapprove("a_9", now: Self.t0))
+        // The pure rule.
+        let item = ResolvedApproval(approval: approval("a_2"), outcome: .refused, from: "mac", resolvedAt: Self.t0)
+        #expect(Approvals.mayReapprove(item, hasReplay: true, now: Self.t0))
+        #expect(!Approvals.mayReapprove(item, hasReplay: false, now: Self.t0))
+        #expect(Approvals.reapprovableUntil(item) == Self.t0.addingTimeInterval(window))
+    }
+
+    @Test func reapproveFlipsAndHandsBackTheCall() throws {
+        var book = resolvedBook(.refused)
+        let later = Self.t0.addingTimeInterval(3600)
+        let result = book.reapprove("a_1", from: "mac", at: later)
+        let (changed, replay) = try #require(result)
+        #expect(replay == Self.replay)
+        #expect(changed.outcome == .approved && changed.changedFrom == .refused && changed.changedAt == later)
+        #expect(changed.from == "mac" && changed.resolvedAt == Self.t0 && changed.result == nil)
+        // The refusal's answer and the call are gone: `approval wait` waits for the new run.
+        #expect(book.results["a_1"] == nil && book.replays["a_1"] == nil)
+        #expect(book.reapprove("a_1", from: "mac", at: later) == nil)  // once
+        #expect(book.status("a_1")?.status == "approved" && book.status("a_1")?.changedFrom == "refused")
+        // The run answers.
+        book.setResult("a_1", ApprovalCallResult(AgentHTTPResponse(status: 200, body: Data("recreated web".utf8))), line: "recreated web")
+        let done = try #require(book.resolved("a_1"))
+        #expect(done.result == "recreated web")
+        #expect(book.status("a_1")?.text() == "a_1 approved (was refused): s wants a_1 → recreated web")
+        var withCommand = done
+        withCommand.approval.command = "container-recreate"
+        #expect(Approvals.message(for: withCommand)
+                == "[ClaudeDeck approval a_1] The owner changed the answer to approved; ClaudeDeck ran `server container recreate web`: recreated web")
+        // Outside the window: nothing to change.
+        var late = resolvedBook(.expired)
+        #expect(late.reapprove("a_1", from: "mac", at: Self.t0.addingTimeInterval(Approvals.changeWindow)) == nil)
+        #expect(late.resolved("a_1")?.outcome == .expired)
+    }
+
+    @Test func pruneDropsCallsNothingCanRun() {
+        var book = resolvedBook(.refused)
+        book.add(approval("a_p"))
+        book.attach(Self.replay, to: "a_p")
+        // Approved, its call not answered yet (about to run after a relaunch): kept.
+        book.add(approval("a_r"))
+        book.attach(Self.replay, to: "a_r")
+        _ = book.resolve("a_r", .approved, from: "mac", at: Self.t0)
+        book.prune(now: Self.t0.addingTimeInterval(60))
+        #expect(Set(book.replays.keys) == ["a_1", "a_p", "a_r"])
+        // Past the window: only the pending one's call stays.
+        book.prune(now: Self.t0.addingTimeInterval(Approvals.changeWindow))
+        #expect(Set(book.replays.keys) == ["a_p"])
+        // An approved one's call goes once it answered.
+        var approved = resolvedBook(.approved)
+        approved.prune(now: Self.t0)
+        #expect(approved.replays.isEmpty)
+    }
+
+    @MainActor @Test func queueReapproveAndRestorePrunes() throws {
+        var clock = Self.t0
+        let queue = ApprovalQueue(now: { clock })
+        var updates: [String] = []
+        queue.observe { if case .updated(let id) = $0 { updates.append(id) } }
+        queue.restore(resolvedBook(.refused))
+        #expect(queue.book.mayReapprove("a_1", now: clock))
+        let (changed, _) = try #require(queue.reapprove("a_1", from: "phone"))
+        #expect(changed.from == "phone" && updates == ["a_1"])
+        #expect(queue.reapprove("a_1", from: "phone") == nil)
+        // Restored a day later: the kept call is dropped.
+        clock = Self.t0.addingTimeInterval(Approvals.changeWindow + 1)
+        let later = ApprovalQueue(now: { clock })
+        later.restore(resolvedBook(.refused))
+        #expect(later.book.replays.isEmpty && later.book.resolved("a_1")?.outcome == .refused)
+    }
+
+    /// An approvals.json from before "Approve anyway": no `changedFrom` / `changedAt`, and the
+    /// refused one's call was deleted at resolution. It reads, and can't be approved anyway.
+    @Test func oldApprovalsFileDecodes() throws {
+        let json = """
+        {"pending":[],"replays":{},"results":{},"recent":[{"approval":{"id":"a_0123456789ab","kind":"serverPlan",
+        "title":"api wants to run “container recreate” on web","summary":"recreate web","command":"container-recreate",
+        "target":"web","session":"api","project":"p","createdAt":800000000,"expiresAt":800086400,
+        "phoneMayApprove":true,"phoneMayRefuse":true},"outcome":"refused","from":"phone","resolvedAt":800000100}]}
+        """
+        let book = try JSONDecoder().decode(ApprovalBook.self, from: Data(json.utf8))
+        let item = try #require(book.resolved("a_0123456789ab"))
+        #expect(item.outcome == .refused && item.changedFrom == nil && item.changedAt == nil && item.reapprovableUntil == nil)
+        #expect(!book.mayReapprove(item.id, now: item.resolvedAt))
+        #expect(book.status(item.id)?.changedFrom == nil)
+        #expect(book.phoneHistory(now: item.resolvedAt).first?.reapprovableUntil == nil)
+    }
+
+    @Test func reapproveOnTheWireAndSnapshot() throws {
+        let frame = try RemoteMessage.reapproveApproval(id: "a_00ff").frame()
+        #expect(try RemoteMessage.decode(frame) == .reapproveApproval(id: "a_00ff"))
+        #expect(RemoteSnapshot.Feature.all.contains(RemoteSnapshot.Feature.reapproveApproval))
+        // The history the phone gets: the window's end on a changeable one only.
+        var book = resolvedBook(.refused)
+        book.add(approval("a_2"))
+        _ = book.resolve("a_2", .approved, from: "mac", at: Self.t0)
+        let history = book.phoneHistory(now: Self.t0.addingTimeInterval(60))
+        #expect(history.first { $0.id == "a_1" }?.reapprovableUntil == Self.t0.addingTimeInterval(Approvals.changeWindow))
+        #expect(history.first { $0.id == "a_2" }?.reapprovableUntil == nil)
+        #expect(book.resolved("a_1")?.reapprovableUntil == nil)  // never stored
+        // Round trip, and an older phone (no new keys known) still reads it.
+        var snapshot = RemoteSnapshot(hostName: "m", sessions: [])
+        snapshot.approvalHistory = history
+        let back = try JSONDecoder().decode(RemoteSnapshot.self, from: JSONEncoder().encode(snapshot))
+        #expect(back.approvalHistory == history)
+        let result = book.reapprove("a_1", from: "phone", at: Self.t0)
+        let changed = try #require(result)
+        let data = try JSONEncoder().encode(changed.0)
+        #expect(try JSONDecoder().decode(ResolvedApproval.self, from: data).changedFrom == .refused)
+    }
+
     @Test func routes() {
         #expect(SessionCLI.match(method: "GET", path: "/v1/cli/approvals/a_1") == .route(.approval("a_1")))
         #expect(SessionCLI.match(method: "GET", path: "/v1/cli/approvals/a_1/wait") == .route(.waitApproval("a_1")))

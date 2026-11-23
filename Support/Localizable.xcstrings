@@ -25453,6 +25453,106 @@
           }
         }
       }
+    },
+    "Approve anyway": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de onayla"
+          }
+        }
+      }
+    },
+    "Buy anyway": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de satın al"
+          }
+        }
+      }
+    },
+    "Approve anyway?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de onaylansın mı?"
+          }
+        }
+      }
+    },
+    "Buy anyway?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de satın alınsın mı?"
+          }
+        }
+      }
+    },
+    "Approve and Run": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onayla ve Çalıştır"
+          }
+        }
+      }
+    },
+    "Approved anyway": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonradan onaylandı"
+          }
+        }
+      }
+    },
+    "Approved anyway on the phone": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefonda sonradan onaylandı"
+          }
+        }
+      }
+    },
+    "Changes the answer to approved and runs the request now. Possible until %@.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cevabı onaya çevirir ve isteği şimdi çalıştırır. %@ saatine kadar yapılabilir."
+          }
+        }
+      }
+    },
+    "ClaudeDeck runs “%@” now, as the session asked, and tells the session the result.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck “%@” isteğini oturumun istediği gibi şimdi çalıştırır ve sonucu oturuma bildirir."
+          }
+        }
+      }
+    },
+    "Changeable until %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ saatine kadar değiştirilebilir"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

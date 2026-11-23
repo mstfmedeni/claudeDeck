@@ -21,6 +21,24 @@ public enum Approvals {
     public static let historyDays = 7
     /// One long-poll round of `claudedeck approval wait` (and of a gated call's first answer).
     public static let pollWindow: TimeInterval = 25
+    /// How long after a refusal (or an expiry) the owner may still change it to approved
+    /// ("Approve anyway"): the call behind it is kept on disk that long, then dropped. Fixed,
+    /// apart from the approval wait time: that one is how long a session waits for an answer,
+    /// this one is how long the owner has to notice a wrong tap ("no limit" would keep calls
+    /// forever, 15 minutes is too short to notice).
+    public static let changeWindow: TimeInterval = 24 * 3600
+
+    /// Whether a resolved approval may still be changed to approved at `now`: refused or expired,
+    /// inside the change window, and the call behind it is still kept (`hasReplay`).
+    public static func mayReapprove(_ resolved: ResolvedApproval, hasReplay: Bool, now: Date) -> Bool {
+        guard hasReplay, resolved.outcome == .refused || resolved.outcome == .expired else { return false }
+        return now < reapprovableUntil(resolved)
+    }
+
+    /// The end of a resolved approval's change window.
+    public static func reapprovableUntil(_ resolved: ResolvedApproval) -> Date {
+        resolved.resolvedAt.addingTimeInterval(changeWindow)
+    }
 
     public static func newID() -> String {
         var generator = SystemRandomNumberGenerator()
@@ -37,6 +55,10 @@ public enum Approvals {
         let head = "[ClaudeDeck approval \(resolved.approval.id)]"
         let title = resolved.approval.title
         switch resolved.outcome {
+        case .approved where resolved.changedFrom != nil:
+            let command = resolved.approval.command.replacingOccurrences(of: "-", with: " ")
+            let call = "server \(command) \(resolved.approval.target)".trimmingCharacters(in: .whitespaces)
+            return "\(head) The owner changed the answer to approved; ClaudeDeck ran `\(call)`: \(oneLine(resolved.result ?? "done"))"
         case .approved: return "\(head) Owner approved: \(title) → \(oneLine(resolved.result ?? "done"))"
         case .refused: return "\(head) Owner refused: \(title)"
         case .expired: return "\(head) Expired with no answer from the owner: \(title)"
@@ -142,10 +164,12 @@ public struct ApprovalStatus: Codable, Sendable, Equatable {
     public var expiresAt: Date?
     public var resolvedAt: Date?
     public var result: String?
+    /// The answer before the owner changed it ("refused" or "expired"); absent when never changed.
+    public var changedFrom: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, title, command, target, session, result
-        case createdAt = "created_at", expiresAt = "expires_at", resolvedAt = "resolved_at"
+        case createdAt = "created_at", expiresAt = "expires_at", resolvedAt = "resolved_at", changedFrom = "changed_from"
     }
 
     public init(pending approval: OwnerApproval) {
@@ -164,6 +188,7 @@ public struct ApprovalStatus: Codable, Sendable, Equatable {
         status = resolved.outcome.rawValue
         resolvedAt = resolved.resolvedAt
         result = resolved.result
+        changedFrom = resolved.changedFrom?.rawValue
     }
 
     /// One line for the text format.
@@ -173,7 +198,8 @@ public struct ApprovalStatus: Codable, Sendable, Equatable {
             let left = expiresAt.map { "expires in " + Self.durationText($0.timeIntervalSince(now)) } ?? "no expiry"
             return "pending approval \(id) (\(left)): \(title)"
         default:
-            return "\(id) \(status): \(title)" + (result.map { " → " + Approvals.oneLine($0) } ?? "")
+            let was = changedFrom.map { " (was \($0))" } ?? ""
+            return "\(id) \(status)\(was): \(title)" + (result.map { " → " + Approvals.oneLine($0) } ?? "")
         }
     }
 
@@ -189,7 +215,8 @@ public struct ApprovalBook: Codable, Sendable, Equatable {
     public private(set) var pending: [OwnerApproval] = []
     /// Resolved ones, newest first.
     public private(set) var recent: [ResolvedApproval] = []
-    /// The `claudedeck server` call behind each pending (or just resolved) approval, by id.
+    /// The `claudedeck server` call behind each pending (or just resolved) approval, by id; for a
+    /// refused or expired one it's kept for `Approvals.changeWindow` ("Approve anyway").
     public private(set) var replays: [String: ApprovalReplay] = [:]
     /// The answers the asking calls get, by id (kept while the approval is in `recent`).
     public private(set) var results: [String: ApprovalCallResult] = [:]
@@ -229,12 +256,56 @@ public struct ApprovalBook: Codable, Sendable, Equatable {
     }
 
     /// The asking call's answer once the gated action ran (or was refused); `line` goes on the
-    /// resolved approval (the Recent section, the message, the phone's history).
+    /// resolved approval (the Recent section, the message, the phone's history). The call behind
+    /// a refused or expired one stays (the owner may still approve it anyway); else it's dropped.
     public mutating func setResult(_ id: String, _ result: ApprovalCallResult, line: String?) {
         guard let index = recent.firstIndex(where: { $0.id == id }) else { return }
         results[id] = result
         if let line { recent[index].result = line }
-        replays[id] = nil
+        let outcome = recent[index].outcome
+        if outcome != .refused && outcome != .expired { replays[id] = nil }
+    }
+
+    /// Whether "Approve anyway" works for this one at `now` (`Approvals.mayReapprove`).
+    public func mayReapprove(_ id: String, now: Date) -> Bool {
+        guard let resolved = resolved(id) else { return false }
+        return Approvals.mayReapprove(resolved, hasReplay: replays[id] != nil, now: now)
+    }
+
+    /// "Approve anyway": a refused or expired one inside its window becomes approved (`from` is
+    /// who changed it, the old outcome goes to `changedFrom`), its old answer is dropped, and the
+    /// call behind it is handed back to be run. Nil when it may not be changed.
+    public mutating func reapprove(_ id: String, from: String, at date: Date) -> (ResolvedApproval, ApprovalReplay)? {
+        guard mayReapprove(id, now: date), let index = recent.firstIndex(where: { $0.id == id }),
+              let replay = replays.removeValue(forKey: id) else { return nil }
+        recent[index].changedFrom = recent[index].outcome
+        recent[index].changedAt = date
+        recent[index].outcome = .approved
+        recent[index].from = from
+        recent[index].result = nil
+        results[id] = nil
+        return (recent[index], replay)
+    }
+
+    /// Drops the calls nothing can run any more. Kept: a pending one's; a resolved one's whose
+    /// call hasn't answered yet (it's about to run, or runs); a refused or expired one's inside
+    /// its change window. Resolved ones are never kept past the window, whatever happened.
+    public mutating func prune(now: Date) {
+        replays = replays.filter { id, _ in
+            if approval(id) != nil { return true }
+            guard let resolved = resolved(id), now < Approvals.reapprovableUntil(resolved) else { return false }
+            return results[id] == nil || resolved.outcome == .refused || resolved.outcome == .expired
+        }
+    }
+
+    /// The phone's history: `Approvals.history`, each with its `reapprovableUntil` when it may
+    /// still be approved anyway.
+    public func phoneHistory(now: Date) -> [ResolvedApproval] {
+        Approvals.history(recent, now: now).map { item in
+            var item = item
+            item.reapprovableUntil = mayReapprove(item.id, now: now) ? Approvals.reapprovableUntil(item) : nil
+            return item
+        }
     }
 
     /// The status `claudedeck approval status` shows; nil for an unknown id.
@@ -309,13 +380,22 @@ public final class ApprovalQueue {
     /// The gated call's answer (see `ApprovalBook.setResult`).
     public func setResult(_ id: String, _ result: ApprovalCallResult, line: String?) {
         book.setResult(id, result, line: line)
+        book.prune(now: now())
         notify(.updated(id))
+    }
+
+    /// "Approve anyway" (see `ApprovalBook.reapprove`): the changed approval and the call to run.
+    public func reapprove(_ id: String, from: String) -> (ResolvedApproval, ApprovalReplay)? {
+        guard let changed = book.reapprove(id, from: from, at: now()) else { return nil }
+        notify(.updated(id))
+        return changed
     }
 
     /// The book read back from disk at launch: pending ones wait again (no running call behind
     /// them), the ones whose time ran out while the app was closed expire now.
     public func restore(_ saved: ApprovalBook) {
         book = saved
+        book.prune(now: now())
         for approval in book.pending { scheduleExpiry(approval) }
         expireDue()
     }

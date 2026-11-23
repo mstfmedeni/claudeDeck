@@ -151,31 +151,64 @@ struct ApprovalCard: View {
     }
 }
 
-/// An answered / expired approval: what it was and how it ended.
+/// An answered / expired approval: what it was and how it ended. A refused or expired one whose
+/// call ClaudeDeck still keeps (`Approvals.changeWindow`, 24 h) offers "Approve anyway", which
+/// runs that call now after a confirmation (a purchase says plainly that it buys).
 struct ResolvedApprovalRow: View {
+    @Environment(AppModel.self) private var model
     let resolved: ResolvedApproval
     let size: Double
+    @State private var confirm = false
 
     var body: some View {
+        let approval = resolved.approval
         HStack(spacing: 8) {
             Image(systemName: resolved.outcome.isApproved ? "checkmark.circle.fill" : "xmark.circle")
                 .foregroundStyle(resolved.outcome.isApproved ? Color.green : Color.secondary)
-            Text(resolved.approval.title).lineLimit(1).truncationMode(.middle)
+            Text(approval.title).lineLimit(1).truncationMode(.middle)
             Spacer()
             Text(outcomeText).foregroundStyle(.secondary)
             Text(resolved.resolvedAt, style: .time).foregroundStyle(.tertiary).monospacedDigit()
+            if model.approvals.book.mayReapprove(resolved.id, now: Date()) {
+                Button(approval.isPurchase ? String(localized: "Buy anyway") : String(localized: "Approve anyway")) { confirm = true }
+                    .controlSize(.small)
+                    .tint(approval.isPurchase ? .red : .accentColor)
+                    .help(String(localized: "Changes the answer to approved and runs the request now. Possible until \(Approvals.reapprovableUntil(resolved).formatted(date: .omitted, time: .shortened))."))
+                    .confirmationDialog(approval.isPurchase ? String(localized: "Buy anyway?") : String(localized: "Approve anyway?"),
+                                        isPresented: $confirm) {
+                        Button(approval.isPurchase ? String(localized: "Buy") : String(localized: "Approve and Run"),
+                               role: approval.isPurchase ? .destructive : nil) {
+                            model.reapproveApproval(resolved.id, from: "mac")
+                        }
+                    } message: {
+                        Text(confirmMessage)
+                    }
+            }
         }
         .font(.system(size: size * 0.9))
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .help(resolved.result ?? "")
+    }
+
+    private var confirmMessage: String {
+        let approval = resolved.approval
+        let run = String(localized: "ClaudeDeck runs “\(approval.title)” now, as the session asked, and tells the session the result.")
+        guard approval.isPurchase else { return run }
+        let summary = approval.summary.isEmpty ? "" : approval.summary + "\n\n"
+        return summary + run + "\n\n"
+            + String(localized: "This is a real purchase: it's charged to the Namecheap balance and can't be undone.")
     }
 
     private var outcomeText: String {
+        let phone = resolved.from == "phone"
         switch resolved.outcome {
-        case .approved: resolved.from == "phone" ? String(localized: "Approved on the phone") : String(localized: "Approved")
-        case .refused: resolved.from == "phone" ? String(localized: "Refused on the phone") : String(localized: "Refused")
-        case .expired: String(localized: "No answer, refused")
-        case .cancelled: String(localized: "The session stopped waiting")
+        case .approved where resolved.changedFrom != nil:
+            return phone ? String(localized: "Approved anyway on the phone") : String(localized: "Approved anyway")
+        case .approved: return phone ? String(localized: "Approved on the phone") : String(localized: "Approved")
+        case .refused: return phone ? String(localized: "Refused on the phone") : String(localized: "Refused")
+        case .expired: return String(localized: "No answer, refused")
+        case .cancelled: return String(localized: "The session stopped waiting")
         }
     }
 }
