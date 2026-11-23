@@ -25073,6 +25073,46 @@
           }
         }
       }
+    },
+    "Clear Status": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durumu Temizle"
+          }
+        }
+      }
+    },
+    "Coordinator project (may write every project's status and rename projects)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordinatör proje (tüm projelerin durumunu yazabilir, projeleri yeniden adlandırabilir)"
+          }
+        }
+      }
+    },
+    "Updated: %@ · %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellendi: %@ · %@"
+          }
+        }
+      }
+    },
+    "Updated: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellendi: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

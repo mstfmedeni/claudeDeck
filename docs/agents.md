@@ -1057,6 +1057,44 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
 `403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`. The routes for agents above (`/v1/projects`,
+### Project status (`claudedeck project status …`)
+
+Each project can show a short status next to its name in the sidebar ("1.0 in review",
+"Live · Nov 22", "1.0.1 waiting (PPO)", "Design", "Stopped"), so the owner sees where every
+project stands. **Leads update it at each milestone**: when a phase starts or ends, a build goes
+to review, a release ships, the project waits on the owner, or it stops.
+
+```sh
+claudedeck project status set PROJECT --text "…" [--summary "…" | --summary -] [--tone ok|wait|warn] [--json]
+claudedeck project status get [PROJECT] [--json]     # no PROJECT: every project
+claudedeck project status clear PROJECT [--json]
+```
+
+- PROJECT: `self`, an id (or a unique prefix of 4+ characters), a name or a path, as for `preset`.
+- `--text`: about 24 characters show; longer text is cut with "…" in the sidebar, over 80
+  characters is refused (`400 text_too_long`, exit 2). Line breaks become spaces; empty is
+  `400 empty_text`.
+- `--summary` (`-` reads stdin): the tooltip, a few lines, at most 600 characters
+  (`400 summary_too_long`): what was done last and the next step.
+- `--tone`: `ok` green, `wait` orange, `warn` red; none: the secondary color (`400 bad_tone`).
+- **Who may write:** a session sets its own project's status only (`403 not_your_project`,
+  exit 4). A coordinator project's sessions may set any project's: the owner turns that on in
+  the project's context menu ("Coordinator project …"; `Project.coordinator` in deck.json, there is
+  no command for it). Writing needs the scope `projectStatus` (Claude sessions and your own
+  terminals; not terminals a session opened with `claudedeck open`). Reading needs only `list`.
+- **Routes:** `GET /v1/cli/project-status` (every project), `GET /v1/cli/projects/{ref}/status`,
+  `POST /v1/cli/projects/{ref}/status` (`text`, `summary`, `tone`; `clear=1` removes it). JSON:
+  `{"projectId","project","text","summary","tone","updatedAt","updatedBy","stale","coordinator"}`
+  (every key always there, null when unset; the list is an array of these for every project).
+- Stored on the project in deck.json (`status`: `text`, `summary`, `tone`, `updatedAt`,
+  `updatedBy` = the session's name); older files without it decode as no status. Every set,
+  clear and refusal is in the Activity Log.
+- **Sidebar:** small and in the tone's color next to the project's name; older than 7 days it is
+  dimmed. The tooltip has the full text when cut, the summary, then "Updated: <relative date> ·
+  <session>". The owner clears it from the project's context menu ("Clear Status").
+- **Phone:** hosts with `RemoteSnapshot.Feature.projectStatus` send it as `RemoteProject.status`
+  (optional; older phones ignore it). The remote shows the text on project rows and the summary
+  at the top of the project's long-press menu.
 
 ### ServerPlan (`claudedeck server …`)
 

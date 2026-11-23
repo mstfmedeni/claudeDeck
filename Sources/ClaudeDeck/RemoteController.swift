@@ -779,7 +779,7 @@ final class RemoteController {
         snapshot.pendingAgents = model.pendingAgents.map { RemotePendingAgent(id: $0.id, name: $0.name, host: $0.host, description: $0.description, needs: $0.needs) }
         // Pinned first, like the sidebar.
         snapshot.projects = (model.deck.projects.filter(\.pinned) + model.deck.projects.filter { !$0.pinned })
-            .map { RemoteProject(id: $0.id, name: $0.name, pinned: $0.pinned, path: $0.path) }
+            .map { RemoteProject(id: $0.id, name: $0.name, pinned: $0.pinned, path: $0.path, status: $0.status) }
         if case .ok(let usage) = model.usage.state {
             snapshot.usage = RemoteUsage(fiveHour: usage.fiveHour?.usedPercent, fiveHourResetsAt: usage.fiveHour?.resetsAt,
                                          week: usage.sevenDay?.usedPercent, weekResetsAt: usage.sevenDay?.resetsAt)

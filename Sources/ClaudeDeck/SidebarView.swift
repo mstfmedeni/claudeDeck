@@ -414,6 +414,7 @@ struct ProjectRow: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 16)
                 Text(project.name).fontWeight(.medium).lineLimit(1)
+                if let status = project.status { ProjectStatusBadge(status: status) }
                 Spacer(minLength: 4)
                 if project.collapsed || !active { AggregateBadge(sessionIDs: all.map(\.id)) }
                 // One "+" with every way to start something in this project.
@@ -461,6 +462,7 @@ struct CompactProjectRow: View {
                     if project.pinned {
                         Image(systemName: "pin.fill").sidebarFont(.caption2).foregroundStyle(.tertiary)
                     }
+                    if let projectStatus = project.status { ProjectStatusBadge(status: projectStatus) }
                     GitHubLinkBadge(session: session)
                     RemoteControlBadge(sessionID: session.id)
                     Spacer(minLength: 4)
@@ -821,6 +823,8 @@ struct ProjectMenu: View {
             model.mutate { $0.updateProject(project.id) { $0.pinned.toggle() } }
         }
         ProjectAccountMenu(project: project)
+        ProjectStatusMenuItems(project: project)
+        CoordinatorToggle(project: project)
         Menu("Move to Group") {
             ForEach(model.deck.groups) { group in
                 Button(group.name) { model.mutate { $0.updateProject(project.id) { $0.groupID = group.id } } }

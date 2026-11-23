@@ -138,6 +138,8 @@ extension AppModel {
             return await cliSlotAcquire(caller, kind: kind, form: form, json: json)
         case .slotRelease(let kind):
             return cliSlotRelease(caller, kind: kind, form: form, json: json)
+        case .projectStatuses, .showProjectStatus, .setProjectStatus:
+            return cliProjectStatus(caller, route: route, form: form, json: json)
         }
     }
 
