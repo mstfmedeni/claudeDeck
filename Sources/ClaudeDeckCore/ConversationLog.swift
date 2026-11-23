@@ -459,7 +459,10 @@ public enum ConversationLog {
         case "Agent", "Task": string("description")
         case "TodoWrite": (input["todos"] as? [Any]).map { "\($0.count)" }
         case "AskUserQuestion": ChatQuestion.parse(input)?.first?.question
-        default: input.values.lazy.compactMap { ($0 as? String)?.nilIfEmpty }.first
+        case "SendMessage": string("summary") ?? string("message")
+        // By key: a dictionary's order differs between parses, and the same call read again (a
+        // new reader) must keep its summary.
+        default: input.keys.sorted().lazy.compactMap { (input[$0] as? String)?.nilIfEmpty }.first
         }
         let line = (value ?? "").split(separator: "\n").first.map(String.init) ?? ""
         return String(line.prefix(200))

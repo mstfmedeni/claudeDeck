@@ -968,11 +968,20 @@ final class RemoteController {
             reply(page)
             return
         }
-        // One read at a time per session; requests coming in meanwhile get its result.
+        // One read at a time per session; requests coming in meanwhile wait for the next one.
         let reading = historyWaiting[id] != nil
         historyWaiting[id, default: []].append((before, after, limit, reply))
         guard !reading else { return }
+        readHistory(id, path: path)
+    }
+
+    /// Reads what the transcript gained and answers the requests waiting when the read began.
+    /// Requests that came in during the read get another one: lines written after this read
+    /// started (Claude's reply right after a tool call) would otherwise be missing from their
+    /// page, and nothing else asks again until the phone's next poll.
+    private func readHistory(_ id: UUID, path: String) {
         let previous = historyCache[id].flatMap { $0.path == path ? $0.reader : nil } ?? ConversationLog.Reader()
+        let answering = historyWaiting[id]?.count ?? 0
         Task { @MainActor [weak self] in
             let url = URL(fileURLWithPath: path)
             let (reader, tokens) = await Task.detached {
@@ -988,12 +997,27 @@ final class RemoteController {
             // Keyed by what was read: a line still being written makes the next request read on.
             self.historyCache[id] = (path, Int(reader.offset), reader, tokens)
             let notes = self.model?.agentNotes[id] ?? []
-            for request in self.historyWaiting.removeValue(forKey: id) ?? [] {
+            var waiting = self.historyWaiting[id] ?? []
+            let answered = Array(waiting.prefix(answering))
+            waiting.removeFirst(answered.count)
+            for request in answered {
                 var page = reader.page(before: request.before, after: request.after, limit: request.limit)
                 page.contextTokens = tokens
                 page.agentNotes = notes
                 request.reply(page)
             }
+            guard !waiting.isEmpty else {
+                self.historyWaiting[id] = nil
+                return
+            }
+            self.historyWaiting[id] = waiting
+            // The path follows /clear; no transcript any more: nothing to answer with.
+            guard let model = self.model, let next = model.hookStatuses[id]?.transcriptPath ?? model.deck.transcriptPath(for: id) else {
+                self.historyWaiting[id] = nil
+                for request in waiting { request.reply(nil) }
+                return
+            }
+            self.readHistory(id, path: next)
         }
     }
 
