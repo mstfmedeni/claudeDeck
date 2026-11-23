@@ -381,6 +381,46 @@ import Testing
         #expect(SessionCLI.script.contains("$CLAUDEDECK_CLI_TOKEN") && !SessionCLI.script.contains("47647"))
     }
 
+    /// `project rename PROJECT NEWNAME [--folder]` and `server paths relocate OLD NEW [--dry-run]`.
+    @Test func projectRenameAndPathsRelocateArguments() throws {
+        let renamed = try run(["project", "rename", "WhatsCode", "Pasporo", "--folder"],
+                              answers: [("renamed: WhatsCode → Pasporo", "200 0")])
+        #expect(renamed.code == 0 && renamed.out == "renamed: WhatsCode → Pasporo\n")
+        let call = try #require(renamed.curlCalls.first)
+        #expect(call.last == "http://127.0.0.1:47832/v1/cli/projects/WhatsCode/rename")
+        #expect(call.contains("name=Pasporo") && call.contains("folder=1") && call.contains("format=text"))
+
+        let byPath = try run(["project", "rename", "/Users/me/Desktop/Projects/vNum", "Dialvo", "--json"], answers: [("{}", "200 0")])
+        #expect(byPath.curlCalls.first?.last == "http://127.0.0.1:47832/v1/cli/projects/%2FUsers%2Fme%2FDesktop%2FProjects%2FvNum/rename")
+        #expect(byPath.curlCalls.first?.contains("folder=0") == true && byPath.curlCalls.first?.contains("format=json") == true)
+
+        let running = #"{"error":"sessions_running","message":"stop these first: api (BBBBBBBB, terminal)","sessions":[]}"#
+        let refused = try run(["project", "rename", "WhatsCode", "Pasporo", "--folder"], answers: [(running, "409 1")])
+        #expect(refused.code == 1 && refused.err.contains("sessions_running: stop these first: api (BBBBBBBB, terminal)"))
+        let notCoordinator = try run(["project", "rename", "x", "y"], answers: [(#"{"error":"not_coordinator"}"#, "403 4")])
+        #expect(notCoordinator.code == 4 && notCoordinator.err.contains("coordinator project"))
+
+        #expect(try run(["project", "rename", "WhatsCode"]).code == 2)
+        #expect(try run(["project", "rename", "a", "b", "c"]).code == 2)
+        #expect(try run(["project", "rename", "a", "SMS/Pasporo", "--folder"]).code == 2)
+        #expect(try run(["project", "rename", "a", "b", "--nope"]).code == 2)
+        #expect(try run(["project", "frobnicate"]).code == 2)
+
+        let dry = try run(["server", "paths", "relocate", "/a/WhatsCode", "/a/Pasporo", "--dry-run"], answers: [("would change 1 path(s)", "200 0")])
+        #expect(dry.code == 0)
+        let dryCall = try #require(dry.curlCalls.first)
+        #expect(dryCall.last == "http://127.0.0.1:47832/v1/cli/server/paths-relocate")
+        #expect(dryCall.contains("old=/a/WhatsCode") && dryCall.contains("new=/a/Pasporo") && dryCall.contains("dry_run=1"))
+        let real = try run(["server", "paths", "relocate", "/a/WhatsCode", "/a/Pasporo"], answers: [("changed 1 path(s)", "200 0")])
+        #expect(real.curlCalls.first?.contains("dry_run=0") == true)
+        #expect(try run(["server", "paths", "relocate", "a/WhatsCode", "/a/Pasporo"]).code == 2)
+        #expect(try run(["server", "paths", "relocate", "/a/WhatsCode"]).code == 2)
+        #expect(try run(["server", "paths", "move", "/a", "/b"]).code == 2)
+        #expect(try run(["help"]).out.contains("claudedeck project rename PROJECT NEWNAME [--folder]"))
+        #expect(SessionCLI.skill.contains("claudedeck project rename PROJECT NEWNAME [--folder]"))
+        #expect(SessionCLI.skill.contains("claudedeck server paths relocate OLD NEW [--dry-run]"))
+    }
+
     @Test func usageErrorsExitTwo() throws {
         #expect(try run(["help"]).code == 0)
         #expect(try run(["help"]).out.contains("claudedeck wait ID"))

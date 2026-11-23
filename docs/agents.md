@@ -258,10 +258,14 @@ claudedeck skill setup [--user|--project] [--force]
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart | compact | remoteControl |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart | compact | remoteControl | projectRename |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | | | | |
+
+`projectRename` (`project rename`) also needs the caller's own project to be a coordinator
+project (below).
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
@@ -1139,6 +1143,52 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   (what one session does within 3 s is one notification). Terminals a session opened with
   `claudedeck open` don't have these scopes (`403 not_allowed`).
 
+### Renaming projects (coordinator projects)
+
+```sh
+claudedeck project rename PROJECT NEWNAME [--folder] [--json]
+```
+
+- **Coordinator projects.** The owner marks a project with **Coordinator project (may write
+  every project's status and rename projects)** in its context menu (`"coordinator": true` on
+  the project in deck.json; missing or `null` is off, and turning it off removes the key). There
+  is no command for it. Only a Claude session (scope `projectRename`: not the owner's plain
+  terminals, not terminals a session opened) of a coordinator project may rename projects;
+  anyone else gets `403 not_coordinator` (exit 4). It doesn't need **Sessions may add projects
+  and start Claude sessions**.
+- **What it does:** exactly the project's **Rename…** (`AppModel.performProjectRename`, the same
+  code). PROJECT is `self`, an id, a unique prefix, a name or a path. Without `--folder` only the
+  display name changes. With `--folder` (**Rename the folder too**) the folder is renamed next to
+  where it is (NEWNAME is the folder's new name, never a path: `/`, `.` and `..` are
+  `400 bad_name`; a move to another parent folder isn't supported, as in the UI), then Claude's
+  conversations of it and of folders inside it (`~/.claude/projects/<encoded path>`) move,
+  `git worktree repair` runs in it, and the deck follows (the project's path, its sessions'
+  working directories and transcript paths). The ServerPlan paths under it follow too (below).
+- **Nothing of the project may run:** while any session or terminal of PROJECT runs (the
+  caller's own included, when it renames its own project) the answer is `409 sessions_running`
+  (exit 1) with `{"error","message","sessions":[{"id","name","kind"}]}`, `message` naming each
+  one; nothing changes. This holds for a name-only rename too.
+- **Errors:** `404 unknown_project` (exit 5), `400 ambiguous`, `400 bad_name` (exit 2),
+  `409 exists` (something already has the new name), `409 missing` (the folder is gone),
+  `500 rename_failed` (exit 1).
+- **Answer:** `renamed: OLD → NEW`, `folder: OLD_PATH → NEW_PATH` and `serverplan: …`; `--json`:
+  `{"id","name","oldName","path","oldPath","folderMoved","serverplan"}`.
+- Every rename and refusal is in the Activity Log.
+
+**ServerPlan's paths follow a moved folder** (UI, phone or CLI). ServerPlan keeps local paths:
+projects' `path`, project dirs' `path` / `local_path` and static sites' `local_sync_path`. Once the
+folder moved, ClaudeDeck asks ServerPlan to rewrite those that are the old folder or inside it
+(whole path components: `/a/WhatsCode` never matches `/a/WhatsCode2`); ids don't change.
+`POST /api/v1/agent/paths/relocate` `{"old_prefix","new_prefix","dry_run","confirm"}` (scope
+`projects_write`, an admin token; offered when `/me` lists the `paths_relocate` feature): a dry run
+first (a `409 conflict` stops it), then, when it would change anything, the real run with
+`confirm` = the normalized old prefix. This needs no owner approval: the folder already moved and
+the owner (or a coordinator session) asked for that. The answer's `serverplan.status`:
+`relocated` (with `count` and `changes`), `nothing`, `not_supported` (the panel lacks the feature;
+`stale` lists the paths ClaudeDeck could see under the old folder), `serverplan_off` or `failed`
+(`message`). A ServerPlan problem never undoes the rename; `failed`, and `not_supported` with
+stale paths, also post a notification. It's in the Activity Log.
+
 `403 not_yours`, `404 unknown_decision`, `409 already_answered` / `already_cancelled`, `429 too_many_pending`; for `sim` `404 unknown_device` / `no_runtime` / `not_held`,
 `429 too_many_simulators`, `500 simctl_failed` (with `message`); for `close` `403 close_off` / `not_yours`,
 `409 busy` / `blocked` / `still_running` (exit 124) / `read_only` / `not_closed` / `switching_account`; for `remove`
@@ -1223,6 +1273,7 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
 | `server domain add --static SERVER SUB BASE [--target T] [--no-clean-urls]` | `POST /domains` (`type: static`) | none (autonomous) |
 | `server sync DOMAIN FOLDER` | `POST /domains/:id/sync` (scope `deploy`) | none (autonomous) |
 | `server env rescan PROJECT [--dry-run]` | `POST /projects/:id/env/rescan` `{"dry_run"}` (scope `projects_write`) | |
+| `server paths relocate OLD_PREFIX NEW_PREFIX [--dry-run]` | `POST /paths/relocate` `{"old_prefix","new_prefix","dry_run","confirm"?}` (feature `paths_relocate`; scope `projects_write`, admin token) → `{"dry_run","old_prefix","new_prefix","changes":[{"table","id","name","field","old","new"}],"count","skipped_deleted","warnings"}`. Rewrites projects.path, project_dirs.path / local_path and domains.local_sync_path under OLD (whole path components), ids unchanged. Prefixes are checked first (absolute, not `/`, different, neither inside the other: `400 bad_prefix` / `same_prefix` / `nested_prefix`). `409 conflict` on a collision (dry runs too) or when NEW doesn't exist (real run). Without the feature: `501 not_available` | a real run: the owner's approval (the panel's 428 summary; confirm = the old prefix). `--dry-run`: none |
 | `server env rm PROJECT ENV_ID` | `DELETE /projects/:id/env/:envId` `{"confirm"}` (scope `projects_write`, permission `projects.manage_env`) → `{"deleted","key","remaining_copies"}` | the owner's dialog (confirm = the key; the summary says how many copies of it remain) |
 | `server sql PROJECT QUERY\|- [--local] [--write]` | `POST /projects/:id/sql` `{"query","target":"deploy"\|"local","write"?}` (scope `sql`; `--write` also `sql_write`) | `--write`: the owner's dialog (confirm = the database name) |
 | `server local run PROJECT [--server S] [--port N] [--no-cache] [--wait]` | `POST /projects/:id/local-run` (scope `local`) | |

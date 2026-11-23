@@ -141,6 +141,10 @@ public enum ServerPlanCLI {
                     feature: ServerPlanContract.Feature.containerRemove, featureOnly: true),
             Command("disk", "GET", scope: "read", feature: ServerPlanContract.Feature.dockerPrune, featureOnly: true),
             Command("prune", "POST", scope: "containers", gate: .owner, feature: ServerPlanContract.Feature.dockerPrune, featureOnly: true),
+            // Stored local paths following a moved folder (ServerPlanPathRelocation.swift). It rewrites
+            // every user's projects: the owner approves a real run (the panel's 428 summary).
+            Command("paths-relocate", "POST", scope: "projects_write", gate: .owner,
+                    feature: ServerPlanContract.Feature.pathsRelocate, featureOnly: true),
         ]
         return Dictionary(uniqueKeysWithValues: list.map { ($0.name, $0) })
     }()
@@ -501,9 +505,29 @@ public enum ServerPlanCLI {
                 return try await performContainers(command, form: form)
             case "ratelimit-show", "ratelimit-set", "ratelimit-clear":
                 return try await performRateLimit(command, form: form)
+            case "paths-relocate":
+                return try await pathsRelocate(command, form: form)
             default:
                 return try await performV12(command, form: form)
             }
+        }
+
+        /// `server paths relocate OLD NEW [--dry-run]`: a dry run goes straight through; a real one
+        /// meets the panel's 428 and waits for the owner's yes (then is sent with its `confirm`).
+        private func pathsRelocate(_ command: Command, form: [String: String]) async throws -> Outcome {
+            let prefixes: (old: String, new: String)
+            switch ServerPlanPathRelocation.prefixes(form["old"] ?? "", form["new"] ?? "") {
+            case .failure(let problem): throw Refusal(outcome: .error(400, problem.code, problem.message, exit: .usage))
+            case .success(let given): prefixes = given
+            }
+            let dryRun = form["dry_run"] == "1"
+            let body = ServerPlanPathRelocation.body(old: prefixes.old, new: prefixes.new, dryRun: dryRun)
+            let data = dryRun
+                ? try await raw("POST", ServerPlanPathRelocation.path, json: body)
+                : try await gated(command, "POST", ServerPlanPathRelocation.path, body: body, target: prefixes.old)
+            let result = ServerPlanPathRelocation.Answer.parse(data, dryRun: dryRun)
+            if !dryRun { log("paths relocate \(prefixes.old) → \(prefixes.new): \(result.count) path(s)") }
+            return Outcome(json: result.json, text: result.text)
         }
 
         // MARK: Requests
