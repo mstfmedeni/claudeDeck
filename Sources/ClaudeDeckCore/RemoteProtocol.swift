@@ -469,7 +469,9 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let serverPlanContainers = "serverPlanContainers"
         /// `RemoteSession.remoteControl` and `RemoteSessionAction.remoteControlOff`.
         public static let remoteControl = "remoteControl"
-        public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
+        /// `RemoteProject.status`: each project's status line (read-only).
+        public static let projectStatus = "projectStatus"
+        public static let all: Set<String> = [projectStatus,files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
@@ -657,11 +659,14 @@ public struct RemoteProject: Codable, Sendable, Equatable, Identifiable {
     public var pinned: Bool
     /// The folder on the host (Copy Path); nil from older hosts.
     public var path: String?
-    public init(id: UUID, name: String, pinned: Bool = false, path: String? = nil) {
+    /// Its status line (hosts with `Feature.projectStatus`; nil when it has none).
+    public var status: ProjectStatus?
+    public init(id: UUID, name: String, pinned: Bool = false, path: String? = nil, status: ProjectStatus? = nil) {
         self.id = id
         self.name = name
         self.pinned = pinned
         self.path = path
+        self.status = status
     }
 
     public init(from decoder: Decoder) throws {
@@ -670,6 +675,7 @@ public struct RemoteProject: Codable, Sendable, Equatable, Identifiable {
         name = try c.decode(String.self, forKey: .name)
         pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false  // older hosts
         path = try c.decodeIfPresent(String.self, forKey: .path)
+        status = try? c.decodeIfPresent(ProjectStatus.self, forKey: .status)
     }
 }
 

@@ -146,6 +146,7 @@ extension SessionCLI {
       claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
           Adds a folder as a project (an existing one: returns it). --create makes the folder,
           only under your home folder. Prints the project id.
+    \#(projectStatusUsage)
       claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME]
                      [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
                      [--skill NAME] [--account NAME|auto] [--queue] [--json]
@@ -1096,8 +1097,11 @@ extension SessionCLI {
       esac
     }
 
+    \#(projectStatusScript)
+
     cmd_project() {
-      [ "${1:-}" = add ] || die "project: try claudedeck project add PATH [--name NAME] [--group GROUP] [--create]"
+      if [ "${1:-}" = status ]; then shift; cmd_project_status "$@"; fi
+      [ "${1:-}" = add ] || die "project: try claudedeck project add PATH [--name NAME] [--group GROUP] [--create], or project status"
       shift
       path=""; name=""; group=""; create=0
       while [ $# -gt 0 ]; do
@@ -1981,6 +1985,8 @@ extension SessionCLI {
       while (or repeats the same error) may be nudged or restarted by ClaudeDeck; you get a
       one-line message about it between turns (unless the user turned that off), and
       `claudedeck status ID` shows the watch's state.
+
+    \#(projectStatusSkill)
 
     ### Closing sessions
 

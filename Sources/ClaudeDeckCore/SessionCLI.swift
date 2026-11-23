@@ -101,6 +101,9 @@ public enum SessionCLI {
         /// Asking the owner to turn Claude Code's Remote Control off (`claudedeck remote-control
         /// off`): only ever through an approval the owner gives.
         case remoteControl
+        /// Setting a project's status line (`claudedeck project status set|clear`): its own
+        /// project, or any with the owner's coordinator switch on its project. Reading is `list`.
+        case projectStatus
     }
 
     /// Claude sessions and the user's own terminals.
@@ -184,6 +187,11 @@ public enum SessionCLI {
         /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
         case slotAcquire(String)
         case slotRelease(String)
+        /// `GET /v1/cli/project-status`: every project's status line.
+        case projectStatuses
+        /// `GET`/`POST /v1/cli/projects/{ref}/status` (`clear=1` removes it).
+        case showProjectStatus(String)
+        case setProjectStatus(String)
 
         public var scope: Scope {
             switch self {
@@ -210,6 +218,8 @@ public enum SessionCLI {
             case .remoteControlOff: .remoteControl
             case .load: .list
             case .slotAcquire, .slotRelease: .slots
+            case .projectStatuses, .showProjectStatus: .list
+            case .setProjectStatus: .projectStatus
             }
         }
     }
@@ -230,6 +240,7 @@ public enum SessionCLI {
         guard parts.count >= 3, parts[0] == "v1", parts[1] == "cli" else { return .notFound }
         let rest = Array(parts.dropFirst(2))
         func expect(_ wanted: String, _ route: Route) -> Match { method == wanted ? .route(route) : .methodNotAllowed }
+        if let status = projectStatusMatch(method: method, rest: rest) { return status }
         switch rest.count {
         case 1 where rest[0] == "sessions": return expect("GET", .list)
         case 1 where rest[0] == "terminals": return expect("POST", .open)

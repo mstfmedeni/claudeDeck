@@ -678,6 +678,7 @@ extension SessionListView {
     @ViewBuilder
     func projectMenu(_ name: String, running: [RemoteSession]) -> some View {
         if let project = store.projects.first(where: { $0.name == name }) {
+            if let status = project.status { ProjectStatusMenuSection(status: status) }
             newItems(project.id)
             Divider()
             Button { browsingProject = project } label: { Label("Browse Files", systemImage: "folder") }
@@ -766,6 +767,7 @@ struct ProjectRow: View {
             if count > 0 {
                 Text("\(count)").listFont(.caption, monospacedDigit: true).foregroundStyle(.secondary)
             }
+            if let status = store.projects.first(where: { $0.name == name })?.status { ProjectStatusLabel(status: status) }
             if !resumable.isEmpty {
                 Menu {
                     Section("Resume") {
@@ -1210,6 +1212,9 @@ struct SessionRow: View {
                 }
                 if showProject, !session.project.isEmpty, !session.name.hasPrefix(session.project) {
                     Text(session.project).listFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if showProject, let status = store.projects.first(where: { $0.name == session.project })?.status {
+                    ProjectStatusLabel(status: status)
                 }
                 Spacer(minLength: 4)
                 if let date = session.updatedAt {

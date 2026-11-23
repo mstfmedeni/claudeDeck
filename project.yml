@@ -160,6 +160,7 @@ targets:
       - path: Support/THIRD_PARTY_LICENSES.txt
         buildPhase: resources
       - Sources/ClaudeDeckCore/RemoteProtocol.swift
+      - Sources/ClaudeDeckCore/ProjectStatus.swift
       - Sources/ClaudeDeckCore/RemoteTransport.swift
       - Sources/ClaudeDeckCore/RemoteDashboard.swift
       - Sources/ClaudeDeckCore/RemoteConnectionLog.swift
