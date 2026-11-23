@@ -98,6 +98,9 @@ public enum SessionCLI {
         case restart
         /// Compacting its own context, or that of a Claude session it started (`claudedeck compact`).
         case compact
+        /// Asking the owner to turn Claude Code's Remote Control off (`claudedeck remote-control
+        /// off`): only ever through an approval the owner gives.
+        case remoteControl
     }
 
     /// Claude sessions and the user's own terminals.
@@ -173,6 +176,9 @@ public enum SessionCLI {
         case restart(String)
         /// `POST /v1/cli/sessions/{ref}/compact`: `/compact` is typed into it (after its turn when busy).
         case compact(String)
+        /// `POST /v1/cli/remote-control/off` (`target`: a session ref or `all`): an approval for
+        /// the owner; once approved, Remote Control is turned off there.
+        case remoteControlOff
         /// `GET /v1/cli/load`: the Mac's load level, its numbers and the build slots.
         case load
         /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
@@ -201,6 +207,7 @@ public enum SessionCLI {
             case .close, .remove: .close
             case .restart: .restart
             case .compact: .compact
+            case .remoteControlOff: .remoteControl
             case .load: .list
             case .slotAcquire, .slotRelease: .slots
             }
@@ -254,6 +261,7 @@ public enum SessionCLI {
         case 2 where rest[0] == "sim" && rest[1] == "prune": return expect("POST", .simPrune)
         case 1 where rest[0] == "usage": return expect("GET", .usage)
         case 1 where rest[0] == "load": return expect("GET", .load)
+        case 2 where rest[0] == "remote-control" && rest[1] == "off": return expect("POST", .remoteControlOff)
         case 3 where rest[0] == "slot" && rest[2] == "acquire": return expect("POST", .slotAcquire(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "slot" && rest[2] == "release": return expect("POST", .slotRelease(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "sessions":

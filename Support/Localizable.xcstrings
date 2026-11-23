@@ -24923,6 +24923,146 @@
           }
         }
       }
+    },
+    "Turn Off Remote Control (All Sessions)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control'ü Kapat (Tüm Oturumlar)"
+          }
+        }
+      }
+    },
+    "Turn Off Remote Control": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control'ü Kapat"
+          }
+        }
+      }
+    },
+    "Remote Control is on; turning it off once the turn is over": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control açık; tur bitince kapatılacak"
+          }
+        }
+      }
+    },
+    "Remote Control is on: this session can be driven from claude.ai/code or the Claude app": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control açık: bu oturum claude.ai/code ya da Claude uygulamasından yönetilebilir"
+          }
+        }
+      }
+    },
+    "Remote Control on": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control açık"
+          }
+        }
+      }
+    },
+    "Keep Remote Control off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control'ü kapalı tut"
+          }
+        }
+      }
+    },
+    "A resumed session that had Claude Code's Remote Control on comes back with it on (claude --resume reconnects it, whatever remoteControlAtStartup says). ClaudeDeck turns it off again, once, right after the resume. Turned on by hand with /remote-control, it stays on until the next resume.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code'un Remote Control'ü açıkken kapanan bir oturum, geri geldiğinde yine açık gelir (claude --resume, remoteControlAtStartup ne derse desin yeniden bağlar). ClaudeDeck bunu oturum geri gelir gelmez bir kez kapatır. /remote-control ile elle açarsan bir sonraki geri gelişe kadar açık kalır."
+          }
+        }
+      }
+    },
+    "all sessions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tüm oturumlar"
+          }
+        }
+      }
+    },
+    "Claude Code's Remote Control is turned off in: %@. Each session gets /remote-control › Disconnect once its turn is over.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code'un Remote Control'ü şu oturumlarda kapatılır: %@. Her oturuma turu bitince /remote-control › Disconnect yapılır."
+          }
+        }
+      }
+    },
+    "%@ asks to turn off Remote Control in %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ için Remote Control'ün kapatılmasını istiyor"
+          }
+        }
+      }
+    },
+    "Remote Control is on (%lld)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Control açık (%lld)"
+          }
+        }
+      }
+    },
+    "Turn Off": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat"
+          }
+        }
+      }
+    },
+    "Turn off Remote Control in these sessions?": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu oturumlarda Remote Control kapatılsın mı?"
+          }
+        }
+      }
+    },
+    "The Mac types /remote-control and picks “Disconnect this session” in each one once its turn is over. claude.ai/code and the Claude app lose them.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac, her oturumun turu bitince /remote-control yazıp “Disconnect this session”ı seçer. claude.ai/code ve Claude uygulaması bu oturumlara erişemez."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

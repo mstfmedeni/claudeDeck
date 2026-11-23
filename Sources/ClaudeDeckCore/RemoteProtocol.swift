@@ -292,6 +292,10 @@ public enum RemoteSessionAction: Codable, Sendable, Equatable {
     /// Put text in the session's prompt without Enter, as a paste (a project file's @mention).
     /// Hosts with `Feature.transfer` only.
     case insert(String)
+    /// Turn Claude Code's Remote Control off in this session (typed once its turn is over, then
+    /// checked; RemoteControl.swift). Hosts with `Feature.remoteControl` only: older hosts can't
+    /// decode it.
+    case remoteControlOff
 }
 
 /// Claude Code's permission mode, read from the line under its input box
@@ -463,13 +467,15 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         public static let loadHistory = "loadHistory"
         /// `serverPlanContainersRequest` / `serverPlanContainerAction` (restart with the Mac's approval).
         public static let serverPlanContainers = "serverPlanContainers"
+        /// `RemoteSession.remoteControl` and `RemoteSessionAction.remoteControlOff`.
+        public static let remoteControl = "remoteControl"
         public static let all: Set<String> = [files, permissionMode, projectActions, sessionActions, addProject, transfer, queue, agents, agentApproval,
                                               agentDetails, agentCompletion, homeFiles, renameFolder, edits,
                                               historyUpdates, conversationPush, programStatus, serverPlan,
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
                                               closedTerminals, approvals, load, loadDetail, serverPlanContainers,
-                                              approvalHistory, decisionHistory, loadHistory]
+                                              approvalHistory, decisionHistory, loadHistory, remoteControl]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -700,6 +706,9 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     /// string, so a newer host's kinds don't break decoding. A stopped terminal stays
     /// `.notStarted` on the wire, so older remotes list it with the closed sessions.
     public var kind: String?
+    /// True while Claude Code's Remote Control is on in this session (hosts with
+    /// `Feature.remoteControl`; nil otherwise, so older remotes see nothing new).
+    public var remoteControl: Bool?
 
     public static let terminalKind = "terminal"
     public static let claudeKind = "claude"

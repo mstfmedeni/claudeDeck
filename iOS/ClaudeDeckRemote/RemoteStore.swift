@@ -819,6 +819,18 @@ final class RemoteStore {
     /// The Mac's session menu (rename, restart, close, start fresh, remove).
     func sessionAction(_ id: UUID, _ action: RemoteSessionAction) { _ = send(.sessionAction(sessionID: id, action: action)) }
 
+    /// Claude Code's Remote Control (hosts with `Feature.remoteControl`): the running sessions that
+    /// have it on, and turning it off there (the Mac types it once the session's turn is over).
+    var canTurnOffRemoteControl: Bool { snapshot?.supports(RemoteSnapshot.Feature.remoteControl) == true }
+    var remoteControlSessions: [RemoteSession] {
+        guard canTurnOffRemoteControl else { return [] }
+        return snapshot?.sessions.filter { $0.remoteControl == true } ?? []
+    }
+    func turnOffRemoteControl(_ ids: [UUID]) {
+        guard canTurnOffRemoteControl else { return }
+        for id in ids { sessionAction(id, .remoteControlOff) }
+    }
+
     /// The prompt queue (hosts with `Feature.queue`): sent at "your turn", one per turn.
     @discardableResult
     func queuePrompt(_ id: UUID, text: String) -> Bool {

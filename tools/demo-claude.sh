@@ -94,6 +94,46 @@ live() {
 
 trap 'exit 0' HUP INT TERM
 
+# Remote Control (RemoteControl.swift): $DEMO/scenes/<terminal id>.rc makes this session show up
+# with Remote Control on, the way Claude Code's session registry has it
+# ($DEMO/home/.claude/sessions/<pid>.json, "bridgeSessionId"). A typed `/remote-control` then
+# draws its dialog, and Up Up Enter disconnects (the registry says null). Ctrl+C clears the
+# prompt there instead of ending the session (Claude Code reads it as a key).
+REGISTRY="$DEMO/home/.claude/sessions"
+RC_DIALOG=""
+rc_write() { # the bridge id as JSON, or null
+  mkdir -p "$REGISTRY"
+  jq -n --argjson pid $$ --arg sid "demo-$ID" --arg cwd "$PWD" --argjson bridge "$1" \
+    '{pid: $pid, sessionId: $sid, cwd: $cwd, kind: "interactive", status: "idle",
+      updatedAt: (now * 1000 | floor), bridgeSessionId: $bridge}' \
+    > "$REGISTRY/.$$.tmp" && mv "$REGISTRY/.$$.tmp" "$REGISTRY/$$.json"
+}
+if [ -f "$SCENE.rc" ]; then
+  rc_write '"session_demo"'
+  trap '' INT
+fi
+rc_input() { # the line typed; true when it was for Remote Control
+  [ -f "$SCENE.rc" ] || return 1
+  case "$line" in
+    */remote-control*)
+      printf '\n Remote Control\n\n This session is available in the Claude mobile app and at https://claude.ai/code/session_demo.\n\n'
+      printf '   Disconnect this session\n   Show QR code  Scan with your phone to open this session\n %s[36m❯ Continue%s[0m\n\n' "$ESC" "$ESC"
+      printf ' %s[2mEnter to select · Esc to continue%s[0m\n' "$ESC" "$ESC"
+      RC_DIALOG=1
+      return 0 ;;
+  esac
+  [ -n "$RC_DIALOG" ] || return 1
+  RC_DIALOG=""
+  case "$line" in
+    *"[A"*"[A"*|*OA*OA*)
+      rm -f "$SCENE.rc"
+      rc_write null
+      printf '%s[2J%s[H  ⎿  Remote Control disconnected.\n\n> ' "$ESC" "$ESC" ;;
+    *) printf '%s[2J%s[H> ' "$ESC" "$ESC" ;;
+  esac
+  return 0
+}
+
 # Load testing: while $DEMO/stream/<terminal id> (or $DEMO/stream/all) exists, redraw like Claude
 # Code's fullscreen TUI (alternate screen, mouse tracking, synchronized output, a spinner in the
 # title and on screen) about ten times a second.
@@ -148,6 +188,7 @@ tick() {
     rc=$?
     if [ "$rc" = 0 ]; then
       case "$line" in */exit*) exit 0 ;; esac
+      rc_input || true
       return 0
     fi
     # Over 128: the second passed. Anything else (end of input): don't spin.

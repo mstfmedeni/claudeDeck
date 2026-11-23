@@ -449,6 +449,8 @@ EOF
 # --- Scenes: what each stand-in session prints, and the state it reports -----------------------
 # <id>.state: state|event|tool_name|detail
 scene() { printf '%s\n' "$2" > "$ROOT/scenes/$1.state"; cat > "$ROOT/scenes/$1.txt"; }
+# Claude Code's Remote Control on (demo-claude.sh): the sidebar's antenna and its off actions.
+touch "$ROOT/scenes/$S5.rc" "$ROOT/scenes/$S6.rc"
 
 scene $S1 'needsPermission|PermissionRequest|Bash|Bash: pnpm vitest run tests/checkout.test.ts' <<'EOF'
 [1m> [0mAdd coupon support to the cart summary and make sure checkout still passes.

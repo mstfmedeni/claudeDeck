@@ -198,6 +198,11 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var continueOnlyIfBusy = true
     /// Message to send; empty = the app's localized default.
     public var continueMessage = ""
+    /// A session ClaudeDeck resumes comes back with Claude Code's Remote Control on whenever it
+    /// had it on before (`claude --resume` reconnects it, whatever `remoteControlAtStartup`
+    /// says): turn it off once, right after the resume (RemoteControl.swift). On by default; turned
+    /// on by hand (`/remote-control`) it stays on until ClaudeDeck resumes the session again.
+    public var keepRemoteControlOff = true
     /// A session that stopped on the plan's usage limit gets the "continue" message once the limit resets.
     public var continueAfterUsageLimit = true
     /// Transcripts bigger than this get `/compact` after an automatic resume.
@@ -347,6 +352,7 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         continueAfterResume = try c.decodeIfPresent(Bool.self, forKey: .continueAfterResume) ?? d.continueAfterResume
         continueOnlyIfBusy = try c.decodeIfPresent(Bool.self, forKey: .continueOnlyIfBusy) ?? d.continueOnlyIfBusy
         continueMessage = try c.decodeIfPresent(String.self, forKey: .continueMessage) ?? d.continueMessage
+        keepRemoteControlOff = try c.decodeIfPresent(Bool.self, forKey: .keepRemoteControlOff) ?? d.keepRemoteControlOff
         // "Continue every resumed session" used to be continueAfterResume without continueOnlyIfBusy.
         continueAllOnResume = try c.decodeIfPresent(Bool.self, forKey: .continueAllOnResume)
             ?? (continueAfterResume && !continueOnlyIfBusy)

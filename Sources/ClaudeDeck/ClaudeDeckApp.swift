@@ -35,6 +35,7 @@ struct ClaudeDeckApp: App {
             CommandGroup(after: .newItem) {
                 Divider()
                 RestartCommands(model: delegate.model)
+                RemoteControlCommands(model: delegate.model)
             }
             ExplorerCommands(model: delegate.model)
             UpdateCommands(updater: AppUpdater.shared)

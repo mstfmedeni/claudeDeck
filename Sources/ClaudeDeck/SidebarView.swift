@@ -462,6 +462,7 @@ struct CompactProjectRow: View {
                         Image(systemName: "pin.fill").sidebarFont(.caption2).foregroundStyle(.tertiary)
                     }
                     GitHubLinkBadge(session: session)
+                    RemoteControlBadge(sessionID: session.id)
                     Spacer(minLength: 4)
                     Menu {
                         NewSessionItems(project: project, showResume: $showResume)
@@ -630,6 +631,7 @@ struct SessionRow: View {
                             .help("Separate git worktree: \(session.workingDirectory ?? worktree)")
                     }
                     GitHubLinkBadge(session: session)
+                    RemoteControlBadge(sessionID: session.id)
                     Spacer(minLength: 4)
                     RowTime(date: status.updatedAt)
                 }
@@ -725,6 +727,10 @@ struct SessionMenu: View {
             .disabled(!model.canRestart(session.id))
             Button(session.kind == .shell ? String(localized: "Close Terminal") : String(localized: "End Session")) { model.stop(session.id) }
             SessionAccountMenu(session: session)
+            if model.remoteControlOn.contains(session.id) {
+                Button("Turn Off Remote Control") { model.turnOffRemoteControl([session.id], by: "Owner") }
+                    .disabled(model.remoteControlOffPending.contains(session.id))
+            }
         } else if session.kind == .shell {
             Button("Reopen") { model.launch(session.id, resume: false); model.selectedSessionID = session.id }
         } else {

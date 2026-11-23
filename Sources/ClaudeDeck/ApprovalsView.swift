@@ -77,7 +77,8 @@ struct ApprovalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: size * 0.7) {
             HStack(spacing: 6) {
-                Image(systemName: approval.isPurchase ? "cart.badge.plus" : "server.rack")
+                Image(systemName: approval.isPurchase ? "cart.badge.plus"
+                      : approval.command.hasPrefix("remote-control") ? "antenna.radiowaves.left.and.right.slash" : "server.rack")
                     .foregroundStyle(approval.isPurchase ? .red : .orange)
                 if !approval.project.isEmpty { Text(approval.project).fontWeight(.semibold) }
                 if let sessionID = approval.sessionID, model.deck.session(sessionID) != nil {

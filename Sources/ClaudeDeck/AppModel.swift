@@ -160,11 +160,22 @@ final class AppModel {
     @ObservationIgnored private var lastProgramNotified: [UUID: String] = [:]
     /// When the user last submitted input (Enter / a choice) while the session was blocked.
     private var answeredAt: [UUID: Date] = [:]
-    @ObservationIgnored private var pendingCompact: Set<UUID> = []
+    /// After an automatic resume: `/compact`, then the "continue" message (afterResume). Read by
+    /// the Remote Control off (AppModel+RemoteControl), which types only once these are done.
+    @ObservationIgnored private(set) var pendingCompact: Set<UUID> = []
     /// Sessions with a `claudedeck compact` waiting for their turn to end (AppModel+SessionCLICompact).
     @ObservationIgnored var cliCompactsPending: Set<UUID> = []
     /// Automatically resumed sessions that get the "continue" message once resumed (and compacted).
-    @ObservationIgnored private var pendingContinue: Set<UUID> = []
+    @ObservationIgnored private(set) var pendingContinue: Set<UUID> = []
+    // MARK: Remote Control (AppModel+RemoteControl) — begin
+    /// Running Claude sessions whose Claude Code Remote Control is on (its session registry).
+    var remoteControlOn: Set<UUID> = []
+    /// Sessions with a Remote Control off on its way (waiting for the turn, or typing).
+    var remoteControlOffPending: Set<UUID> = []
+    /// When ClaudeDeck resumed each session ("Keep Remote Control off" watches the next minute and a half).
+    @ObservationIgnored var remoteControlResumedAt: [UUID: Date] = [:]
+    @ObservationIgnored var remoteControlTask: Task<Void, Never>?
+    // MARK: Remote Control — end
     /// Hook files older than the terminal's launch belong to a previous process.
     @ObservationIgnored private var launchedAt: [UUID: Date] = [:]
     /// Claude sessions launched with the Pencil (Pen.app) MCP server (PaneHeader badge).
@@ -267,6 +278,7 @@ final class AppModel {
         startSimulatorPoolPruning() // after the holds of gone sessions are dropped
         LoadController.shared.start(model: self) // the Mac's load, every 12 s off the main thread
         startStallWatch() // only checks while the setting is on
+        startRemoteControlWatch() // reads Claude Code's session registry every few seconds
         loadAgentNotes()
         loadDecisions()
         loadApprovals()
@@ -727,6 +739,8 @@ final class AppModel {
         let worktreeDir = session.workingDirectory.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
         if sid == nil, worktreeDir == nil, let worktree = session.worktreeName { args += ["--worktree", worktree] }
         if automatic, sid != nil, deck.settings.compactOnResume { pendingCompact.insert(id) }
+        // `--resume` turns Remote Control back on if the conversation had it (RemoteControl.swift).
+        if sid != nil, deck.settings.keepRemoteControlOff { remoteControlResumedAt[id] = Date() } else { remoteControlResumedAt[id] = nil }
         // A session cut off mid-turn picks up where it left off; one whose turn it was (idle, or a
         // question or permission on screen) waits for the user, unless Settings says every session.
         if sid != nil, session.busyAtQuit || (automatic && deck.settings.continueAllOnResume) {

@@ -162,6 +162,7 @@ claudedeck close ID|self [--force] [--remove|--keep] [--json]
 claudedeck remove ID [--json]
 claudedeck restart ID [--json]
 claudedeck compact [ID|self] [--json]
+claudedeck remote-control off ID|self|--all [--no-wait] [--json]
 claudedeck notify TEXT
 claudedeck ask [--agent NAME] QUESTION
 claudedeck decide QUESTION [--options "A,B,C"] [--recommend A] [--context TEXT] [--project P] [--supersedes ID] [--json]
@@ -221,7 +222,8 @@ claudedeck skill setup [--user|--project] [--force]
   [Closing sessions](#closing-sessions) below. **restart:** stops a terminal's process and
   re-runs its command in the same pane; see [Restarting terminals](#restarting-terminals).
   **compact:** types `/compact` into itself (the default) or a Claude session it started; see
-  [Compacting](#compacting).
+  [Compacting](#compacting). **remote-control off:** asks the owner to turn Claude Code's
+  Remote Control off; see [Remote Control](#remote-control).
 - **notify:** a notification (unless notifications are off in Settings). **ask:** a note beside the
   session ("claudedeck ask") and a notification; with `--agent`, the agent is asked under
   `claudedeck-ask`'s rules. At most 10 notifications, questions and notes in 10 minutes per session.
@@ -254,10 +256,10 @@ claudedeck skill setup [--user|--project] [--force]
 **Who may do what.** Each terminal gets its own token (`CLAUDEDECK_CLI_TOKEN`; never the API's
 token, and the API's token isn't accepted here). Its scopes:
 
-| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart | compact |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | | |
+| Terminal | list | open | send | capture | wait | notify | ask | projects | start | server | decide | simulators | usage | close | account | slots | restart | compact | remoteControl |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A Claude session, or a terminal you opened | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| A terminal a session opened with `claudedeck open` | ✓ | | | ✓ | ✓ | ✓ | | | | | | | ✓ | | | ✓ | | | |
 
 `account list` and `account current` need `list`; `account switch` needs `account`.
 
@@ -313,6 +315,7 @@ Off, they answer `404 not_found`.
 | POST | `/v1/cli/sessions/{ref}/remove` | `{ref}` may be a started queue id | close |
 | POST | `/v1/cli/sessions/{ref}/restart` | `{ref}` may be a started queue id | restart |
 | POST | `/v1/cli/sessions/{ref}/compact` | `{ref}` may be `self` or a started queue id | compact |
+| POST | `/v1/cli/remote-control/off` | `target` (a session ref, `self`, or `all`); 202 `pending approval a_…` (exit 75) until the owner answers | remoteControl |
 | GET | `/v1/cli/load` | | list |
 | POST | `/v1/cli/slot/build/acquire` | `ticket` (wait in line), `timeout` (seconds, at most 25 per request), `label` | slots |
 | POST | `/v1/cli/slot/build/release` | `id` (empty: all of the caller's), or `ticket` (leave the line) | slots |
@@ -332,7 +335,8 @@ also `400 bad_permission_mode` / `bad_allow` / `bad_model` / `bad_effort` / `bad
 `403 close_off` / `not_yours`, `409 still_running` (exit 1) / `switching_account`; for `restart`
 `400 cannot_restart_self`, `403 restart_off` / `close_off` / `not_yours`, `404 unknown_session`,
 `409 read_only` / `busy` / `not_running` / `not_restarted` / `switching_account`; for `compact` `400 not_claude`,
-`403 not_yours`, `404 unknown_session`, `409 read_only` / `blocked` / `not_running` / `switching_account`; for accounts `400 not_claude`, `404 unknown_account`,
+`403 not_yours`, `404 unknown_session`, `409 read_only` / `blocked` / `not_running` / `switching_account`; for
+`remote-control off` `400 not_claude`, `403 owner_refused` / `approval_expired`, `404 unknown_session`; for accounts `400 not_claude`, `404 unknown_account`,
 `409 no_account` / `same_account` / `not_logged_in` / `account_limited` / `pinned` / `switching`; while the Mac is
 overloaded (below) `429 overloaded` for `new` and `sim acquire`, and `429 too_many_booted` for `sim acquire`; for slots
 `400 bad_ticket`, `404 unknown_slot` / `unknown_slot_id`, `429 no_slot` (exit 124, with `position`, `used`,
@@ -716,6 +720,41 @@ would (Ctrl+C first clears a draft in its prompt). Without an ID it compacts the
 - No setting beyond the command-line tool itself (scope `compact`): compacting loses nothing
   the transcript doesn't keep. Every request, every typed `/compact` and every give-up (the
   session stopped, or the turn didn't end within 30 minutes) is in the agent Activity Log.
+
+### Remote Control
+
+Claude Code's Remote Control lets claude.ai/code and the Claude app drive a running session.
+ClaudeDeck shows where it is on (an orange antenna in the sidebar and on the phone) and turns it
+off on the owner's word only.
+
+- **Where it's on:** Claude Code keeps `<config dir>/sessions/<pid>.json` for every
+  interactive session (`~/.claude`, or an account's `CLAUDE_CONFIG_DIR`); `bridgeSessionId` is
+  set while Remote Control is connected and `null` once it isn't. ClaudeDeck reads these every
+  4 seconds and matches them to its sessions by Claude session id (a leftover file of a process
+  that ended doesn't count).
+- **Turning it off:** typed while connected, `/remote-control` opens a dialog ("Disconnect this
+  session", "Show QR code", "Continue", focus on "Continue"). Once the session's turn is over
+  (and after a resume's `/compact` or continue message), ClaudeDeck clears the prompt (Ctrl+C),
+  types `/remote-control` and Enter, and only when that dialog is on screen presses Up, Up,
+  Enter; otherwise Esc, and the attempt counts as failed. The registry then has to say it's off
+  within 10 seconds. Requested, done and failed offs are all in the agent Activity Log.
+- **Who:** the owner, from File › "Turn Off Remote Control (All Sessions)", a session's menu, or
+  the phone (hosts with `Feature.remoteControl`: `RemoteSession.remoteControl`,
+  `RemoteSessionAction.remoteControlOff`). A session asks with
+  `claudedeck remote-control off ID|self|--all`: that's an approval card for the owner (scope
+  `remoteControl`, kind `other`; a phone may approve it), answered `202 pending approval a_…`
+  (exit 75; the command follows it unless `--no-wait`), and nothing is typed before the yes.
+  Refused: `403 owner_refused`; unanswered: `403 approval_expired`. A target that has it off
+  already answers `200 already off` (`{"remoteControl":"off","sessions":[],"pending":false}`)
+  without asking. Approved: `{"remoteControl":"off","sessions":[…],"pending":true}`. Not kept
+  across a relaunch of ClaudeDeck (withdrawn, like the phone's container actions).
+- **Why resumed sessions come back with it on:** `claude --resume <id>` turns Remote Control on
+  again whenever the conversation's last `bridge-session` record (in its transcript) has an id,
+  whatever `remoteControlAtStartup` says; that setting only covers fresh sessions, and there is
+  no flag or environment variable to start with it off. A disconnect writes an empty record, so
+  later resumes stay off. Settings › Sessions › "Keep Remote Control off" (on by default) turns
+  it off once in a session ClaudeDeck resumed whose Remote Control came back within 90 seconds;
+  turned on later by hand, it stays on until the next resume.
 
 ### Claude accounts and usage limits
 

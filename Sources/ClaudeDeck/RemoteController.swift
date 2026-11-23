@@ -611,6 +611,9 @@ final class RemoteController {
                         model.removeSession(session.id)
                     case .insert(let text):
                         model.terminals.paste(text, into: id)
+                    case .remoteControlOff:
+                        // The owner asked on the phone: typed once the turn is over (logged).
+                        model.turnOffRemoteControl([id], by: String(localized: "Phone"))
                     }
                     self?.publishSnapshot()
                 }
@@ -823,6 +826,7 @@ final class RemoteController {
             remote.kind = session.kind == .shell ? RemoteSession.terminalKind : RemoteSession.claudeKind
             remote.queue = session.queue.isEmpty ? nil : session.queue
             remote.notesRevision = model.agentNotesRevision[session.id]
+            if model.remoteControlOn.contains(session.id) { remote.remoteControl = true }
             if session.kind == .claude, session.startedBy != nil || starters.contains(session.id) {
                 let options = session.launchOptions
                 let state = model.cliState(session)

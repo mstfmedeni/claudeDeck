@@ -57,6 +57,12 @@ extension SessionCLI {
           Claude session it started (now when idle, after its turn when it's working; 3 when it
           waits on a permission or a question). When your context runs low: update
           docs/HANDOFF.md first, then compact yourself.
+      claudedeck remote-control off ID|self|--all [--no-wait] [--json]
+          Asks the owner to turn Claude Code's Remote Control off in a Claude session (or in
+          every one that has it on): a card in ClaudeDeck's Approvals (exit 75 while it waits;
+          this command follows it unless --no-wait). Once approved, ClaudeDeck types
+          /remote-control and picks "Disconnect this session" in each one after its turn.
+          Nothing happens without the owner's yes.
       claudedeck notify TEXT
           A notification for the user.
       claudedeck ask [--agent NAME] QUESTION
@@ -332,7 +338,10 @@ extension SessionCLI {
               unknown_session) hint=" (see claudedeck list)" ;;
               ambiguous) hint=" (give more of the id)" ;;
               not_running) hint=" (it isn't running)" ;;
-              not_claude) hint=" (only Claude sessions can be compacted)" ;;
+              not_claude) case "$command_name" in
+                  remote-control) hint=" (only Claude sessions have Remote Control)" ;;
+                  *) hint=" (only Claude sessions can be compacted)" ;;
+                esac ;;
               blocked) hint=" (a permission or a question is on screen)" ;;
               bad_recommend) hint=" (--recommend must be one of --options, or its number)" ;;
               too_many_options) hint=" (at most 10 options)" ;;
@@ -672,6 +681,31 @@ extension SessionCLI {
       check_id "$id" compact
       need_session
       call "/sessions/$id/compact" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_remote_control() {
+      sub=${1:-}
+      case "$sub" in
+        off) shift ;;
+        *) die "remote-control: try claudedeck remote-control off ID|self|--all" ;;
+      esac
+      follow_approval=1
+      id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json=1 ;;
+          --no-wait) no_wait=1 ;;
+          --all) [ -z "$id" ] || die "remote-control off: one ID, or --all"; id=all ;;
+          -*) die "remote-control off: unknown option $1" ;;
+          *) [ -z "$id" ] || die "remote-control off: one ID, or --all"; id=$1 ;;
+        esac
+        shift
+      done
+      [ -n "$id" ] || die "remote-control off: which session? An ID, self, or --all."
+      check_id "$id" remote-control
+      need_session
+      call "/remote-control/off" --data-urlencode "target=$id" --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1729,6 +1763,7 @@ extension SessionCLI {
       remove) cmd_remove "$@" ;;
       restart) cmd_restart "$@" ;;
       compact) cmd_compact "$@" ;;
+      remote-control) cmd_remote_control "$@" ;;
       notify) cmd_notify "$@" ;;
       ask) cmd_ask "$@" ;;
       skill) cmd_skill "$@" ;;
@@ -2016,6 +2051,23 @@ extension SessionCLI {
       other sessions started (exit 4 `not_yours`). Exit 1 `not_running`, `read_only` (another
       app's session helper) or `switching_account`. No setting needed; every compact is in the
       activity log. A deferred one is given up after 30 minutes.
+
+    ### Remote Control (owner only)
+
+    ```sh
+    claudedeck remote-control off ID|self [--no-wait] [--json]   # one Claude session
+    claudedeck remote-control off --all [--no-wait] [--json]     # every session that has it on
+    ```
+
+    - Claude Code's Remote Control lets claude.ai/code and the Claude app drive a session. Only
+      the owner turns it off: this asks for it with a card in ClaudeDeck's Approvals (exit 75
+      `pending approval a_…`; the command waits for the answer unless `--no-wait`, then
+      `claudedeck approval wait ID`). Refused or unanswered: exit 4 `owner_refused` /
+      `approval_expired`. Never retry a refusal; never turn it off another way.
+    - Once approved, ClaudeDeck types `/remote-control` into each session after its turn and
+      picks "Disconnect this session"; the result of each is in the activity log. A session that
+      has it off already answers `already off` at once, without asking.
+    - Unknown session: exit 5 `unknown_session`; a terminal: exit 2 `not_claude`.
 
     ### ServerPlan
 

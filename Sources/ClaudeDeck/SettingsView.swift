@@ -209,6 +209,9 @@ struct SettingsView: View {
                 Text("Compact threshold: context above \(model.deck.settings.compactThresholdTokens / 1000)K tokens")
             }
             .disabled(!model.deck.settings.compactOnResume)
+            Toggle("Keep Remote Control off", isOn: setting(\.keepRemoteControlOff))
+            Text("A resumed session that had Claude Code's Remote Control on comes back with it on (claude --resume reconnects it, whatever remoteControlAtStartup says). ClaudeDeck turns it off again, once, right after the resume. Turned on by hand with /remote-control, it stays on until the next resume.")
+                .font(.caption).foregroundStyle(.secondary)
         }
         Section("Continue Message") {
             TextField("Message", text: setting(\.continueMessage), prompt: Text("Continue where you left off."))

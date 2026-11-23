@@ -377,6 +377,8 @@ struct SessionListView: View {
             // The Mac's load: the level in its color, a tap for what is using the Mac.
             if let load = store.macLoad { MacLoadRow(load: load) }
             if let agendas = store.agendas, !agendas.isEmpty { AgendaRow(agendas: agendas) }
+            let remoteControl = store.remoteControlSessions
+            if !remoteControl.isEmpty { RemoteControlRow(sessions: remoteControl) }
             if let groups = store.agentGroups, !groups.isEmpty { AgentTreeRow(groups: groups) }
             if let pending = store.snapshot?.pendingAgents, !pending.isEmpty,
                store.snapshot?.supports(RemoteSnapshot.Feature.agentApproval) == true {
@@ -703,6 +705,35 @@ extension SessionListView {
     }
 }
 
+/// Claude Code's Remote Control is on in some of the Mac's sessions: how many, and one button to
+/// turn it off in all of them (the Mac does it once each one's turn is over).
+struct RemoteControlRow: View {
+    @Environment(RemoteStore.self) private var store
+    let sessions: [RemoteSession]
+    @State private var confirm = false
+
+    var body: some View {
+        Button { confirm = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Remote Control is on (\(sessions.count))").listFont(.body)
+                    Text(sessions.map(\.name).joined(separator: ", ")).listFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Text("Turn Off").listFont(.callout, weight: .medium)
+            }
+        }
+        .disabled(store.connection != .connected)
+        .selectionDisabled()
+        .confirmationDialog("Turn off Remote Control in these sessions?", isPresented: $confirm, titleVisibility: .visible) {
+            Button("Turn Off Remote Control") { store.turnOffRemoteControl(sessions.map(\.id)) }
+        } message: {
+            Text("The Mac types /remote-control and picks “Disconnect this session” in each one once its turn is over. claude.ai/code and the Claude app lose them.")
+        }
+    }
+}
+
 /// A section title of the session list, scaled with its text size.
 struct ListHeader: View {
     let title: LocalizedStringKey
@@ -818,6 +849,12 @@ struct SessionRowLink: View {
                     Button(role: .destructive) { store.sessionAction(session.id, .close) } label: {
                         Label("Close Terminal", systemImage: "xmark.circle")
                     }
+                }
+            }
+            if session.remoteControl == true, store.canTurnOffRemoteControl {
+                Divider()
+                Button { store.turnOffRemoteControl([session.id]) } label: {
+                    Label("Turn Off Remote Control", systemImage: "antenna.radiowaves.left.and.right.slash")
                 }
             }
             if !shell {
@@ -1167,6 +1204,10 @@ struct SessionRow: View {
                         .frame(width: 9, height: 9)
                 }
                 Text(session.name).listFont(.body, weight: .medium).lineLimit(1)
+                if session.remoteControl == true {
+                    Image(systemName: "antenna.radiowaves.left.and.right").listFont(.caption2).foregroundStyle(.orange)
+                        .accessibilityLabel(Text("Remote Control on"))
+                }
                 if showProject, !session.project.isEmpty, !session.name.hasPrefix(session.project) {
                     Text(session.project).listFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }

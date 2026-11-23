@@ -130,6 +130,8 @@ extension AppModel {
             return await cliRestart(caller, ref: ref, json: json)
         case .compact(let ref):
             return cliCompact(caller, ref: ref, json: json)
+        case .remoteControlOff:
+            return await cliRemoteControlOff(caller, form: form, json: json)
         case .load:
             return await cliLoad(form: form, json: json)
         case .slotAcquire(let kind):
