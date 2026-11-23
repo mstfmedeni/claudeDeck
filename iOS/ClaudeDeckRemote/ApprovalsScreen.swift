@@ -273,7 +273,7 @@ struct ResolvedApprovalPhoneRow: View {
             if mayReapprove || sending {
                 HStack {
                     if let until = resolved.reapprovableUntil {
-                        Text("Changeable until \(until.formatted(date: .omitted, time: .shortened))")
+                        Text("Changeable until \(until.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
                     Spacer()

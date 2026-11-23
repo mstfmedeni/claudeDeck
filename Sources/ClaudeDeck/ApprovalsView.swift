@@ -173,7 +173,7 @@ struct ResolvedApprovalRow: View {
                 Button(approval.isPurchase ? String(localized: "Buy anyway") : String(localized: "Approve anyway")) { confirm = true }
                     .controlSize(.small)
                     .tint(approval.isPurchase ? .red : .accentColor)
-                    .help(String(localized: "Changes the answer to approved and runs the request now. Possible until \(Approvals.reapprovableUntil(resolved).formatted(date: .omitted, time: .shortened))."))
+                    .help(String(localized: "Changes the answer to approved and runs the request now. Possible until \(Approvals.reapprovableUntil(resolved).formatted(date: .abbreviated, time: .shortened))."))
                     .confirmationDialog(approval.isPurchase ? String(localized: "Buy anyway?") : String(localized: "Approve anyway?"),
                                         isPresented: $confirm) {
                         Button(approval.isPurchase ? String(localized: "Buy") : String(localized: "Approve and Run"),

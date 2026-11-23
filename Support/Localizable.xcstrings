@@ -25529,7 +25529,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cevabı onaya çevirir ve isteği şimdi çalıştırır. %@ saatine kadar yapılabilir."
+            "value": "Cevabı onaya çevirir ve isteği şimdi çalıştırır. %@ tarihine kadar yapılabilir."
           }
         }
       }
@@ -25549,7 +25549,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ saatine kadar değiştirilebilir"
+            "value": "%@ tarihine kadar değiştirilebilir"
           }
         }
       }
