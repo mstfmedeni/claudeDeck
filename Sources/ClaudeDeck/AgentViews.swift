@@ -169,7 +169,7 @@ struct AgentsSettingsSection: View {
                         model.drainCLIQueueSoon()
                     }
                 ), in: 1...40) {
-                    Text("At most \(model.deck.settings.maxStartedSessions) sessions started by sessions running at once")
+                    Text("At most \(model.deck.settings.maxStartedSessions) sessions started by sessions working at once")
                 }
                 Text("Sessions started with claudedeck new count while they run, idle or working; more starts wait with new --queue. Your own sessions don't count.")
                     .font(.caption).foregroundStyle(.secondary)

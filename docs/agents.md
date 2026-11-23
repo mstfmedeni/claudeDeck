@@ -1024,6 +1024,9 @@ Command-line tool; off by default, exit 4 `setting_off`). When it's on there's n
   preset in effect when the session starts counts (also for a queued one). A preset with
   `bypassPermissions` can only be set while that setting is on. Setting and clearing are in the
   Activity Log.
+- **Running cap:** counts only agent-started sessions that are **working**: Claude mid-turn, or a
+  terminal's program running, plus any started in the last minute (not reporting yet). One idle at
+  its prompt, or waiting on a question or a permission, doesn't take a place (since 0.6.24).
 - **Queue (`new --queue`):** when the start would be refused for the running cap
   (`too_many_running`) or the caller's rate limit (`too_many_starts`), it waits in a queue
   instead and the command prints the queue id (`--json`: `{"queued": true, "queue_id": "q_…",

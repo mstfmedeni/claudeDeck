@@ -138,7 +138,17 @@ extension AppModel {
     }
 
     /// Claude sessions `claudedeck new` started that are running (the cap counts these).
-    var cliRunningStarted: Int { deck.sessions.filter { $0.startedBy != nil && terminals.isRunning($0.id) }.count }
+    /// Agent-started sessions that are working now: the cap counts these only. One waiting for its
+    /// next prompt, a question or a permission is passive and doesn't take a place; a session that
+    /// started in the last minute does (it hasn't reported working yet), so a burst of `new`s
+    /// can't slip past the cap.
+    var cliRunningStarted: Int {
+        deck.sessions.filter { session in
+            guard session.startedBy != nil, terminals.isRunning(session.id) else { return false }
+            if let since = runningSince(session.id), Date().timeIntervalSince(since) < 60 { return true }
+            return status(of: session.id).display.isRunning
+        }.count
+    }
 
     /// Starts what `new` asked for (now, or when the queue gets room). The options are the
     /// command's over the project's preset at this moment.

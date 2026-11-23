@@ -25063,6 +25063,16 @@
           }
         }
       }
+    },
+    "At most %lld sessions started by sessions working at once": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumların başlattığı oturumlardan aynı anda en fazla %lld tanesi çalışsın (boşta bekleyenler sayılmaz)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
