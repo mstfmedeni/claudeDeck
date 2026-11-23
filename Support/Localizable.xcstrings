@@ -25073,6 +25073,36 @@
           }
         }
       }
+    },
+    "Coordinator project (may write every project's status and rename projects)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordinatör proje (tüm projelerin durumunu yazabilir, projeleri yeniden adlandırabilir)"
+          }
+        }
+      }
+    },
+    "ServerPlan paths weren't updated": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ServerPlan yolları güncellenmedi"
+          }
+        }
+      }
+    },
+    "%@ moved to %@. %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ klasörü %2$@ konumuna taşındı. %3$@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

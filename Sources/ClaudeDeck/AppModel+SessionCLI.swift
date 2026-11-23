@@ -29,7 +29,7 @@ extension AppModel {
     /// (also on PATH; Claude Code's Bash tool may reset PATH, the absolute path stays).
     func cliEnvironment(for id: UUID) -> [String: String] {
         guard deck.settings.sessionCLIEnabled, let session = deck.session(id) else { return [:] }
-        let token = cli.token(for: id, scopes: SessionCLI.scopes(openedBy: session.openedBy))
+        let token = cli.token(for: id, scopes: SessionCLI.scopes(openedBy: session.openedBy, kind: session.kind))
         let bin = cliScriptURL.deletingLastPathComponent().path
         let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         return [
@@ -138,6 +138,8 @@ extension AppModel {
             return await cliSlotAcquire(caller, kind: kind, form: form, json: json)
         case .slotRelease(let kind):
             return cliSlotRelease(caller, kind: kind, form: form, json: json)
+        case .renameProject(let ref):
+            return await cliRenameProject(caller, project: ref, form: form, json: json)
         }
     }
 

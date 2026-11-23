@@ -101,6 +101,9 @@ public enum SessionCLI {
         /// Asking the owner to turn Claude Code's Remote Control off (`claudedeck remote-control
         /// off`): only ever through an approval the owner gives.
         case remoteControl
+        /// Renaming a project and moving its folder (`claudedeck project rename`): Claude sessions
+        /// only, and only from a project the owner marked as a coordinator.
+        case projectRename
     }
 
     /// Claude sessions and the user's own terminals.
@@ -108,7 +111,13 @@ public enum SessionCLI {
     /// A terminal a session opened runs what that session wrote: it may look and tell, not act.
     public static let openedScopes: Set<Scope> = [.list, .capture, .wait, .notify, .usage, .slots]
 
-    public static func scopes(openedBy: UUID?) -> Set<Scope> { openedBy == nil ? fullScopes : openedScopes }
+    /// Claude sessions only: the owner's own plain terminals don't rename projects.
+    public static let claudeOnlyScopes: Set<Scope> = [.projectRename]
+
+    public static func scopes(openedBy: UUID?, kind: SessionKind = .claude) -> Set<Scope> {
+        guard openedBy == nil else { return openedScopes }
+        return kind == .claude ? fullScopes : fullScopes.subtracting(claudeOnlyScopes)
+    }
 
     // MARK: Routes
 
@@ -184,6 +193,8 @@ public enum SessionCLI {
         /// `POST /v1/cli/slot/{kind}/acquire` and `…/release` (kind: `build`).
         case slotAcquire(String)
         case slotRelease(String)
+        /// `POST /v1/cli/projects/{ref}/rename` (`name`, `folder=1`).
+        case renameProject(String)
 
         public var scope: Scope {
             switch self {
@@ -210,6 +221,7 @@ public enum SessionCLI {
             case .remoteControlOff: .remoteControl
             case .load: .list
             case .slotAcquire, .slotRelease: .slots
+            case .renameProject: .projectRename
             }
         }
     }
@@ -237,6 +249,7 @@ public enum SessionCLI {
         case 1 where rest[0] == "ask": return expect("POST", .ask)
         case 1 where rest[0] == "projects": return method == "POST" ? .route(.addProject) : expect("GET", .projects)
         case 3 where rest[0] == "projects" && rest[2] == "sessions": return expect("POST", .newSession(AgentHTTP.percentDecode(rest[1])))
+        case 3 where rest[0] == "projects" && rest[2] == "rename": return expect("POST", .renameProject(AgentHTTP.percentDecode(rest[1])))
         case 3 where rest[0] == "projects" && rest[2] == "preset":
             let ref = AgentHTTP.percentDecode(rest[1])
             return method == "POST" ? .route(.setPreset(ref)) : expect("GET", .showPreset(ref))

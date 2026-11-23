@@ -821,6 +821,7 @@ struct ProjectMenu: View {
             model.mutate { $0.updateProject(project.id) { $0.pinned.toggle() } }
         }
         ProjectAccountMenu(project: project)
+        CoordinatorToggle(project: project)
         Menu("Move to Group") {
             ForEach(model.deck.groups) { group in
                 Button(group.name) { model.mutate { $0.updateProject(project.id) { $0.groupID = group.id } } }

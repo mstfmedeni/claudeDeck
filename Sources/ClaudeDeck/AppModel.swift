@@ -784,7 +784,7 @@ final class AppModel {
         if info.meta["pencil"] == "1" { pencilSessions.insert(id) } else { pencilSessions.remove(id) }
         // The claudedeck token it was started with (the process still has it in its environment).
         if let token = info.meta["cliToken"], !token.isEmpty, deck.settings.sessionCLIEnabled {
-            cli.adopt(token, for: id, scopes: SessionCLI.scopes(openedBy: session.openedBy))
+            cli.adopt(token, for: id, scopes: SessionCLI.scopes(openedBy: session.openedBy, kind: session.kind))
         }
         terminals.attachHelper(id, cwd: session.workingDirectory ?? project.path, isClaude: session.kind == .claude,
                                client: client, readOnly: readOnly, known: info)

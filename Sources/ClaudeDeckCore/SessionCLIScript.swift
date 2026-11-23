@@ -146,6 +146,12 @@ extension SessionCLI {
       claudedeck project add PATH [--name NAME] [--group GROUP] [--create] [--json]
           Adds a folder as a project (an existing one: returns it). --create makes the folder,
           only under your home folder. Prints the project id.
+      claudedeck project rename PROJECT NEWNAME [--folder] [--json]
+          Renames a project, like its Rename… in ClaudeDeck; --folder also renames its folder
+          (next to where it is), moves Claude's conversations of it, repairs git worktrees and
+          moves ServerPlan's stored paths under it (when ServerPlan supports it). Only from a
+          session of a coordinator project (the owner marks one in the project's menu), and only
+          while no session or terminal of PROJECT runs (409 sessions_running lists them).
       claudedeck new [--project ID|NAME|PATH] [--name NAME] [--prompt TEXT] [--worktree NAME]
                      [--permission-mode MODE] [--allow RULE]... [--model MODEL] [--effort LEVEL]
                      [--skill NAME] [--account NAME|auto] [--queue] [--json]
@@ -195,6 +201,9 @@ extension SessionCLI {
       claudedeck server domain add --static SERVER SUBDOMAIN BASE [--target /opt/static/DIR] [--no-clean-urls]
       claudedeck server static add SERVER BASE      (the root static site of BASE)
       claudedeck server sync DOMAIN FOLDER          (upload a static site's files)
+      claudedeck server paths relocate OLD_PREFIX NEW_PREFIX [--dry-run]   (ServerPlan's stored local paths
+          under OLD_PREFIX, on whole path components, move to NEW_PREFIX; ids stay. --dry-run lists them;
+          a real run: the owner confirms. project rename --folder does this by itself)
       claudedeck server dns sync DOMAIN | zone add NAME | ns set DOMAIN
       claudedeck server env rescan PROJECT [--dry-run]   (new keys from .env.example)
       claudedeck server env rm PROJECT ENV_ID   (one row by its id from env get; the owner confirms)
@@ -310,6 +319,12 @@ extension SessionCLI {
               queued) hint=" (still queued; claudedeck wait QID)" ;;
               queue_cancelled|queue_failed) hint=" (see claudedeck queue show QID)" ;;
               unknown_project) hint=" (see claudedeck projects)" ;;
+              not_coordinator) hint=" (only sessions of a coordinator project may rename projects; the owner turns that on in the project's menu)" ;;
+              sessions_running) hint=" (end them first; nothing was changed)" ;;
+              bad_name) hint=" (a folder name can't be empty, contain / or be . or ..)" ;;
+              exists) hint=" (something with that name is already next to the folder)" ;;
+              missing) hint=" (the project's folder isn't there)" ;;
+              bad_prefix|same_prefix|nested_prefix) hint=" (two different absolute folders, neither inside the other)" ;;
               owner_refused) hint=" (the owner refused or didn't answer in ClaudeDeck)" ;;
               approval_expired) hint=" (the owner didn't answer in time)" ;;
               approval_cancelled) hint=" (it was withdrawn)" ;;
@@ -1097,7 +1112,11 @@ extension SessionCLI {
     }
 
     cmd_project() {
-      [ "${1:-}" = add ] || die "project: try claudedeck project add PATH [--name NAME] [--group GROUP] [--create]"
+      case "${1:-}" in
+        add) ;;
+        rename) shift; cmd_project_rename "$@"; return ;;
+        *) die "project: try claudedeck project add PATH [--name NAME] [--group GROUP] [--create], or project rename PROJECT NEWNAME [--folder]" ;;
+      esac
       shift
       path=""; name=""; group=""; create=0
       while [ $# -gt 0 ]; do
@@ -1117,6 +1136,31 @@ extension SessionCLI {
       need_session
       call /projects --data-urlencode "path=$(abs_path "$path")" --data-urlencode "name=$name" \
         --data-urlencode "group=$group" --data-urlencode "create=$create" --data-urlencode "format=$(fmt)"
+      finish
+    }
+
+    cmd_project_rename() {
+      project=""; name=""; folder=0; n=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --folder) folder=1 ;;
+          --json) json=1 ;;
+          -*) die "project rename: unknown option $1" ;;
+          *)
+            n=$((n + 1))
+            case $n in 1) project=$1 ;; 2) name=$1 ;; *) die "project rename: PROJECT NEWNAME (quote a name with spaces)" ;; esac ;;
+        esac
+        shift
+      done
+      [ -n "$project" ] && [ -n "$name" ] || die "project rename: PROJECT NEWNAME [--folder]"
+      if [ "$folder" = 1 ]; then
+        case "$name" in */*|.|..) die "project rename: the new folder name can't contain / or be . or .." ;; esac
+      fi
+      need_session
+      # Moving the folder may also update ServerPlan's paths: up to a minute.
+      max_time=90
+      call "/projects/$(project_ref "$project")/rename" --data-urlencode "name=$name" --data-urlencode "folder=$folder" \
+        --data-urlencode "format=$(fmt)"
       finish
     }
 
@@ -1325,7 +1369,7 @@ extension SessionCLI {
       wait=0; follow=0; force=0; websocket=0; stdin=0; file=""; static=0; clean=1
       tail=""; server=""; sproject=""; sname=""; port=""; volume=""; dockerfile=""; target=""
       local_db=0; write=0; no_cache=0; revoke=0; database=""; ws=""; clean_set=""; ssl=""
-      approval=""; years=""; no_dns=0; refresh=0
+      approval=""; years=""; no_dns=0; refresh=0; dry_run=0
       since=""; until_t=""; timestamps=0; grep_text=""; images=""; volumes=0; no_build_cache=0; no_containers=0; rl_paths=""; rl_rate=""
       while [ $# -gt 0 ]; do
         case "$1" in
@@ -1346,6 +1390,7 @@ extension SessionCLI {
           --revoke) revoke=1 ;;
           --no-dns) no_dns=1 ;;
           --refresh) refresh=1 ;;
+          --dry-run) dry_run=1 ;;
           --no-wait) no_wait=1 ;;
           --volumes) volumes=1 ;;
           --no-build-cache) no_build_cache=1 ;;
@@ -1377,7 +1422,7 @@ extension SessionCLI {
       args() { [ "$n" -eq "$1" ] || die "server $sub: $2"; }
       case "$sub" in
         list|projects|dirs|features|cloudflare|deployments|health|containers|ports|logs|deploy|deploy-status|container|scan|project|dockerfile|db|domain|dns|zone|ns|static|sync) ;;
-        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg|balance|stats|disk|prune|ratelimit) ;;
+        sql|local|git|refresh|build|pull-deploy|diagnose|deploy-cancel|pg|balance|stats|disk|prune|ratelimit|paths) ;;
         *) die "server: unknown command $sub (claudedeck help)" ;;
       esac
       case "$sub" in
@@ -1401,6 +1446,10 @@ extension SessionCLI {
         ratelimit) case "$p1" in show|set|clear) args 2 "ratelimit $p1 HOST" ;; *) die "server ratelimit: show, set or clear HOST" ;; esac
           [ "$p1" = set ] || [ -z "$rl_paths$rl_rate" ] || die "server ratelimit: --paths and --rate go with set" ;;
         logs) args 2 "logs SERVER CONTAINER" ;;
+        paths) [ "$p1" = relocate ] || die "server paths: try server paths relocate OLD_PREFIX NEW_PREFIX [--dry-run]"
+          args 3 "paths relocate OLD_PREFIX NEW_PREFIX"
+          case "$p2" in /*) ;; *) die "server paths relocate: OLD_PREFIX must be an absolute path" ;; esac
+          case "$p3" in /*) ;; *) die "server paths relocate: NEW_PREFIX must be an absolute path" ;; esac ;;
         deploy) args 1 "which project?" ;;
         deploy-status) args 1 "which deployment?"; case "$p1" in *[!0-9]*) die "server deploy-status: a deployment id" ;; esac ;;
         container) args 3 "container SERVER CONTAINER ACTION"
@@ -1458,6 +1507,10 @@ extension SessionCLI {
             clear) max_time=240; srv ratelimit-clear --data-urlencode "host=$p2" ;;
           esac ;;
         stats) max_time=75; srv stats GET --data-urlencode "server=$p1" ;;
+        paths)
+          # A real run waits for the owner (2 minutes).
+          if [ "$dry_run" = 1 ]; then max_time=75; else max_time=220; fi
+          srv paths-relocate --data-urlencode "old=$p2" --data-urlencode "new=$p3" --data-urlencode "dry_run=$dry_run" ;;
         disk) max_time=75; srv disk GET --data-urlencode "server=$p1" ;;
         prune)
           # The owner has 2 minutes to answer, then docker may take a while.
@@ -1975,6 +2028,24 @@ extension SessionCLI {
     - Limits: 5 new sessions per 10 minutes and 10 new projects per hour per session, 8
       started sessions running at once. Exit 4 (`too_many_…`) means wait; don't loop on it
       (`--queue` waits for you: the start happens once there's room).
+
+    #### Renaming a project (coordinator projects only)
+
+    ```sh
+    claudedeck project rename PROJECT NEWNAME [--folder] [--json]
+    ```
+
+    - Only a session of a project the user marked "Coordinator project" (project menu) may do
+      this; anyone else gets exit 4 `not_coordinator`. Don't ask the user to turn it on unless
+      they asked you to rename projects.
+    - Without `--folder` only the display name changes. With `--folder` the folder is renamed
+      next to where it is (NEWNAME is a folder name, never a path), Claude's conversations of it
+      and git worktrees follow, and so do ServerPlan's stored paths (`serverplan` in the answer:
+      `relocated`, `nothing`, `not_supported` with the paths still pointing at the old folder,
+      `serverplan_off` or `failed`). A ServerPlan problem never undoes the rename: tell the user.
+    - Refused with exit 1 `sessions_running` (it lists ids and names) while any session or
+      terminal of PROJECT runs, your own included: nothing changes. `exists`: the new folder
+      name is taken.
     - The user gets a notification for each and can see them in the activity log. Start
       sessions only when parallel work really helps, and say why in the prompt.
     - If the user turned on the stall watch, a session you started that makes no progress for a
@@ -2124,6 +2195,7 @@ extension SessionCLI {
     claudedeck server domain add --static SERVER docs example.com [--target /opt/static/DIR] [--no-clean-urls]
     claudedeck server sync DOMAIN FOLDER           # upload FOLDER (inside a registered dir) to the site
     claudedeck server env rescan PROJECT [--dry-run]   # import keys new in .env.example
+    claudedeck server paths relocate OLD NEW [--dry-run]   # stored local paths under OLD (whole path components) → NEW; a real run: the user approves
     claudedeck server env rm PROJECT ENV_ID        # one row (ID column of env get); the user must approve
     ```
 

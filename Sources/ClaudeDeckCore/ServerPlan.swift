@@ -25,6 +25,8 @@ public enum ServerPlanContract {
         public static let events = "events"
         /// v1.4: `GET /registrar/balance`, the `registrar.*` events.
         public static let registrarBalance = "registrar_balance"
+        /// `POST /paths/relocate` (ServerPlanPathRelocation.swift).
+        public static let pathsRelocate = ServerPlanPathRelocation.feature
     }
 }
 

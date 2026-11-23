@@ -24,6 +24,14 @@ public struct Project: Codable, Identifiable, Sendable, Equatable {
     /// Settings › Accounts: every session in this project runs on this account (an id from
     /// `DeckSettings.accounts`, or `default`) and is never moved to another one. nil: not pinned.
     public var account: String?
+    /// A coordinator project (owner only, from its context menu): its sessions may act on every
+    /// project (e.g. set any project's status). nil: no.
+    public var coordinator: Bool?
+    /// `coordinator`, with nil as false; off is stored as nil.
+    public var isCoordinator: Bool {
+        get { coordinator ?? false }
+        set { coordinator = newValue ? true : nil }
+    }
 
     public init(id: UUID = UUID(), path: String, name: String? = nil, groupID: UUID? = nil, pinned: Bool = false, collapsed: Bool = false) {
         self.id = id
