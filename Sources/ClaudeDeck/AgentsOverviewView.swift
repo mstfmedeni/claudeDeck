@@ -76,9 +76,14 @@ private struct AgentsOverviewHeader: View {
             SummaryChip(systemImage: "bolt.fill", text: String(localized: "\(running) of \(cap) running"),
                         tint: running >= cap ? .orange : .green)
                 .help("Sessions started by sessions that are running, out of the cap in Settings › Agents")
-            if queued > 0 {
-                SummaryChip(systemImage: "hourglass", text: String(localized: "\(queued) queued"), tint: .blue)
-                    .help("Starts waiting for a free slot under the cap")
+            if queued > 0 || model.startHoldReason != nil {
+                let reason = model.startHoldReason
+                SummaryChip(systemImage: "hourglass",
+                            text: reason.map { queued > 0 ? String(localized: "\(queued) queued: \($0)") : String(localized: "New sessions wait: \($0)") }
+                                ?? String(localized: "\(queued) queued"),
+                            tint: reason == nil ? .blue : .orange)
+                    .help(reason == nil ? String(localized: "Starts waiting for a free slot under the cap")
+                          : String(localized: "New agent sessions wait until this clears; queued ones start by themselves"))
             }
             if decisions > 0 {
                 Button { model.showDecisions() } label: {
@@ -383,6 +388,12 @@ struct AgentsOverviewTray: View {
                     Image(systemName: "point.3.connected.trianglepath.dotted").foregroundStyle(.purple)
                     Text("Agents").sidebarFont(.callout, weight: .semibold)
                     Spacer()
+                    // Why new agent sessions wait, as plain text (nothing while they'd start).
+                    if let reason = model.startHoldReason {
+                        Text(String(localized: "waiting: \(reason)")).sidebarFont(.caption).foregroundStyle(.orange)
+                            .lineLimit(1).truncationMode(.tail)
+                            .help(String(localized: "New agent sessions wait: \(reason)"))
+                    }
                     Text("\(running)").sidebarFont(.caption, weight: .bold).monospacedDigit()
                         .foregroundStyle(running > 0 ? .white : .secondary)
                         .padding(.horizontal, 7).padding(.vertical, 1)

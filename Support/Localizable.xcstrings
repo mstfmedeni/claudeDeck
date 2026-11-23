@@ -25073,6 +25073,146 @@
           }
         }
       }
+    },
+    "the Mac is overloaded": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac aşırı yüklü"
+          }
+        }
+      }
+    },
+    "the Mac is overloaded (%@)": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac aşırı yüklü (%@)"
+          }
+        }
+      }
+    },
+    "the Mac is busy": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac yoğun"
+          }
+        }
+      }
+    },
+    "%lld of %lld agent sessions are working": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ajan oturumlarından %lld/%lld çalışıyor"
+          }
+        }
+      }
+    },
+    "memory pressure": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bellek baskısı"
+          }
+        }
+      }
+    },
+    "swap growing": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "swap artıyor"
+          }
+        }
+      }
+    },
+    "swap size": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "swap boyutu"
+          }
+        }
+      }
+    },
+    "CPU load": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "işlemci yükü"
+          }
+        }
+      }
+    },
+    "too many processes": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "çok fazla süreç"
+          }
+        }
+      }
+    },
+    "%lld queued: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sırada: %@"
+          }
+        }
+      }
+    },
+    "New sessions wait: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni oturumlar bekliyor: %@"
+          }
+        }
+      }
+    },
+    "New agent sessions wait until this clears; queued ones start by themselves": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni ajan oturumları bu durum geçene kadar bekler; sıradakiler kendiliğinden başlar"
+          }
+        }
+      }
+    },
+    "waiting: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bekliyor: %@"
+          }
+        }
+      }
+    },
+    "New agent sessions wait: %@": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni ajan oturumları bekliyor: %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

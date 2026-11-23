@@ -80,6 +80,42 @@ extension AppModel {
         return (parts + [loadText].compactMap { $0 }).joined(separator: ", ")
     }
 
+    /// Why new agent sessions wait right now (the Agents row and overview say it), or nil when a
+    /// start would go ahead: the load (and which trigger), or the running cap.
+    var startHoldReason: String? {
+        let settings = deck.settings.load
+        if LoadThrottle.holdsStarts(level: systemLoad.level, busyAction: settings.busyAction, enabled: settings.throttle) {
+            if systemLoad.level == .overloaded {
+                let monitor = systemLoad.monitor
+                let triggers = monitor.fired.isEmpty ? monitor.lastFired : monitor.fired
+                // "too many builds 45/30": the number now against the limit, as the Load tab shows it.
+                let names = triggers.map { trigger in
+                    let name = Self.triggerName(trigger)
+                    guard let state = monitor.triggers.first(where: { $0.trigger == trigger }),
+                          [.compilers, .processes].contains(trigger) else { return name }
+                    return "\(name) \(Int(state.current))/\(Int(state.threshold))"
+                }.joined(separator: ", ")
+                return names.isEmpty ? String(localized: "the Mac is overloaded")
+                    : String(localized: "the Mac is overloaded (\(names))")
+            }
+            return String(localized: "the Mac is busy")
+        }
+        let cap = deck.settings.maxStartedSessions
+        if cliRunningStarted >= cap { return String(localized: "\(cliRunningStarted) of \(cap) agent sessions are working") }
+        return nil
+    }
+
+    private static func triggerName(_ trigger: LoadTrigger) -> String {
+        switch trigger {
+        case .pressure: String(localized: "memory pressure")
+        case .swapGrowth: String(localized: "swap growing")
+        case .swapSize: String(localized: "swap size")
+        case .compilers: String(localized: "too many builds")
+        case .load: String(localized: "CPU load")
+        case .processes: String(localized: "too many processes")
+        }
+    }
+
     // MARK: claudedeck load / slot
 
     /// `claudedeck load [--json] [--detail]`: the JSON always has `top` (per session, measured now
