@@ -299,6 +299,11 @@ extension AppModel {
         let enter = form["enter"] == "1" || (target.kind == .claude && form["enter"] != "0")
         guard text.count <= SessionCLI.maxText else { return SessionCLI.failure(400, "too_long", exit: .usage) }
         guard !text.isEmpty || enter else { return SessionCLI.failure(400, "bad_request", exit: .usage) }
+        // A stopped Claude session a session closed resumes for it when the caller may resume it
+        // (the close chain, not only the sessions it started itself; Settings › Agents).
+        if target.kind == .claude, enter, !terminals.isRunning(target.id),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let resumed = cliSendResume(caller, to: target.id, text: text, json: json) { return resumed }
         let sender = deck.session(caller)?.name ?? "claudedeck"
         let panes = deck.visiblePanes
         // A command terminal of the caller's own project (a dev server it restarts) takes text
@@ -322,12 +327,7 @@ extension AppModel {
             return SessionCLI.answer(200, SessionCLISent(delivered: "note", noteId: note),
                                      text: "note: \(target.name) gets it as a note for the user (sessions may not type into Claude)", exit: .ok, json: json)
         case .type:
-            guard terminals.isRunning(target.id) else {
-                // A stopped Claude session a session closed resumes for it (Settings › Agents).
-                if target.kind == .claude, enter, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let resumed = cliSendResume(caller, to: target.id, text: text, json: json) { return resumed }
-                return SessionCLI.failure(409, "not_running", exit: .failed)
-            }
+            guard terminals.isRunning(target.id) else { return SessionCLI.failure(409, "not_running", exit: .failed) }
             let delivered: String
             if target.kind == .claude {
                 guard !status(of: target.id).display.isBlocked else { return SessionCLI.failure(409, "blocked", exit: .blocked) }
