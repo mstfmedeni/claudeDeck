@@ -50,12 +50,7 @@ extension SessionCLI {
         var sessions: [RunningSession]
     }
 
-    /// A refusal with a message (`{"error","message"}`), JSON in text mode too.
-    public static func failure(_ status: Int, _ code: String, message: String, exit: Exit) -> AgentHTTPResponse {
-        var response = AgentHTTPResponse.json(status, ["error": code, "message": message])
-        response.headers[exitHeader] = String(exit.rawValue)
-        return response
-    }
+    // `failure(_:_:message:exit:)` (a refusal with a message) is in SessionCLIProjectStatus.swift.
 
     /// `ProjectFolderRename.Problem` as the command's answer.
     public static func projectRenameFailure(_ problem: ProjectFolderRename.Problem) -> AgentHTTPResponse {
