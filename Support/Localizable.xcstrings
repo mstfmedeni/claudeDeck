@@ -25403,6 +25403,26 @@
           }
         }
       }
+    },
+    "Unheld pool simulators stay booted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sahipsiz havuz simülatörleri açık kalsın"
+          }
+        }
+      }
+    },
+    "Shut down pool simulators nobody has held for %lld min": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dakikadır kimsenin tutmadığı havuz simülatörlerini kapat"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

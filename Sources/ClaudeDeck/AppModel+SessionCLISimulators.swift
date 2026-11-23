@@ -69,6 +69,40 @@ extension AppModel {
         }
     }
 
+    /// Every minute: shuts down pool simulators nobody has held for the setting's minutes
+    /// (SimulatorIdleShutdown). Only ClaudeDeck's own devices, and never one a session's process
+    /// is using.
+    func startSimulatorIdleWatch() {
+        Task { @MainActor [weak self] in
+            var unheldSince: [String: Date] = [:]
+            while let self, !Task.isCancelled {
+                let minutes = self.deck.settings.simulatorsIdleShutdownMinutes
+                let sims = SimulatorsController.shared
+                if minutes > 0 {
+                    await sims.reloadList()
+                    // Fresh `uses` (which session processes use which device).
+                    await sims.sampleForRemote(model: self, every: .seconds(50))
+                    let booted = sims.booted.filter { $0.state == "Booted" }.map { device in
+                        SimulatorIdleShutdown.Device(udid: device.udid, name: device.name,
+                                                     held: self.simHolds.holder(of: device.udid) != nil,
+                                                     inUse: !(sims.uses[device.udid] ?? []).isEmpty)
+                    }
+                    let due = SimulatorIdleShutdown.due(booted: booted, unheldSince: &unheldSince, now: Date(), minutes: minutes)
+                    for udid in due {
+                        let name = booted.first { $0.udid == udid }?.name ?? udid
+                        unheldSince[udid] = nil
+                        _ = await Task.detached { SimulatorsController.xcrun(["simctl", "shutdown", udid], timeout: 60) }.value
+                        self.logAgent("ClaudeDeck", inbound: false, "claudedeck sim: shut down \(name) (nobody held it for \(minutes) min)")
+                    }
+                    if !due.isEmpty { await sims.reloadList() }
+                } else {
+                    unheldSince = [:]
+                }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
     // MARK: Routes
 
     func cliSimulators(_ caller: UUID, route: SessionCLI.Route, form: [String: String], json: Bool) async -> AgentHTTPResponse {

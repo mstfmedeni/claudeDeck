@@ -234,6 +234,14 @@ struct AgentsSettingsSection: View {
                     get: { model.deck.settings.simulatorsShutDownOnRelease },
                     set: { on in model.mutate(userInitiated: false) { $0.settings.simulatorsShutDownOnRelease = on } }
                 ))
+                Stepper(value: Binding(
+                    get: { model.deck.settings.simulatorsIdleShutdownMinutes },
+                    set: { value in model.mutate(userInitiated: false) { $0.settings.simulatorsIdleShutdownMinutes = min(max(value, 0), 240) } }
+                ), in: 0...240, step: 5) {
+                    let minutes = model.deck.settings.simulatorsIdleShutdownMinutes
+                    Text(minutes == 0 ? String(localized: "Unheld pool simulators stay booted")
+                         : String(localized: "Shut down pool simulators nobody has held for \(minutes) min"))
+                }
             }
             Text("claudedeck sim acquire gives a session simulators of its own (at most 4): a free one ClaudeDeck created earlier, or a new one it creates and boots. Your own simulators are never used. They're released with claudedeck sim release, or when the session ends or is closed.")
                 .font(.caption).foregroundStyle(.secondary)

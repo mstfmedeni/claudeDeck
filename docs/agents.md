@@ -581,7 +581,10 @@ drive the same device (`xcodebuild -destination id=UDID`, `simctl … UDID`; nev
   - Only devices ClaudeDeck holds are slimmed or restored; the user's simulators never are.
   - `simslim watch` isn't used: it has no per-device filter and would slim every simulator on
     the Mac, the user's and other tools' too.
-  - With slimming on and simslim installed the default cap on booted simulators (Settings ›
+  - ClaudeDeck pool simulators ("ClaudeDeck · …") left booted with nobody holding them, and no
+  session process using them, are shut down after 10 minutes (Settings › Agents; 0 keeps them
+  running). The owner's own simulators are never touched.
+- With slimming on and simslim installed the default cap on booted simulators (Settings ›
     Resources) is half again as high (4 → 6 on a 20-core Mac); a cap the owner set stays.
 - **prune (the pool stays small):** for deleting, ClaudeDeck's pool is the devices named
   `ClaudeDeck · …` (a held one's `ClaudeDeck · <project> · …` too); a device ClaudeDeck created but

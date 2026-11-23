@@ -284,6 +284,9 @@ public struct DeckSettings: Codable, Sendable, Equatable {
     public var sessionsMayUseSimulators = false
     /// Released (or their session ended): shut down the simulators ClaudeDeck created.
     public var simulatorsShutDownOnRelease = true
+    /// Pool simulators booted with nobody holding them are shut down after this many minutes
+    /// (SimulatorIdleShutdown); 0 leaves them running.
+    public var simulatorsIdleShutdownMinutes = 10
     /// `sim acquire` slims the simulators it hands out with simslim (SimSlim.swift), when installed.
     public var simulatorsSlim = true
     /// Stall detection for sessions other sessions started (StallWatch). Off by default.
@@ -405,6 +408,8 @@ public struct DeckSettings: Codable, Sendable, Equatable {
         sessionsMayUseSimulators = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayUseSimulators) ?? d.sessionsMayUseSimulators
         simulatorsShutDownOnRelease = try c.decodeIfPresent(Bool.self, forKey: .simulatorsShutDownOnRelease) ?? d.simulatorsShutDownOnRelease
         simulatorsSlim = try c.decodeIfPresent(Bool.self, forKey: .simulatorsSlim) ?? d.simulatorsSlim
+        simulatorsIdleShutdownMinutes = (try? c.decodeIfPresent(Int.self, forKey: .simulatorsIdleShutdownMinutes))
+            .flatMap { $0 }.map { min(max($0, 0), 240) } ?? d.simulatorsIdleShutdownMinutes
         stallWatch = (try? c.decodeIfPresent(StallSettings.self, forKey: .stallWatch)) ?? d.stallWatch
         sessionsMayCloseSessions = try c.decodeIfPresent(Bool.self, forKey: .sessionsMayCloseSessions) ?? d.sessionsMayCloseSessions
         removeClosedSessions = try c.decodeIfPresent(Bool.self, forKey: .removeClosedSessions) ?? d.removeClosedSessions

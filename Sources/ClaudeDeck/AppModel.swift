@@ -308,6 +308,7 @@ final class AppModel {
                 // `claudedeck new --queue` left from the last run: after the sessions it would
                 // count against the running cap are back.
                 self.resumeCLIQueue()
+                if !Self.isDemo { self.startSimulatorIdleWatch() }
                 if !Self.isDemo { self.automations?.start() } // 30 s schedule check + on wake
                 if !Self.isDemo { self.githubEvents?.start() } // GitHub trigger poll every 2 min
             }
