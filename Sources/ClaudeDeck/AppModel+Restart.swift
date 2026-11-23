@@ -41,6 +41,12 @@ extension AppModel {
             restartingSessions.insert(id)
             defer { restartingSessions.remove(id) }
             await stopForRestart(id, graceful: false)
+            // Launching while the old process is still on its way out does nothing (it still
+            // counts as running), and its exit then leaves the terminal stopped.
+            guard await waitUntilStopped(id), deck.session(id) != nil else {
+                restartLog.error("Restart of \(session.name, privacy: .public): the old process didn't end")
+                return false
+            }
             launch(id, resume: false)
             return true
         }
@@ -90,7 +96,7 @@ extension AppModel {
         defer { restartingSessions.remove(id) }
         // Re-read: the session may have become idle (or busy) while a dialog was open.
         await stopForRestart(id, graceful: SessionRestart.exitsGracefully(status(of: id).display.activityValue))
-        guard deck.session(id) != nil, !terminals.isRunning(id) else { return false }
+        guard await waitUntilStopped(id), deck.session(id) != nil else { return false }
         switch plan {
         case .resume(let sid):
             launch(id, resume: true, resumeID: sid)
@@ -156,6 +162,17 @@ extension AppModel {
     /// (up to 3 s), anything else — or a timeout — gets SIGTERM (SIGKILL after 5 s, see
     /// `TerminalRegistry.reap`). Returns once the old process is gone, so its late hook events
     /// can't be mistaken for the new process's.
+    /// Until the terminal no longer counts as running: a session in the session helper is only
+    /// marked ended once the helper reports the exit, which can come after the process is gone
+    /// (a zombie still answers `kill -0`). False if it's still running after `timeout`.
+    func waitUntilStopped(_ id: UUID, timeout: Duration = .seconds(10)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while terminals.isRunning(id), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return !terminals.isRunning(id)
+    }
+
     func stopForRestart(_ id: UUID, graceful: Bool) async {
         if graceful { await typeExit(id, grace: .seconds(3)) }
         guard terminals.isRunning(id) else { return }

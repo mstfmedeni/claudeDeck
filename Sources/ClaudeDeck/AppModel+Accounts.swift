@@ -373,7 +373,7 @@ extension AppModel {
         if terminals.isRunning(id) {
             await stopForRestart(id, graceful: SessionRestart.exitsGracefully(status(of: id).display.activityValue))
         }
-        guard deck.session(id) != nil, !terminals.isRunning(id) else { return .failure(.stillRunning) }
+        guard await waitUntilStopped(id), deck.session(id) != nil else { return .failure(.stillRunning) }
         mutate(userInitiated: false) { $0.updateSession(id) {
             $0.account = target
             $0.busyAtQuit = false // the message below is the one it gets
