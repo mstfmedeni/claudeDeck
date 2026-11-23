@@ -8,7 +8,7 @@ import Foundation
 // queue, `claudedeck sim acquire` and the build slots.
 //
 // The rule is "only prevent freezes": `overloaded` means a real risk of the Mac locking up
-// (critical memory pressure, swap growing fast under pressure, too many compilers, an extreme
+// (critical memory pressure, swap growing fast under pressure, too many builds, an extreme
 // load or process count). A merely high load average is `busy`, which is informational and holds
 // nothing back unless the owner picks "hold new starts" for it.
 // Build slots (`claudedeck slot` / `heavy`) are in BuildSlots.swift. Contract: docs/agents.md.
@@ -64,15 +64,19 @@ public struct LoadSample: Codable, Sendable, Equatable {
     public var swapUsedBytes: UInt64
     /// Booted simulators (one `launchd_sim` each).
     public var simulators: Int
-    /// Compiler and linker processes (swift-frontend, clang, ld, xcodebuild…).
+    /// Compiler and linker processes (swift-frontend, clang, ld, xcodebuild…). One build fans out
+    /// one `swift-frontend` per core, so this says little about how many builds run: see `builds`.
     public var compilers: Int
+    /// Builds running: build drivers counted once per process tree (`LoadProcesses.count`). The
+    /// `compilers` trigger and the busy level use this.
+    public var builds: Int
     public var processes: Int
     /// Claude sessions running in ClaudeDeck (filled in by the app).
     public var sessions: Int
 
     public init(at: Date = Date(), load1: Double, load5: Double = 0, cores: Int, pressure: MemoryPressure = .normal,
                 memoryUsedPercent: Double = 0, swapUsedBytes: UInt64 = 0, simulators: Int = 0, compilers: Int = 0,
-                processes: Int = 0, sessions: Int = 0) {
+                builds: Int = 0, processes: Int = 0, sessions: Int = 0) {
         self.at = at
         self.load1 = load1
         self.load5 = load5
@@ -82,8 +86,28 @@ public struct LoadSample: Codable, Sendable, Equatable {
         self.swapUsedBytes = swapUsedBytes
         self.simulators = simulators
         self.compilers = compilers
+        self.builds = builds
         self.processes = processes
         self.sessions = sessions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case at, load1, load5, cores, pressure, memoryUsedPercent, swapUsedBytes, simulators, compilers, builds, processes, sessions
+    }
+
+    /// `builds` is newer: a sample without it (an injected one written before) reads as 0 builds.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(at: try c.decode(Date.self, forKey: .at), load1: try c.decode(Double.self, forKey: .load1),
+                  load5: try c.decodeIfPresent(Double.self, forKey: .load5) ?? 0, cores: try c.decode(Int.self, forKey: .cores),
+                  pressure: try c.decodeIfPresent(MemoryPressure.self, forKey: .pressure) ?? .normal,
+                  memoryUsedPercent: try c.decodeIfPresent(Double.self, forKey: .memoryUsedPercent) ?? 0,
+                  swapUsedBytes: try c.decodeIfPresent(UInt64.self, forKey: .swapUsedBytes) ?? 0,
+                  simulators: try c.decodeIfPresent(Int.self, forKey: .simulators) ?? 0,
+                  compilers: try c.decodeIfPresent(Int.self, forKey: .compilers) ?? 0,
+                  builds: try c.decodeIfPresent(Int.self, forKey: .builds) ?? 0,
+                  processes: try c.decodeIfPresent(Int.self, forKey: .processes) ?? 0,
+                  sessions: try c.decodeIfPresent(Int.self, forKey: .sessions) ?? 0)
     }
 
     /// The load average per core (1.0: every core busy).
@@ -98,7 +122,8 @@ public enum LoadTrigger: String, Codable, Sendable, CaseIterable {
     case swapGrowth = "swap_growth"
     /// Swap in use above N GB (off by default: a big swap on its own is no freeze).
     case swapSize = "swap_size"
-    /// More compiler and linker processes than N at once.
+    /// More than N builds at once (`LoadSample.builds`; the raw value is kept from when this
+    /// counted compiler processes, for `claudedeck load --json` and the phone).
     case compilers
     /// The 1-minute load above N × the cores for M minutes.
     case load
@@ -108,9 +133,9 @@ public enum LoadTrigger: String, Codable, Sendable, CaseIterable {
 
 /// What `busy` does (Settings › Resources › "Meşgulken").
 public enum LoadBusyAction: String, Codable, Sendable, CaseIterable {
-    /// Nothing: busy is only shown.
+    /// Nothing (the default): busy is only shown; only overloaded holds new work.
     case nothing
-    /// New work waits (the default): `claudedeck new` and the start queue, `sim acquire`, and
+    /// New work waits: `claudedeck new` and the start queue, `sim acquire`, and
     /// build slots beyond half. Running agents are not told anything and go on.
     case holdStarts = "hold_starts"
 }
@@ -120,9 +145,13 @@ public struct LoadSettings: Codable, Sendable, Equatable {
     /// The defaults' generation. Files without it (2), or older, were written with the first
     /// defaults (overloaded at 2 × cores, busy at 1 × cores); a value still equal to those old
     /// defaults is moved to the new one when read, anything else the owner set is kept.
-    /// 3: busy holds new work by default (it used to be only shown); a saved "do nothing" from
-    /// an older file was that old default and moves to "hold new work".
-    public static let currentVersion = 3
+    /// 3: busy held new work by default; a saved "do nothing" moved to "hold new work".
+    /// 4: busy is informational again by default (only overloaded holds new work), and a saved
+    /// busy action from an older file (forced to "hold new work" by 3) goes back to "do nothing";
+    /// the owner can still pick "hold new work". The `compilers` trigger counts builds, not
+    /// compiler processes: a saved `maxCompilers` was a process count (12, 30…) that means
+    /// nothing as a build count, so it goes back to the default (nil: a third of the cores).
+    public static let currentVersion = 4
     public var version = LoadSettings.currentVersion
 
     /// "Mac yüklüyken ajanları yavaşlat": while overloaded, `claudedeck new`, the start queue and
@@ -144,7 +173,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
     /// Overloaded with more than this many GB of swap in use.
     public var swapSizeGB: Double = 64
     public var compilersEnabled = true
-    /// Overloaded with more compiler processes than this at once (nil: 60% of the cores).
+    /// Overloaded with more builds than this at once (nil: a third of the cores, at least 3;
+    /// `LoadThresholds.defaultBuilds`). The key keeps its old name.
     public var maxCompilers: Int?
     public var loadEnabled = true
     /// Overloaded once the 1-minute load stays above this many times the core count for
@@ -157,8 +187,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
 
     /// Busy (informational) above this many times the core count for a minute.
     public var busyFactor: Double = 2
-    /// What busy does: hold new work (default) or nothing.
-    public var busyAction: LoadBusyAction = .holdStarts
+    /// What busy does: nothing (default: only overloaded holds new work) or hold new work.
+    public var busyAction: LoadBusyAction = .nothing
 
     // Limits.
     /// "En fazla açık simülatör": `claudedeck sim acquire` is refused at this many booted
@@ -182,7 +212,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
     public static let overloadRange: ClosedRange<Double> = 1...30
     public static let busyRange: ClosedRange<Double> = 0.25...30
     public static let overloadMinutesRange: ClosedRange<Double> = 0.5...30
-    public static let compilerRange = 2...400
+    /// Builds at once (`maxCompilers`).
+    public static let buildRange = 1...64
     public static let processRange = 200...50_000
     public static let swapGBRange: ClosedRange<Double> = 0.5...512
     public static let swapMinutesRange = 1...60
@@ -211,7 +242,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
         swapSizeEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .swapSizeEnabled)) ?? d.swapSizeEnabled
         swapSizeGB = Self.clamp((try? c.decodeIfPresent(Double.self, forKey: .swapSizeGB)) ?? d.swapSizeGB, Self.swapGBRange)
         compilersEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .compilersEnabled)) ?? d.compilersEnabled
-        maxCompilers = (try? c.decodeIfPresent(Int.self, forKey: .maxCompilers))?.map { Self.clamp($0, Self.compilerRange) }
+        // Before 4 this was a compiler process count: back to the default.
+        maxCompilers = savedVersion < 4 ? nil : (try? c.decodeIfPresent(Int.self, forKey: .maxCompilers))?.map { Self.clamp($0, Self.buildRange) }
         loadEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .loadEnabled)) ?? d.loadEnabled
         var overload = (try? c.decodeIfPresent(Double.self, forKey: .overloadFactor)) ?? d.overloadFactor
         var busy = (try? c.decodeIfPresent(Double.self, forKey: .busyFactor)) ?? d.busyFactor
@@ -226,7 +258,8 @@ public struct LoadSettings: Codable, Sendable, Equatable {
         processesEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .processesEnabled)) ?? d.processesEnabled
         maxProcesses = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .maxProcesses)) ?? d.maxProcesses, Self.processRange)
         let savedBusyAction = (try? c.decodeIfPresent(LoadBusyAction.self, forKey: .busyAction)) ?? d.busyAction
-        busyAction = savedVersion < 3 && savedBusyAction == .nothing ? .holdStarts : savedBusyAction
+        // Before 4 "hold new work" was forced on everyone (3): back to the new default.
+        busyAction = savedVersion < 4 ? d.busyAction : savedBusyAction
         maxSimulators = (try? c.decodeIfPresent(Int.self, forKey: .maxSimulators))?.map { Self.clamp($0, Self.simulatorRange) }
         simulatorPruneDays = Self.clamp((try? c.decodeIfPresent(Int.self, forKey: .simulatorPruneDays)) ?? d.simulatorPruneDays, SimulatorPrune.dayRange)
         buildSlots = (try? c.decodeIfPresent(Int.self, forKey: .buildSlots))?.map { Self.clamp($0, Self.slotRange) }
@@ -279,7 +312,8 @@ public struct LoadThresholds: Sendable, Equatable {
     public var swapGrowthBytes: UInt64
     public var swapGrowthWindow: TimeInterval
     public var swapSizeBytes: UInt64
-    public var overloadCompilers: Int
+    /// Builds (`LoadSample.builds`, steady).
+    public var overloadBuilds: Int
     /// Load averages (absolute, not per core).
     public var overloadLoad: Double
     /// How long the load must stay above `overloadLoad` to count as overloaded.
@@ -288,7 +322,7 @@ public struct LoadThresholds: Sendable, Equatable {
     public var busyLoad: Double
     /// How long the load must stay above `busyLoad` to count as busy.
     public var busySustain: TimeInterval
-    public var busyCompilers: Int
+    public var busyBuilds: Int
     public var busyAction: LoadBusyAction
     public var maxSimulators: Int
     public var buildSlots: Int
@@ -301,7 +335,8 @@ public struct LoadThresholds: Sendable, Equatable {
     public static let overloadCalm: TimeInterval = 60
     public static let busyCalm: TimeInterval = 30
 
-    public static func defaultCompilers(cores: Int) -> Int { max(4, Int((Double(cores) * 0.6).rounded())) }
+    /// A third of the cores, at least 3 (7 on a 20-core Mac): each build already spreads over every core.
+    public static func defaultBuilds(cores: Int) -> Int { max(3, Int((Double(cores) / 3).rounded())) }
     /// Slim simulators (simslim, SimSlim.swift) use a fraction of the memory: half again as many (4 → 6).
     public static func defaultSimulators(cores: Int, slim: Bool = false) -> Int {
         let base = min(10, max(2, cores / 5))
@@ -313,20 +348,20 @@ public struct LoadThresholds: Sendable, Equatable {
     /// default simulator cap; a cap the owner set stays.
     public static func resolve(_ settings: LoadSettings, cores: Int, slim: Bool = false) -> LoadThresholds {
         let cores = max(1, cores)
-        let compilers = settings.maxCompilers ?? defaultCompilers(cores: cores)
+        let builds = settings.maxCompilers ?? defaultBuilds(cores: cores)
         let slots = settings.buildSlots ?? defaultBuildSlots(cores: cores)
         return LoadThresholds(cores: cores, enabled: Set(LoadTrigger.allCases.filter { settings.isEnabled($0) }),
                               pressureLevel: settings.pressureLevel,
                               swapGrowthBytes: UInt64(settings.swapGrowthGB * 1_073_741_824),
                               swapGrowthWindow: TimeInterval(settings.swapGrowthMinutes * 60),
                               swapSizeBytes: UInt64(settings.swapSizeGB * 1_073_741_824),
-                              overloadCompilers: compilers,
+                              overloadBuilds: builds,
                               overloadLoad: settings.overloadFactor * Double(cores),
                               overloadSustain: settings.overloadMinutes * 60,
                               maxProcesses: settings.maxProcesses,
                               busyLoad: min(settings.busyFactor, settings.overloadFactor) * Double(cores),
                               busySustain: 60,
-                              busyCompilers: max(1, compilers / 2),
+                              busyBuilds: max(1, builds / 2),
                               busyAction: settings.busyAction,
                               maxSimulators: settings.maxSimulators ?? defaultSimulators(cores: cores, slim: slim),
                               buildSlots: slots,
@@ -340,7 +375,7 @@ public struct LoadThresholds: Sendable, Equatable {
 public struct LoadTriggerState: Codable, Sendable, Equatable, Identifiable {
     public var trigger: LoadTrigger
     public var enabled: Bool
-    /// In `unit`: "pressure" (0 normal, 1 warning, 2 critical), "gb", "processes", "per_core".
+    /// In `unit`: "pressure" (0 normal, 1 warning, 2 critical), "gb", "builds", "processes", "per_core".
     public var threshold: Double
     public var current: Double
     public var unit: String
@@ -365,7 +400,7 @@ public struct LoadTriggerState: Codable, Sendable, Equatable, Identifiable {
         self.aboveFor = aboveFor
     }
 
-    /// English, for `claudedeck load`: "compilers > 12 (now 14)".
+    /// English, for `claudedeck load`: "builds > 7 (now 2)".
     public var text: String {
         switch trigger {
         case .pressure:
@@ -375,7 +410,7 @@ public struct LoadTriggerState: Codable, Sendable, Equatable, Identifiable {
         case .swapSize:
             return String(format: "swap > %.1f GB (now %.1f)", threshold, current)
         case .compilers:
-            return "compilers > \(Int(threshold)) (now \(Int(current)))"
+            return "builds > \(Int(threshold)) (now \(Int(current)))"
         case .load:
             return String(format: "load > %.1f x cores for %.1f min (now %.2f)", threshold, minutes ?? 0, current)
         case .processes:
@@ -410,7 +445,7 @@ public enum LoadEvent: Equatable, Sendable {
 /// - overloaded: any enabled trigger fires (`LoadTriggerState`). It ends once none fires and the
 ///   numbers have stayed under `exitMargin` of their thresholds for `overloadCalm`.
 /// - busy (new work waits, `LoadBusyAction`): the load above `busyLoad` for `busySustain`, memory
-///   pressure warning or worse, or more steady compilers (`steadyCompilers`) than `busyCompilers`. It ends once all of that has been clear (load
+///   pressure warning or worse, or more steady builds (`steadyBuilds`) than `busyBuilds`. It ends once all of that has been clear (load
 ///   under `exitMargin` of `busyLoad`) for `busyCalm`. Booted simulators never make the Mac busy:
 ///   their cap only refuses `sim acquire`.
 /// - Throttling follows the level (`LoadThrottle`): it ends as soon as the level leaves
@@ -476,15 +511,15 @@ public struct LoadMonitor: Sendable, Equatable {
         return nil
     }
 
-    /// Samples the compiler count is smoothed over.
-    public static let compilerWindow = 3
+    /// Samples the build count is smoothed over.
+    public static let buildWindow = 3
 
-    /// The compiler count the rules use: the median of the latest `compilerWindow` samples. A Swift
-    /// build fans out short-lived `swift-frontend` jobs, so one sample may catch 22 and the next 6;
-    /// a fan-out has to last about half a minute to count.
-    public static func steadyCompilers(_ sample: LoadSample, history: [LoadSample]) -> Int {
-        let recent = (history.suffix(compilerWindow - 1).filter { $0.at <= sample.at && sample.at.timeIntervalSince($0.at) <= 60 }
-                      .map(\.compilers) + [sample.compilers]).sorted()
+    /// The build count the rules use: the median of the latest `buildWindow` samples. Builds last
+    /// minutes, but a short one (a lone `swiftc`, a link some tool runs) shows in one sample only;
+    /// a build has to last about half a minute to count.
+    public static func steadyBuilds(_ sample: LoadSample, history: [LoadSample]) -> Int {
+        let recent = (history.suffix(buildWindow - 1).filter { $0.at <= sample.at && sample.at.timeIntervalSince($0.at) <= 60 }
+                      .map(\.builds) + [sample.builds]).sorted()
         return recent[(recent.count - 1) / 2] // the lower middle (of two samples, the smaller)
     }
 
@@ -507,12 +542,12 @@ public struct LoadMonitor: Sendable, Equatable {
         list.append(.init(trigger: .swapSize, enabled: t.enabled.contains(.swapSize), threshold: Double(t.swapSizeBytes) / gb,
                           current: Double(sample.swapUsedBytes) / gb, unit: "gb",
                           firing: t.enabled.contains(.swapSize) && sample.swapUsedBytes > t.swapSizeBytes))
-        let compilers = steadyCompilers(sample, history: history)
-        list.append(.init(trigger: .compilers, enabled: t.enabled.contains(.compilers), threshold: Double(t.overloadCompilers),
-                          current: Double(compilers), unit: "processes",
-                          // Many compilers alone is one build fanning out over the cores, not freeze risk:
-                          // it counts only together with a busy load or memory pressure.
-                          firing: t.enabled.contains(.compilers) && compilers > t.overloadCompilers
+        let builds = steadyBuilds(sample, history: history)
+        list.append(.init(trigger: .compilers, enabled: t.enabled.contains(.compilers), threshold: Double(t.overloadBuilds),
+                          current: Double(builds), unit: "builds",
+                          // Many builds on a Mac that copes are no freeze risk: they count only together
+                          // with a busy load or memory pressure.
+                          firing: t.enabled.contains(.compilers) && builds > t.overloadBuilds
                               && (sample.load1 > t.busyLoad || sample.pressure >= .warning)))
         let above = highLoadSince.map { sample.at.timeIntervalSince($0) }
         list.append(.init(trigger: .load, enabled: t.enabled.contains(.load), threshold: t.overloadLoad / Double(t.cores),
@@ -553,7 +588,7 @@ public struct LoadMonitor: Sendable, Equatable {
             lastFired = fired
         }
         let busyLoad = busyLoadSince.map { sample.at.timeIntervalSince($0) >= t.busySustain } ?? false
-        let busyNow = busyLoad || sample.pressure >= .warning || Self.steadyCompilers(sample, history: history) > t.busyCompilers
+        let busyNow = busyLoad || sample.pressure >= .warning || Self.steadyBuilds(sample, history: history) > t.busyBuilds
         let overloadClear = Self.clearWithMargin(sample, triggers: triggers, thresholds: t)
         let busyClear = !busyNow && sample.load1 < t.busyLoad * LoadThresholds.exitMargin
 
@@ -603,10 +638,11 @@ public struct LoadMonitor: Sendable, Equatable {
     }
 }
 
-/// What makes the Mac busy, for the notification ("11 simülatör açık, 30 derleme, 37 oturum").
+/// What makes the Mac busy, for the notification ("11 simülatör açık, 3 derleme, 37 oturum").
 public enum LoadContributor: Equatable, Sendable {
     case simulators(Int)
-    case compilers(Int)
+    /// Builds running (`LoadSample.builds`).
+    case builds(Int)
     case sessions(Int)
     case memory(MemoryPressure)
     case swap(UInt64)
@@ -617,7 +653,7 @@ public enum LoadContributor: Equatable, Sendable {
     public static func of(_ sample: LoadSample, thresholds t: LoadThresholds) -> [LoadContributor] {
         var list: [LoadContributor] = []
         if sample.simulators > 0, sample.simulators >= max(2, t.maxSimulators / 2) { list.append(.simulators(sample.simulators)) }
-        if sample.compilers > t.busyCompilers { list.append(.compilers(sample.compilers)) }
+        if sample.builds > t.busyBuilds { list.append(.builds(sample.builds)) }
         if sample.sessions > 0 { list.append(.sessions(sample.sessions)) }
         if sample.pressure != .normal { list.append(.memory(sample.pressure)) }
         if sample.pressure != .normal, sample.swapUsedBytes >= 1 << 30 { list.append(.swap(sample.swapUsedBytes)) }
@@ -630,7 +666,7 @@ public enum LoadContributor: Equatable, Sendable {
     public var text: String {
         switch self {
         case .simulators(let n): "\(n) simulators booted"
-        case .compilers(let n): "\(n) compiler processes"
+        case .builds(let n): "\(n) build\(n == 1 ? "" : "s")"
         case .sessions(let n): "\(n) Claude sessions"
         case .memory(let pressure): "memory pressure \(pressure.rawValue)"
         case .swap(let bytes): String(format: "swap %.1f GB", Double(bytes) / 1_073_741_824)
@@ -708,20 +744,105 @@ public enum LoadThrottle {
     }
 }
 
-/// Counting processes by name (`proc_name`, at most 16 characters).
+/// One process for counting: its pid, parent and short name (`pbsi_comm`, at most 16 characters).
+public struct LoadProcess: Sendable, Equatable {
+    public var pid: Int32
+    public var ppid: Int32
+    public var name: String
+    public init(pid: Int32, ppid: Int32, name: String) {
+        self.pid = pid
+        self.ppid = ppid
+        self.name = name
+    }
+}
+
+/// Counting processes by name and builds by process tree.
+///
+/// A build is one running build driver, however many compiler processes it fans out (an
+/// `xcodebuild` runs one `swift-frontend` per core):
+/// - `xcodebuild` and `swift-build` always count (also while resolving packages or running tests);
+/// - `swiftc`/`swift-driver`/`clang`/`clang++` count when started on their own (`swiftc a.swift`);
+/// - the Xcode build service (`SWBBuildService`, older `XCBBuildService`: builds started in
+///   Xcode.app, where there is no `xcodebuild`), `swift test`/`swift run` (`swift-test`, `swift-run`),
+///   `cmake`, `make` and `ninja` count only while compiler processes run under them (the build
+///   service stays alive idle; `swift test` goes on running the tests);
+/// - every one of these counts only when no ancestor is one of them, so `xcodebuild →
+///   SWBBuildService → swift-frontend × 20` is one build;
+/// - a compiler process with none of them above it counts once per parent (a tool that runs
+///   `clang` or `ld` directly).
+/// Gradle and the Kotlin daemon are not counted: they run as `java` and compile inside the JVM,
+/// so neither their name nor their child processes say whether they are building.
 public enum LoadProcesses {
     /// One per booted simulator.
     public static let simulatorNames: Set<String> = ["launchd_sim"]
-    /// Compilers, linkers and the build drivers that run them.
-    public static let compilerNames: Set<String> = ["swift-frontend", "swiftc", "clang", "clang++", "cc1", "cc1plus", "ld", "ld64",
-                                                    "ld-prime", "xcodebuild", "swift-build", "ibtool", "actool", "kotlin-daemon"]
+    /// Compilers, linkers and the build drivers that run them (the compiler process count).
+    public static let compilerNames: Set<String> = ["swift-frontend", "swiftc", "swift-driver", "clang", "clang++", "cc1", "cc1plus",
+                                                    "ld", "ld64", "ld-prime", "xcodebuild", "swift-build", "ibtool", "actool",
+                                                    "kotlin-daemon"]
+    /// Build drivers that are a build whenever they run.
+    public static let driverNames: Set<String> = ["xcodebuild", "swift-build"]
+    /// Compiler drivers: a build when started on their own (no build driver above them).
+    public static let compilerDriverNames: Set<String> = ["swiftc", "swift-driver", "clang", "clang++"]
+    /// Long-lived build services and make tools: a build only while compilers run under them.
+    public static let coordinatorNames: Set<String> = ["SWBBuildService", "XCBBuildService", "swift-test", "swift-run", "swift-package",
+                                                       "cmake", "make", "gmake", "ninja"]
 
-    public static func count(_ names: [String]) -> (simulators: Int, compilers: Int) {
-        var simulators = 0, compilers = 0
-        for name in names {
-            if simulatorNames.contains(name) { simulators += 1 } else if compilerNames.contains(name) { compilers += 1 }
+    /// How far up a process tree is followed (a guard against a broken table).
+    static let maxDepth = 64
+
+    public struct Counts: Sendable, Equatable {
+        public var simulators: Int
+        /// Compiler and linker processes.
+        public var compilers: Int
+        /// Builds (see `LoadProcesses`).
+        public var builds: Int
+        public var processes: Int
+    }
+
+    /// Booted simulators only, from names.
+    public static func simulators(_ names: [String]) -> Int { names.reduce(0) { $0 + (simulatorNames.contains($1) ? 1 : 0) } }
+
+    public static func count(_ processes: [LoadProcess]) -> Counts {
+        var byPid: [Int32: LoadProcess] = [:]
+        byPid.reserveCapacity(processes.count)
+        for process in processes { byPid[process.pid] = process }
+        let buildish = driverNames.union(compilerDriverNames).union(coordinatorNames)
+
+        /// The topmost build driver, compiler driver or coordinator at or above `process`.
+        func topBuildAncestor(of process: LoadProcess) -> LoadProcess? {
+            var top: LoadProcess? = buildish.contains(process.name) ? process : nil
+            var seen: Set<Int32> = [process.pid]
+            var parent = process.ppid
+            for _ in 0..<maxDepth {
+                guard parent > 1, !seen.contains(parent), let next = byPid[parent] else { break }
+                seen.insert(parent)
+                if buildish.contains(next.name) { top = next }
+                parent = next.ppid
+            }
+            return top
         }
-        return (simulators, compilers)
+
+        var simulators = 0, compilers = 0
+        // A build is identified by its root: a driver's pid, or "parent of" a lone compiler process.
+        var roots: Set<Int64> = []
+        for process in processes {
+            if simulatorNames.contains(process.name) {
+                simulators += 1
+                continue
+            }
+            let isCompiler = compilerNames.contains(process.name)
+            if isCompiler { compilers += 1 }
+            guard isCompiler || driverNames.contains(process.name) else { continue }
+            if let top = topBuildAncestor(of: process) {
+                // A coordinator counts through the compilers under it, never on its own (it isn't
+                // a compiler name, so it only gets here as someone's ancestor).
+                roots.insert(Int64(top.pid))
+            } else {
+                // A compiler process nothing build-like started: one build per parent.
+                roots.insert(-Int64(process.ppid) - 1)
+            }
+        }
+        return Counts(simulators: simulators, compilers: compilers, builds: roots.count, processes: processes.count)
     }
 }
 
@@ -775,6 +896,14 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
     public var swapUsedMB: Int
     public var simulators: Int
     public var maxSimulators: Int
+    /// Builds running now (`LoadSample.builds`) and the overload limit for them (the `compilers`
+    /// trigger, which uses the steady count).
+    public var builds: Int
+    public var maxBuilds: Int
+    /// Compiler and linker processes running now (one build runs many).
+    public var compilerProcesses: Int
+    /// The same as `builds` / `maxBuilds`: these counted compiler processes before builds were
+    /// counted, and stay so older scripts comparing the two keep working.
     public var compilers: Int
     public var maxCompilers: Int
     public var processes: Int
@@ -813,8 +942,11 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
         swapUsedMB = Int((sample?.swapUsedBytes ?? 0) / 1_048_576)
         simulators = sample?.simulators ?? 0
         maxSimulators = thresholds.maxSimulators
-        compilers = sample?.compilers ?? 0
-        maxCompilers = thresholds.overloadCompilers
+        builds = sample?.builds ?? 0
+        maxBuilds = thresholds.overloadBuilds
+        compilerProcesses = sample?.compilers ?? 0
+        compilers = builds
+        maxCompilers = maxBuilds
         processes = sample?.processes ?? 0
         sessions = sample?.sessions ?? 0
         buildSlots = capacity
@@ -862,8 +994,9 @@ public struct SessionCLILoad: Encodable, Sendable, Equatable {
         lines.append(String(format: "load: %.1f on %d cores (%.2f per core), 5 min %.1f", load1, cores, loadPerCore, load5))
         lines.append(String(format: "memory: %.0f%% used, pressure %@, swap %d MB", memoryUsedPercent, memoryPressure, swapUsedMB))
         lines.append("simulators: \(simulators) booted (sim acquire allows \(maxSimulators))")
-        let steady = triggers.first { $0.trigger == .compilers }.map { Int($0.current) } ?? compilers
-        lines.append("compilers: \(compilers) processes now" + (steady != compilers ? ", \(steady) steady (median of the last \(LoadMonitor.compilerWindow) samples)" : ""))
+        let steady = triggers.first { $0.trigger == .compilers }.map { Int($0.current) } ?? builds
+        lines.append("builds: \(builds) now" + (steady != builds ? ", \(steady) steady (median of the last \(LoadMonitor.buildWindow) samples)" : "")
+                     + ", \(compilerProcesses) compiler process\(compilerProcesses == 1 ? "" : "es")")
         lines.append("sessions: \(sessions) Claude sessions (\(limits.runningStartedSessions)/\(limits.maxStartedSessions) agent-started), \(processes) processes")
         lines.append("build slots: \(slots.count)/\(buildSlots) used" + (slotsWaiting > 0 ? ", \(slotsWaiting) waiting" : "")
                      + (buildSlots != limits.buildSlots ? " (\(limits.buildSlots) when not overloaded)" : ""))
@@ -986,7 +1119,7 @@ extension RemoteLoad {
                           loadPerCore: bucket.items.map(\.loadPerCore).reduce(0, +) / n,
                           memoryPercent: Int((bucket.items.map(\.memoryUsedPercent).reduce(0, +) / n).rounded()),
                           simulators: bucket.items.map(\.simulators).max() ?? 0,
-                          builds: bucket.items.map(\.compilers).max() ?? 0)
+                          builds: bucket.items.map(\.builds).max() ?? 0)
         }
     }
 }

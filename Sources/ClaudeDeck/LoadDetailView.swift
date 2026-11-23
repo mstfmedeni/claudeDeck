@@ -83,7 +83,8 @@ struct LoadDetailView: View {
             Series(title: String(localized: "Memory used"), unit: "%", color: .purple) { $0.memoryUsedPercent },
             Series(title: String(localized: "Swap"), unit: "GB", color: .pink) { Double($0.swapUsedBytes) / 1_073_741_824 },
             Series(title: String(localized: "Simulators"), unit: "", color: .teal) { Double($0.simulators) },
-            Series(title: String(localized: "Compilers"), unit: "", color: .orange) { Double($0.compilers) },
+            Series(title: String(localized: "Builds"), unit: "", color: .orange) { Double($0.builds) },
+            Series(title: String(localized: "Compiler processes"), unit: "", color: .yellow) { Double($0.compilers) },
         ]
         let samples = load.monitor.samples
         LoadSection(title: String(localized: "Last hour"), systemImage: "chart.xyaxis.line") {
@@ -263,8 +264,16 @@ struct LoadDetailView: View {
     @ViewBuilder private func builds(_ load: LoadController) -> some View {
         LoadSection(title: String(localized: "Builds"), systemImage: "hammer") {
             let builds = load.usage?.builds ?? []
+            if let sample = load.latest {
+                let state = load.monitor.triggers.first { $0.trigger == .compilers }
+                Text("\(sample.builds) builds running, \(sample.compilers) compiler processes · overloaded above \(load.thresholds.overloadBuilds) builds")
+                    .font(.callout.weight(.medium)).monospacedDigit()
+                    .foregroundStyle(state?.firing == true ? .red : .primary)
+            }
             if builds.isEmpty {
                 Text("No compiler running.").foregroundStyle(.secondary)
+            } else {
+                Text("Compiler processes").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             ForEach(builds.prefix(15)) { build in
                 HStack {

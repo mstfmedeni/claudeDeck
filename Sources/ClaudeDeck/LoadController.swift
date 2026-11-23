@@ -169,10 +169,10 @@ final class LoadController {
             return
         case "overloaded":
             injected = LoadSample(load1: Double(cores) * 3, load5: Double(cores) * 2.5, cores: cores, pressure: .critical,
-                                  memoryUsedPercent: 92, swapUsedBytes: 6 << 30, simulators: 11, compilers: 30, processes: 3400)
+                                  memoryUsedPercent: 92, swapUsedBytes: 6 << 30, simulators: 11, compilers: 60, builds: 9, processes: 3400)
         case "busy":
             injected = LoadSample(load1: Double(cores) * 2.5, load5: Double(cores) * 2, cores: cores, pressure: .warning,
-                                  memoryUsedPercent: 70, simulators: 4, compilers: 4, processes: 2000)
+                                  memoryUsedPercent: 70, simulators: 4, compilers: 20, builds: 4, processes: 2000)
         case "ok":
             injected = LoadSample(load1: Double(cores) * 0.1, load5: Double(cores) * 0.1, cores: cores, memoryUsedPercent: 40, processes: 800)
         default:
@@ -192,9 +192,10 @@ final class LoadController {
         guard let sample = monitor.latest else { return nil }
         var load = RemoteLoad(level: level.rawValue, throttled: holdsStarts, loadPerCore: sample.loadPerCore, cores: sample.cores,
                               memoryPercent: Int(sample.memoryUsedPercent.rounded()), memoryPressure: sample.pressure.rawValue,
-                              simulators: sample.simulators, builds: sample.compilers, sessions: sample.sessions,
+                              simulators: sample.simulators, builds: sample.builds, sessions: sample.sessions,
                               slotsUsed: slots.slots.count, slots: slotCapacity)
         load.fired = monitor.fired.map(\.rawValue)
+        load.maxBuilds = thresholds.overloadBuilds
         // The phone's Mac Load screen: an hour of per-minute points from the samples kept for the charts.
         load.history = RemoteLoad.history(from: monitor.samples)
         load.slotHolders = slots.slots.map {
@@ -211,6 +212,8 @@ final class LoadController {
             load.topProjects = entries.projects.prefix(6).map {
                 RemoteLoad.ProjectUse(name: $0.name, cpuPercent: Int(($0.cpuPercent / 5).rounded()) * 5, memoryMB: ($0.memoryMB / 50) * 50)
             }
+            // With the list (it changes as often): the count would resend the snapshot every sample.
+            load.compilerProcesses = usage.builds.count
             load.runningBuilds = usage.builds.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(RemoteLoad.maxBuilds).map {
                 RemoteLoad.Build(pid: $0.pid, name: $0.name, session: $0.session.flatMap { model?.deck.session($0)?.name },
                                  cpuPercent: Int(($0.cpuPercent / 5).rounded()) * 5)

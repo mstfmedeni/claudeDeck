@@ -143,7 +143,9 @@ private struct StatusCard: View {
                 }
                 GridRow {
                     Figure(title: "Simulators", value: "\(load.simulators)", caption: nil)
-                    Figure(title: "Builds", value: "\(load.builds)", caption: String(localized: "slots \(load.slotsUsed)/\(load.slots)"))
+                    Figure(title: "Builds", value: "\(load.builds)",
+                           caption: load.maxBuilds.map { String(localized: "limit \($0) · slots \(load.slotsUsed)/\(load.slots)") }
+                               ?? String(localized: "slots \(load.slotsUsed)/\(load.slots)"))
                 }
                 GridRow {
                     Figure(title: "Claude sessions", value: "\(load.sessions)", caption: nil)
@@ -296,7 +298,8 @@ private struct BuildsCard: View {
                 }
             }
             if let builds = load.runningBuilds, !builds.isEmpty {
-                Text("Compiler processes").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                Text(load.compilerProcesses.map { String(localized: "Compiler processes: \($0)") } ?? String(localized: "Compiler processes"))
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
                 ForEach(builds) { build in
                     HStack(spacing: 6) {
                         Text(build.name).font(.callout.monospaced()).lineLimit(1)

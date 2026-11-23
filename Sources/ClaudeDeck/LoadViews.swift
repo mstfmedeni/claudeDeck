@@ -23,11 +23,11 @@ enum LoadStyle {
         }
     }
 
-    /// "1.4× · RAM 81% · 11 sims · 30 builds · 37 sessions".
+    /// "1.4× · RAM 81% · 11 sims · 3 builds · 37 sessions".
     static func numbers(_ sample: LoadSample) -> String {
         var parts = [String(format: "%.1f×", sample.loadPerCore), String(localized: "RAM \(Int(sample.memoryUsedPercent.rounded()))%")]
         if sample.simulators > 0 { parts.append(String(localized: "\(sample.simulators) sims")) }
-        if sample.compilers > 0 { parts.append(String(localized: "\(sample.compilers) builds")) }
+        if sample.builds > 0 { parts.append(String(localized: "\(sample.builds) builds")) }
         parts.append(String(localized: "\(sample.sessions) sessions"))
         return parts.joined(separator: " · ")
     }
@@ -42,6 +42,11 @@ enum LoadStyle {
         case .load: String(localized: "extreme system load")
         case .processes: String(localized: "too many programs")
         }
+    }
+
+    /// "2 (45 compiler processes)": builds now, with the processes they run.
+    static func buildsNow(_ sample: LoadSample) -> String {
+        sample.compilers > 0 ? String(localized: "\(sample.builds) (\(sample.compilers) compiler processes)") : "\(sample.builds)"
     }
 
     static func pressureName(_ value: Double) -> String {
@@ -139,7 +144,7 @@ struct LoadDetails: View {
                     }
                     GridRow {
                         Text("Builds")
-                        Text("\(sample.compilers) compiler processes · slots \(load.slots.slots.count)/\(load.slotCapacity)").monospacedDigit()
+                        Text("\(sample.builds) running (limit \(t.overloadBuilds)) · \(sample.compilers) compiler processes · slots \(load.slots.slots.count)/\(load.slotCapacity)").monospacedDigit()
                     }
                     GridRow {
                         Text("Sessions")
@@ -290,12 +295,12 @@ struct ResourcesSettingsSection: View {
                 Text("Off by default: a large swap file on its own doesn't freeze the Mac.")
             }
             TriggerRow(title: String(localized: "Too many builds at once"), state: states[.compilers], isOn: enabled(.compilers),
-                       now: sample.map { "\($0.compilers)" }) {
-                Stepper(value: count(\.maxCompilers, current: t.overloadCompilers, range: LoadSettings.compilerRange), in: LoadSettings.compilerRange) {
-                    Text("more than \(t.overloadCompilers) build processes")
+                       now: sample.map { LoadStyle.buildsNow($0) }) {
+                Stepper(value: count(\.maxCompilers, current: t.overloadBuilds, range: LoadSettings.buildRange), in: LoadSettings.buildRange) {
+                    Text("more than \(t.overloadBuilds) builds at once")
                 }
             } caption: {
-                Text("Every app build runs several of these (compiler, linker).")
+                Text("Each xcodebuild, swift build or Xcode build counts once, however many compiler processes it runs (usually one per core). Counts only while the load is high or memory is tight.")
             }
             TriggerRow(title: String(localized: "System load stays extreme"), state: states[.load], isOn: enabled(.load),
                        now: sample.map { String(format: "%.0f", $0.load1) }) {
@@ -333,8 +338,14 @@ struct ResourcesSettingsSection: View {
                 Text("Do nothing (only show it)").tag(LoadBusyAction.nothing)
                 Text("Hold new work").tag(LoadBusyAction.holdStarts)
             }
-            Text("Busy means the Mac is working hard but isn't at risk. New work waits: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds the calming rules: fewer builds, one message to each agent and a notification to you.")
-                .font(.caption).foregroundStyle(.secondary)
+            Group {
+                if settings.busyAction == .holdStarts {
+                    Text("Busy means the Mac is working hard but isn't at risk. With this choice new work waits while busy: new agent sessions, simulators and extra builds. Running agents carry on and get no message. Braking (overloaded) adds fewer builds, one message to each agent and a notification to you.")
+                } else {
+                    Text("Busy means the Mac is working hard but isn't at risk: it is only shown and nothing waits. New work waits only while braking (overloaded), which also means fewer builds, one message to each agent and a notification to you.")
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
         } header: {
             Text("What happens when braking?")
         }
