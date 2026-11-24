@@ -165,9 +165,15 @@ import Testing
         let older = ChatPage(entries: [ChatEntry(id: "z", kind: .user, text: "z"), a], hasMoreBefore: false, reset: false, before: "a")
         #expect(ChatSync.merge(older, into: &entries, hasMoreBefore: &more))
         #expect(entries.map(\.id) == ["z", "a", "b", "c"])
-        // A reset replaces everything.
-        #expect(ChatSync.merge(ChatPage(entries: [c], hasMoreBefore: true, reset: true), into: &entries, hasMoreBefore: &more))
-        #expect(entries.map(\.id) == ["c"])
+        // The latest page again keeps what was loaded before its first entry (older pages stay).
+        let d = ChatEntry(id: "d", kind: .assistant, text: "d")
+        #expect(ChatSync.merge(ChatPage(entries: [c, d], hasMoreBefore: true, reset: true), into: &entries, hasMoreBefore: &more))
+        #expect(entries.map(\.id) == ["z", "a", "b", "c", "d"])
+        #expect(!more)
+        // A reset that doesn't overlap replaces everything.
+        #expect(ChatSync.merge(ChatPage(entries: [ChatEntry(id: "y", kind: .user, text: "y")], hasMoreBefore: true, reset: true),
+                               into: &entries, hasMoreBefore: &more))
+        #expect(entries.map(\.id) == ["y"])
         #expect(more)
     }
 

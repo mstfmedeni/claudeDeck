@@ -678,7 +678,13 @@ final class RemoteStore {
             guard let session = new.session(id) else { continue }
             // Watching it finish here counts as seeing it.
             if session.state == .idle, session.unseen { _ = send(.markSeen(sessionID: id)) }
-            if old?.session(id) != session { requestNewer(id) }
+            // A turn that just ended: the whole latest page, as reopening the conversation does
+            // (an "after the last entry" request has been seen to miss the reply on a device).
+            if let before = old?.session(id), before.state == .running, session.state != .running {
+                refreshLatest(id)
+            } else if old?.session(id) != session {
+                requestNewer(id)
+            }
         }
         for id in openEdits.keys where old?.session(id) != new.session(id) || old?.supports(RemoteSnapshot.Feature.edits) != true {
             requestEdits(id)
@@ -1017,11 +1023,17 @@ final class RemoteStore {
         // safety net for a notice it couldn't send yet: before a session's first hook).
         if conversationPoll == nil {
             conversationPoll = Task { @MainActor [weak self] in
+                var tick = 0
                 while !Task.isCancelled {
                     let pushed = self?.snapshot?.supports(RemoteSnapshot.Feature.conversationPush) == true
                     try? await Task.sleep(for: .seconds(pushed ? RemoteStore.pushedConversationPoll : 4))
                     guard let self, !Task.isCancelled else { return }
-                    for id in self.openConversations.keys { self.requestNewer(id) }
+                    tick += 1
+                    // Every sixth tick (~30 s) the whole latest page: whatever an incremental
+                    // request missed shows up without leaving the screen.
+                    for id in self.openConversations.keys {
+                        if tick % 6 == 0 { self.refreshLatest(id) } else { self.requestNewer(id) }
+                    }
                 }
             }
         }
@@ -1049,6 +1061,12 @@ final class RemoteStore {
             _ = send(.conversationClose(sessionID: id))
             announcedConversations.remove(id)
         }
+    }
+
+    /// The latest page, merged over what's loaded (ChatSync.merge keeps older pages).
+    private func refreshLatest(_ id: UUID) {
+        if let asked = historyAsked[id], Date().timeIntervalSince(asked) < 8 { return }
+        requestLatest(id)
     }
 
     private func requestLatest(_ id: UUID) {

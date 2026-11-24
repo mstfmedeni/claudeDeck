@@ -172,6 +172,12 @@ public enum ChatSync {
     @discardableResult
     public static func merge(_ page: ChatPage, into entries: inout [ChatEntry], hasMoreBefore: inout Bool) -> Bool {
         if page.reset {
+            // The latest page again (a refresh): what was loaded before its first entry stays, so
+            // "Earlier messages" already read isn't lost.
+            if let first = page.entries.first, let at = entries.firstIndex(where: { $0.id == first.id }), at > 0 {
+                entries = Array(entries[..<at]) + page.entries
+                return true
+            }
             entries = page.entries
             hasMoreBefore = page.hasMoreBefore
             return true
