@@ -25553,6 +25553,26 @@
           }
         }
       }
+    },
+    "waiting for the session's turn": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturumun sırası bekleniyor"
+          }
+        }
+      }
+    },
+    "delivered to the session": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oturuma iletildi"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

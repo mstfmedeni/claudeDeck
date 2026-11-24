@@ -254,6 +254,7 @@ extension AppModel {
     static func decisionDeliveryLog(_ delivery: String, told: Bool = false) -> String {
         switch delivery {
         case "queued": told ? "the session was told" : "queued for the session"
+        case "delivered": "delivered to the session"
         case "resumed": "the stopped session resumes with it"
         case "resume_queued": "the stopped session resumes with it once there's room"
         default: "kept for claudedeck decision get (\(delivery))"
@@ -276,7 +277,7 @@ extension AppModel {
     }
 
     /// Saved at once (a decision is rare and small): one asked just before quitting stays.
-    private func decisionsChanged(added: OwnerDecision?) {
+    func decisionsChanged(added: OwnerDecision?) {
         onDecisionsChanged?(added)
         do {
             try JSONEncoder().encode(decisions).write(to: decisionsURL, options: .atomic)

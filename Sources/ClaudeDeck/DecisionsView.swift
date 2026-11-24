@@ -362,7 +362,10 @@ struct AnsweredDecisionRow: View {
             Text(decision.answeredFrom == "phone" ? String(localized: "on the phone") : String(localized: "on the Mac"))
             if decision.delivery == "queued" {
                 Text("·")
-                Text("sent to the session")
+                Text("waiting for the session's turn")
+            } else if decision.delivery == "delivered" {
+                Text("·")
+                Text("delivered to the session")
             } else if decision.delivery == "resumed" {
                 Text("·")
                 Text("the stopped session resumed with it")

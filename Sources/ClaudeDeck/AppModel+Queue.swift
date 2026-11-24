@@ -18,7 +18,16 @@ extension AppModel {
         if action == .sendNow, !terminals.isRunning(id) || status(of: id).display.isBlocked { return }
         let result = session.queue.applying(action, to: prompt)
         mutate(userInitiated: false) { $0.updateSession(id) { $0.queue = result.queue } }
-        if let sent = result.sent { typePrompt(sent.text, into: id) }
+        if let sent = result.sent, typePrompt(sent.text, into: id) == nil { queuedMessageTyped(sent.text) }
+    }
+
+    /// A queued owner's answer went into its session: the decision says "delivered" instead of
+    /// staying "queued" (`claudedeck decision get`, the Decisions screen).
+    func queuedMessageTyped(_ text: String) {
+        guard let id = Decisions.decisionID(inMessage: text), let decision = decisions.decision(id),
+              ["queued", "resumed", "resume_queued"].contains(decision.delivery ?? "") else { return }
+        decisions.setDelivery(id, "delivered")
+        decisionsChanged(added: nil)
     }
 
     /// Sends the next queued message of each session whose turn it is. Called on every status
@@ -39,7 +48,7 @@ extension AppModel {
             guard display.isIdle, let next = session.queue.first else { continue }
             mutate(userInitiated: false) { $0.updateSession(id) { $0.queue.removeFirst() } }
             queueAwaiting[id] = Date()
-            typePrompt(next.text, into: id)
+            if typePrompt(next.text, into: id) == nil { queuedMessageTyped(next.text) }
         }
     }
 

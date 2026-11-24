@@ -970,7 +970,8 @@ can't ask.
   at its next "your turn" (at once when it's idle), never into a permission prompt or a question,
   and kept in the queue if the session isn't running until it is. It's one line:
   `[ClaudeDeck decision d_…] The owner answered your question "…": ANSWER`. `decision get` shows
-  it too (`delivery`: `queued`; `terminal` when a plain terminal asked, where nothing is typed;
+  it too (`delivery`: `queued` while it waits for the session's turn, `delivered` once typed
+  into it (since 0.6.31); `terminal` when a plain terminal asked, where nothing is typed;
   `no_session` when the session is gone). A stopped (or removed) session a session closed is
   resumed for it when **Resume a stopped session when a message or a decision answer arrives for
   it** is on: `resumed`, or `resume_queued` while it waits for room (see

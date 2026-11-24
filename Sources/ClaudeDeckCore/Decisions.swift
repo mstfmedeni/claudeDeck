@@ -268,6 +268,14 @@ public enum Decisions {
     }
 
     /// What the asking session gets: one line (it's typed into Claude Code and sent with Return).
+    /// "d_…" from a message these functions made ("[ClaudeDeck decision d_…] …").
+    public static func decisionID(inMessage text: String) -> String? {
+        let prefix = "[ClaudeDeck decision "
+        guard text.hasPrefix(prefix), let end = text.firstIndex(of: "]") else { return nil }
+        let id = String(text[text.index(text.startIndex, offsetBy: prefix.count)..<end])
+        return id.hasPrefix("d_") ? id : nil
+    }
+
     public static func message(for decision: OwnerDecision) -> String {
         "[ClaudeDeck decision \(decision.id)] The owner answered your question “\(oneLine(decision.question, max: 300))”: "
             + oneLine(decision.answer ?? "", max: maxAnswer)
