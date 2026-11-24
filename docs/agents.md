@@ -1343,7 +1343,7 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   read and fails a run whose host port is already taken (`error: Port N dolu: …`), so another app
   answering `localhost:N` doesn't pass for the project. `running` with a non-empty `error` is a
   failure too; every failure prints the panel's `error:` line, and a failed run prints no URL.
-  Unknown states count as failures. A panel without `status` (older than v1.2's local runs) is
+  Unknown states count as failures. A panel that sends no `status` is
   judged by its `running` flag, as before. Plain `local status` (no `--wait`) reports the same
   line and error with exit 0. An already running project is `409 conflict`, exit 1.
 - **Database copies**: `db clone-for-local` copies the project's database (its `DB_NAME`, or
