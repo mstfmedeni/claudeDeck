@@ -1336,8 +1336,16 @@ calls they make and their 428 handling is `ServerPlanCLI.commands` (ClaudeDeckCo
   `-` reads the query from stdin.
 - **Local runs** run the project in Docker on the panel's machine, with the deploy env plus the
   local-only overrides (`local-env`); the default server (for the database) is the project's.
-  `local run --wait` / `local status --wait` poll until the run is `running` (exit 0) or `failed` /
-  `stopped` / not running (exit 1). An already running project is `409 conflict`, exit 1.
+  `local run --wait` / `local status --wait` poll `local-status` until the run is `running` (exit 0)
+  or `failed` / `stopped` / not running (exit 1); while it's `building` the polling goes on as
+  before (each request waits up to 25 s, `124` = ask again). The verdict is the panel's `status`, never a probe of the port:
+  since ServerPlan faa8398 the panel re-checks the container (`docker inspect`) on every status
+  read and fails a run whose host port is already taken (`error: Port N dolu: …`), so another app
+  answering `localhost:N` doesn't pass for the project. `running` with a non-empty `error` is a
+  failure too; every failure prints the panel's `error:` line, and a failed run prints no URL.
+  Unknown states count as failures. A panel without `status` (older than v1.2's local runs) is
+  judged by its `running` flag, as before. Plain `local status` (no `--wait`) reports the same
+  line and error with exit 0. An already running project is `409 conflict`, exit 1.
 - **Database copies**: `db clone-for-local` copies the project's database (its `DB_NAME`, or
   `--database`) on its server (or `--server`) to `TARGET` (default `<db>_dev`) and points only the
   local env's `DB_NAME` at it; the deploy env is unchanged. `pg clone … --project P` is the

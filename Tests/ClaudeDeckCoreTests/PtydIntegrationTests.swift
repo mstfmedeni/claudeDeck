@@ -283,6 +283,33 @@ struct PtydIntegrationTests {
         #expect(collector.exit(spawn.id)?.exitSignal == SIGHUP)
     }
 
+    /// Restart Terminal on a helper session, as the app does it: SIGHUP + SIGTERM, wait until the
+    /// pid is gone, start the same session id again. The new spawn is accepted, and the old
+    /// process's exit notice (which may arrive after that) names the old pid, so the app can
+    /// tell it from the new run's.
+    @Test func restartedSessionsExitNoticeNamesTheOldProcess() throws {
+        let helper = try HelperProcess()
+        #expect(helper.waitUntilListening())
+        let collector = Collector()
+        let client = try helper.connect(collector)
+        let id = UUID().uuidString
+        let old = try sync { client.spawn(shellSpawn("trap 'exit 129' HUP; while :; do sleep 0.05; done", id: id), $0) }
+        client.signal(id, SIGHUP)
+        client.signal(id, SIGTERM, killAfter: 5)
+        #expect(waitFor { kill(old.pid, 0) != 0 })
+        let new = try sync { client.spawn(shellSpawn(tickLoop, id: id), $0) }
+        #expect(new.alive && new.pid != old.pid)
+        #expect(waitFor { collector.exit(id) != nil })
+        let notice = try #require(collector.exit(id))
+        #expect(notice.pid == old.pid && !notice.alive)
+        #expect(!PtydLaunchPlan.exitNoticeApplies(noticePID: notice.pid, currentPID: new.pid, retiredPIDs: [old.pid]))
+        #expect(!PtydLaunchPlan.exitNoticeApplies(noticePID: notice.pid, currentPID: nil, retiredPIDs: [old.pid]))
+        // The new run is untouched.
+        #expect(try sync { client.list($0) }.first { $0.id == id }?.alive == true)
+        client.signal(id, SIGKILL)
+        helper.kill()
+    }
+
     @Test func secondHelperForTheSameFolderStepsAside() throws {
         let helper = try HelperProcess()
         #expect(helper.waitUntilListening())

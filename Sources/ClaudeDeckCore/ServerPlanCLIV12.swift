@@ -326,31 +326,38 @@ extension ServerPlanCLI.Runner {
 
     /// `local-status`; with `wait=N`, polls (every 2 s) until the run is no longer building or N
     /// seconds passed. `since`: the status already shown (only a change is printed). Exit 0
-    /// running (or no wait), 1 failed / stopped / not running, 124 still building.
+    /// running (or no wait), 1 failed / stopped / not running / running with an error, 124 still
+    /// building. The verdict is the panel's (`ServerPlanCLI.localRun`): it checks the container
+    /// itself, so another app answering the port doesn't count as a healthy run.
     private func localStatus(_ form: [String: String]) async throws -> ServerPlanCLI.Outcome {
         let project = try await projectID(form["project"])
         let window = min(SessionCLI.maxWaitWindow, max(0, Int(form["wait"] ?? "") ?? 0))
         let deadline = Date().addingTimeInterval(TimeInterval(window))
-        func status(_ data: Data) -> String {
-            let object = ServerPlanCLI.object(data) ?? [:]
-            return ServerPlanCLI.value(object, "status").map { $0.replacingOccurrences(of: " ", with: "_") } ?? ((object["running"] as? Bool) == true ? "running" : "not_running")
-        }
         var data = try await raw("GET", "/projects/\(project)/local-status")
-        while window > 0, status(data) == "building", Date() < deadline {
+        while window > 0, ServerPlanCLI.localRun(data).verdict == .building, Date() < deadline {
             try await Task.sleep(for: .seconds(2))
             data = try await raw("GET", "/projects/\(project)/local-status")
         }
-        let now = status(data)
+        let run = ServerPlanCLI.localRun(data)
         let object = ServerPlanCLI.object(data) ?? [:]
         var lines: [String] = []
-        if window == 0 || form["since"] != now || now != "building" {
-            var line = "local: \(now)"
-            if let url = ServerPlanCLI.value(object, "local_url"), now == "running" || now == "building" { line += " \(url)" }
+        if window == 0 || form["since"] != run.status || run.verdict != .building {
+            var line = "local: \(run.status)"
+            if let url = ServerPlanCLI.value(object, "local_url"), run.verdict != .failed { line += " \(url)" }
             lines.append(line)
-            if let error = ServerPlanCLI.value(object, "error") { lines.append("error: \(error)") }
+            if let error = run.error { lines.append("error: \(error)") }
         }
-        let exit: SessionCLI.Exit = window == 0 || now == "running" ? .ok : now == "building" ? .timeout : .failed
-        return ServerPlanCLI.Outcome(json: data, text: lines.joined(separator: "\n"), exit: exit, next: now)
+        let exit: SessionCLI.Exit
+        if window == 0 {
+            exit = .ok
+        } else {
+            switch run.verdict {
+            case .running: exit = .ok
+            case .building: exit = .timeout
+            case .failed: exit = .failed
+            }
+        }
+        return ServerPlanCLI.Outcome(json: data, text: lines.joined(separator: "\n"), exit: exit, next: run.status)
     }
 
     /// A clone job (`/pg/clone-jobs/:id`); with `wait=N` a long poll like `localStatus`.

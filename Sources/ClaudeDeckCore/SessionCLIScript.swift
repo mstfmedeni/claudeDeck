@@ -2284,6 +2284,7 @@ extension SessionCLI {
     claudedeck server db clone-for-local PROJECT [--target NAME] --wait   # dev copy; only the LOCAL env's DB_NAME changes
     claudedeck server local-env set PROJECT --from-file .env.local      # overrides only local runs see
     claudedeck server local run PROJECT [--port N] [--no-cache] --wait  # Docker on the panel's machine; prints the URL
+                                     # exit 1 + the panel's error when it failed/stopped (e.g. "Port N dolu: …": pick another --port)
     claudedeck server local logs PROJECT [--tail N] | local status PROJECT | local stop PROJECT
     claudedeck server git branches|pull PROJECT | refresh PROJECT | build PROJECT [--no-cache]
     claudedeck server git push PROJECT | git switch PROJECT BRANCH        # the user must approve

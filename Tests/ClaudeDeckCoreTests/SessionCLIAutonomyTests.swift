@@ -541,6 +541,42 @@ private final class Box<T>: @unchecked Sendable {
         let none = await (try runner(RouteTransport(["GET /projects": [(200, Self.projects)]]), me: fixture("v12-me.json")))
             .run("local-logs", method: "GET", form: ["project": "9"])
         #expect(none.exit == .unknown)
+        // The port was taken (ServerPlan fails the run): exit 1 with the panel's own error text,
+        // and no URL (whatever answers there isn't this project).
+        let busy = RouteTransport(["GET /projects": [(200, Self.projects)],
+                                   "GET /projects/9/local-status": [
+                                       (200, #"{"running":true,"status":"building","port":8090,"error":""}"#),
+                                       (200, #"{"running":false,"status":"failed","port":8090,"local_url":"http://localhost:8090","error":"Port 8090 dolu: process node. Onu durdurun ya da baska bir port secin (--port)."}"#)]])
+        let taken = await (try runner(busy, me: fixture("v12-me.json"))).run("local-status", method: "GET", form: ["project": "9", "wait": "25"])
+        #expect(taken.exit == .failed && taken.next == "failed")
+        #expect(taken.text.contains("error: Port 8090 dolu: process node") && !taken.text.contains("http://localhost:8090"))
+        // The container died after it started: "stopped" with the panel's reason.
+        let died = RouteTransport(["GET /projects": [(200, Self.projects)],
+                                   "GET /projects/9/local-status": [(200, #"{"running":false,"status":"stopped","error":"Container calismiyor: local-new-api"}"#)]])
+        let dead = await (try runner(died, me: fixture("v12-me.json"))).run("local-status", method: "GET", form: ["project": "9", "wait": "5"])
+        #expect(dead.exit == .failed && dead.text.contains("local: stopped") && dead.text.contains("Container calismiyor"))
+        // Without --wait it's a report, not a verdict.
+        let shown = await (try runner(died, me: fixture("v12-me.json"))).run("local-status", method: "GET", form: ["project": "9"])
+        #expect(shown.exit == .ok && shown.text.contains("error: Container calismiyor"))
+    }
+
+    @Test func localRunVerdict() {
+        func run(_ json: String) -> ServerPlanCLI.LocalRun { ServerPlanCLI.localRun(Data(json.utf8)) }
+        #expect(run(#"{"running":true,"status":"running","error":""}"#).verdict == .running)
+        #expect(run(#"{"running":true,"status":" Running ","error":null}"#).verdict == .running)
+        // An error wins over "running".
+        let erred = run(#"{"running":true,"status":"running","error":"Container bulunamadi: local-x"}"#)
+        #expect(erred.verdict == .failed && erred.error == "Container bulunamadi: local-x")
+        #expect(run(#"{"running":true,"status":"running","error":{"message":"boom"}}"#).error == "boom")
+        #expect(run(#"{"running":true,"status":"building"}"#).verdict == .building)
+        #expect(run(#"{"running":false,"status":"failed","error":"Port 8090 dolu: x"}"#).verdict == .failed)
+        #expect(run(#"{"running":false,"status":"stopped"}"#).verdict == .failed)
+        // Unknown states aren't success.
+        #expect(run(#"{"running":true,"status":"restarting"}"#).verdict == .failed)
+        // An older panel without `status`: its `running` flag, as before.
+        #expect(run(#"{"running":true,"port":8090}"#) == ServerPlanCLI.LocalRun(status: "running", error: nil, verdict: .running))
+        #expect(run(#"{"running":false}"#).status == "not_running" && run(#"{"running":false}"#).verdict == .failed)
+        #expect(run("not json").verdict == .failed)
     }
 
     @Test func cloneForLocalAndJobs() async throws {

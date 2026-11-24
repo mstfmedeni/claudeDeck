@@ -89,6 +89,31 @@ public enum PtydLaunchPlan {
         }
     }
 
+    /// Restart: whether the old process is gone everywhere `launch` looks, so the new one may
+    /// start. The terminal must no longer count it as running, and the helper (when it ran there)
+    /// must have reported its exit: until that notice arrives the helper's list still says
+    /// alive, and `launch` would attach to the dying process instead of starting a new one (the
+    /// attach then fails and the terminal is left ended). The notice can come after the pid is
+    /// gone (`kill -0` fails once the helper has reaped it, the notice is sent after that).
+    public static func restartMayLaunch(sessionID: UUID, terminalRunning: Bool, helper: PtydHelperState) -> Bool {
+        guard !terminalRunning else { return false }
+        if case .live(_, _, let sessions) = helper, sessions[sessionID.uuidString]?.alive == true { return false }
+        return true
+    }
+
+    /// Whether the helper's exit notice for a terminal is about the process it shows now. A
+    /// restart stops the old process and starts a new one under the same session id; the old
+    /// one's notice can arrive after that, and must not end (or fail) the new run.
+    /// - Parameters:
+    ///   - currentPID: the pid the terminal runs in the helper (nil while the spawn's answer is
+    ///     on its way).
+    ///   - retiredPIDs: processes this terminal stopped itself (a restart, End Session).
+    public static func exitNoticeApplies(noticePID: Int32, currentPID: Int32?, retiredPIDs: Set<Int32>) -> Bool {
+        if retiredPIDs.contains(noticePID) { return false }
+        if let currentPID, currentPID > 0, noticePID > 0, currentPID != noticePID { return false }
+        return true
+    }
+
     /// Whether `pid` still runs the process that started at `startedAt` (a reused pid doesn't count).
     public static func processAlive(_ host: PtydHost) -> Bool {
         guard host.pid > 0 else { return false }

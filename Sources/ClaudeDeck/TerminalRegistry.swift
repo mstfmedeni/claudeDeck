@@ -631,8 +631,17 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     /// A helper session's process ended.
     func helperExited(_ info: PtydSessionInfo, from client: PtydClient) {
         guard let id = UUID(uuidString: info.id) else { return }
+        // A process this terminal stopped itself (restart, End Session): its exit was reported
+        // when it was stopped. A restart may already run the new process under the same id.
+        let retired = retiredHelperPIDs[id] ?? []
+        if retired.contains(info.pid) {
+            retiredHelperPIDs[id]?.remove(info.pid)
+            if retiredHelperPIDs[id]?.isEmpty == true { retiredHelperPIDs[id] = nil }
+        }
+        // Forgetting only drops an ended session: a new run under this id is alive.
         if client.isFull { client.forget(info.id) }
-        guard helperClients[id] === client else { return }
+        guard helperClients[id] === client,
+              PtydLaunchPlan.exitNoticeApplies(noticePID: info.pid, currentPID: helperPIDs[id], retiredPIDs: retired) else { return }
         helperEnded(id, exitCode: info.exitCode)
     }
 
@@ -642,6 +651,9 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         readOnlySessions.remove(id)
         views[id]?.clearHelper()
         guard running.remove(id) != nil else { return }
+        // Like a local process's end: a stopped terminal shows no program status.
+        views[id]?.programMonitor?.processExited(now: Date())
+        setProgramStatus(nil, for: id)
         onExit?(id, exitCode)
     }
 
@@ -675,6 +687,10 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
     private(set) var readOnlySessions: Set<UUID> = []
     @ObservationIgnored private var helperClients: [UUID: PtydClient] = [:]
     @ObservationIgnored private var helperPIDs: [UUID: pid_t] = [:]
+    /// Helper processes a terminal stopped itself (`terminate`), until their exit notice arrives:
+    /// that notice is not the terminal's exit (it was reported when it was stopped), and may come
+    /// after a restart already started the new process under the same id.
+    @ObservationIgnored private var retiredHelperPIDs: [UUID: Set<pid_t>] = [:]
     /// A session started in (or attached to) the helper: its info and the helper's instance.
     @ObservationIgnored var onHelperStarted: ((UUID, PtydSessionInfo, String) -> Void)?
 
@@ -960,10 +976,13 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
             // Its exit notice is then only forgotten: the exit is reported here and now.
             client.signal(id.uuidString, SIGHUP)
             client.signal(id.uuidString, SIGTERM, killAfter: 5)
+            if let pid = helperPIDs[id], pid > 0 { retiredHelperPIDs[id, default: []].insert(pid) }
             helperClients[id] = nil
+            helperPIDs[id] = nil
             readOnlySessions.remove(id)
             view.clearHelper()
             running.remove(id)
+            setProgramStatus(nil, for: id)
             onExit?(id, nil)
             return
         }
@@ -1003,6 +1022,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         latestTitles[id] = nil
         titles[id] = nil
         programStatuses[id] = nil
+        retiredHelperPIDs[id] = nil
     }
 
     /// On quit: signal every process without reporting exits (quit keeps `isOpen` for auto-resume).

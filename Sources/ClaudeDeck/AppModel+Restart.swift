@@ -158,21 +158,30 @@ extension AppModel {
         return !terminals.isRunning(id)
     }
 
+    /// Until the old process is gone everywhere `launch` looks (`PtydLaunchPlan.restartMayLaunch`):
+    /// the terminal no longer counts it as running and, for a session in the session helper, the
+    /// helper has reported its exit. `terminate` ends a helper session here at once and
+    /// `stopForRestart` waits for its pid, but the helper's exit notice comes after that; until
+    /// then its list says alive, and `launch` would attach to the dying process instead of starting
+    /// the new one — the attach fails and the terminal is left ended ("failed", the old run's
+    /// SIGHUP). False if it's still there after `timeout`.
+    func waitUntilStopped(_ id: UUID, timeout: Duration = .seconds(10)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        func gone() -> Bool {
+            PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: terminals.isRunning(id), helper: ptyd.state)
+        }
+        while !gone(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return gone()
+    }
+
     /// Stops the process without it counting as "ended": an idle Claude is asked to `/exit`
     /// (up to 3 s), anything else — or a timeout — gets SIGTERM (SIGKILL after 5 s, see
     /// `TerminalRegistry.reap`). Returns once the old process is gone, so its late hook events
-    /// can't be mistaken for the new process's.
-    /// Until the terminal no longer counts as running: a session in the session helper is only
-    /// marked ended once the helper reports the exit, which can come after the process is gone
-    /// (a zombie still answers `kill -0`). False if it's still running after `timeout`.
-    func waitUntilStopped(_ id: UUID, timeout: Duration = .seconds(10)) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while terminals.isRunning(id), ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        return !terminals.isRunning(id)
-    }
-
+    /// can't be mistaken for the new process's. Its exit is not the terminal's: `terminate`
+    /// reports it without a code, and the helper's later notice for it is ignored
+    /// (`TerminalRegistry.helperExited`).
     func stopForRestart(_ id: UUID, graceful: Bool) async {
         if graceful { await typeExit(id, grace: .seconds(3)) }
         guard terminals.isRunning(id) else { return }

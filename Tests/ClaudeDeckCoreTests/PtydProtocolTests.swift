@@ -335,6 +335,37 @@ import Testing
         #expect(gate(host: host, helper: live("helper-B", []), alive: true) == .hold(.processStillRunning))
     }
 
+    /// Restart of a terminal in the helper: the old process was stopped and its pid is gone, but
+    /// until the helper's exit notice arrives its list still says alive. Launching then would
+    /// attach to the dying process (the attach fails, the terminal ends, nothing starts).
+    @Test func restartLaunchesOnlyOnceTheHelperReportedTheExit() {
+        // Exit notice not here yet: wait.
+        #expect(!PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: false, helper: live("helper-A", [aliveInfo])))
+        // The terminal itself still counts it as running: wait.
+        #expect(!PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: true, helper: .gone))
+        // Notice in (or never in the helper): go — and the gate then lets the launch start it.
+        #expect(PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: false, helper: live("helper-A", [exitedInfo])))
+        #expect(gate(host: host, helper: live("helper-A", [exitedInfo])) == .ended(exitedInfo))
+        #expect(PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: false, helper: live("helper-A", [])))
+        #expect(PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: false, helper: .gone))
+        // Another session alive in the helper doesn't matter.
+        let other = PtydSessionInfo(id: UUID().uuidString, pid: 1, startedAt: 1, cols: 80, rows: 24, alive: true)
+        #expect(PtydLaunchPlan.restartMayLaunch(sessionID: id, terminalRunning: false, helper: live("helper-A", [other])))
+    }
+
+    /// The old process's exit notice arriving after the new one started must not end (or fail) it.
+    @Test func staleExitNoticeDoesntEndTheNewRun() {
+        // Stopped by the restart itself: never an exit of the terminal, whenever it arrives.
+        #expect(!PtydLaunchPlan.exitNoticeApplies(noticePID: 4242, currentPID: nil, retiredPIDs: [4242]))
+        #expect(!PtydLaunchPlan.exitNoticeApplies(noticePID: 4242, currentPID: 5151, retiredPIDs: [4242]))
+        // Another process than the one it runs now.
+        #expect(!PtydLaunchPlan.exitNoticeApplies(noticePID: 4242, currentPID: 5151, retiredPIDs: []))
+        // The process it runs ends: that's its exit.
+        #expect(PtydLaunchPlan.exitNoticeApplies(noticePID: 5151, currentPID: 5151, retiredPIDs: [4242]))
+        // Pid not known yet (attach without info): taken as before.
+        #expect(PtydLaunchPlan.exitNoticeApplies(noticePID: 5151, currentPID: nil, retiredPIDs: []))
+    }
+
     @Test func processIdentityChecksStartTime() throws {
         let me = getpid()
         let started = try #require(PtydLaunchPlan.processStartTime(me))

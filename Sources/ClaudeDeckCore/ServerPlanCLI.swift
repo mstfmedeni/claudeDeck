@@ -864,6 +864,45 @@ public enum ServerPlanCLI {
         return nil
     }
 
+    /// A local run as `GET /projects/:id/local-status` reports it.
+    public struct LocalRun: Equatable, Sendable {
+        public enum Verdict: Equatable, Sendable { case building, running, failed }
+        /// The panel's status (`running`, `building`, `failed`, `stopped`, …; `not_running` when
+        /// there is none), as shown and as `since` for the next poll.
+        public var status: String
+        /// The panel's error text (e.g. "Port 8090 dolu: …"), if any.
+        public var error: String?
+        public var verdict: Verdict
+    }
+
+    /// Reads a local-status answer tolerantly. Since ServerPlan faa8398 the panel re-checks the
+    /// container (docker inspect) and fails a run whose host port is taken, so its `status` is the
+    /// truth: `running` without an error is a running app; `failed`, `stopped`, anything unknown,
+    /// or any error is a failure, with the panel's error text. A panel without `status` only has
+    /// `running` (its own check), which is used as before.
+    public static func localRun(_ data: Data) -> LocalRun {
+        let object = self.object(data) ?? [:]
+        let error = value(object, "error|error.message").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        guard let raw = value(object, "status")?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            let running = (object["running"] as? Bool) == true
+            return LocalRun(status: running ? "running" : "not_running", error: error,
+                            verdict: running && error == nil ? .running : .failed)
+        }
+        let status = raw.lowercased().replacingOccurrences(of: " ", with: "_")
+        let verdict: LocalRun.Verdict
+        if error != nil {
+            verdict = .failed
+        } else {
+            switch status {
+            case "running": verdict = .running
+            case "building", "pending", "queued", "starting", "creating": verdict = .building
+            default: verdict = .failed
+            }
+        }
+        return LocalRun(status: status, error: error, verdict: verdict)
+    }
+
     public static func listText(_ data: Data, _ columns: [(header: String, key: String)]) -> String {
         guard let rows = array(data) else { return String(decoding: data, as: UTF8.self) }
         if rows.isEmpty { return "(none)" }
