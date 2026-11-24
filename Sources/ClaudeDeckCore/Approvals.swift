@@ -405,6 +405,8 @@ public final class ApprovalQueue {
     @discardableResult
     public func resolve(_ id: String, _ outcome: ApprovalOutcome, from: String) -> ResolvedApproval? {
         guard let resolved = book.resolve(id, outcome, from: from, at: now()) else { return nil }
+        // Keeps this one's call (no answer yet); drops the ones past their change window.
+        book.prune(now: now())
         timers.removeValue(forKey: id)?.cancel()
         let waiter = waiters.removeValue(forKey: id)
         notify(.resolved(resolved))
