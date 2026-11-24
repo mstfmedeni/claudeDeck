@@ -385,6 +385,8 @@ public final class RemoteServer: @unchecked Sendable {
     public var onDismissDecision: ((_ id: String) -> Void)?
     /// `answerApproval` (ids checked; the host decides what a phone may do with it).
     public var onAnswerApproval: ((_ id: String, _ approve: Bool) -> Void)?
+    /// `reapproveApproval` (ids checked; the host decides whether it's still in its window).
+    public var onReapproveApproval: ((_ id: String) -> Void)?
     /// `dismissServerIssues` (ids capped at 200).
     public var onDismissServerIssues: ((_ deploymentIDs: [Int], _ all: Bool) -> Void)?
     /// A server's containers (and a log tail); reply with `.serverPlanContainers`.
@@ -690,6 +692,8 @@ public final class RemoteServer: @unchecked Sendable {
                 onDismissDecision?(decisionID)
             case .answerApproval(let approvalID, let approve) where OwnerApproval.isValidID(approvalID):
                 onAnswerApproval?(approvalID, approve)
+            case .reapproveApproval(let approvalID) where OwnerApproval.isValidID(approvalID):
+                onReapproveApproval?(approvalID)
             case .dismissServerIssues(let ids, let all):
                 onDismissServerIssues?(Array(ids.prefix(200)), all)
             case .serverPlanContainersRequest(let serverID, let logsOf) where logsOf.map(RemoteServerPlan.isValidContainerName) != false:

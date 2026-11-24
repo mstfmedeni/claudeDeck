@@ -353,6 +353,9 @@ final class RemoteController {
             server.onAnswerApproval = { [weak self] id, approve in
                 MainActor.assumeIsolated { _ = self?.model?.answerApproval(id, approve: approve, from: "phone") }
             }
+            server.onReapproveApproval = { [weak self] id in
+                MainActor.assumeIsolated { _ = self?.model?.reapproveApproval(id, from: "phone") }
+            }
             server.onChangeDecisionAnswer = { [weak self] id, answer in
                 MainActor.assumeIsolated { self?.model?.changeDecisionAnswer(id, answer: answer, from: "phone") }
             }
@@ -790,7 +793,7 @@ final class RemoteController {
         snapshot.serverPlan = ServerPlanController.shared.remoteStatus
         snapshot.decisions = model.decisions.forRemote()
         snapshot.approvals = model.approvals.pending
-        snapshot.approvalHistory = Approvals.history(model.approvals.book.recent, now: Date())
+        snapshot.approvalHistory = model.approvals.book.phoneHistory(now: Date())
         snapshot.decisionHistory = model.decisions.historyForRemote()
         snapshot.agendas = AgendaController.shared.remoteAgendas
         snapshot.agentsRunning = model.cliRunningStarted

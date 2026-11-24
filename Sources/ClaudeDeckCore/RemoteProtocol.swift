@@ -245,6 +245,10 @@ public enum RemoteMessage: Codable, Sendable, Equatable {
     /// hosts with `Feature.approvals`). The host only takes what the approval allows from a
     /// phone (`phoneMayApprove` / `phoneMayRefuse`); the next snapshot drops it.
     case answerApproval(id: String, approve: Bool)
+    /// Remote → host: "Approve anyway" for a refused or expired approval still in its change
+    /// window (`ResolvedApproval.reapprovableUntil`; hosts with `Feature.reapproveApproval`).
+    /// The host runs the call it kept and the next snapshot shows it approved, then its result.
+    case reapproveApproval(id: String)
     /// Phone → host: send push notifications to this device (APNs.swift).
     case registerPush(token: Data, topic: String, environment: String, deviceName: String)
     case ping
@@ -457,6 +461,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
         /// `approvalHistory` in the snapshot; approvals wait up to the Mac's setting (24 hours by
         /// default, or with no limit: `OwnerApproval.neverExpires`) and stay across its restarts.
         public static let approvalHistory = "approvalHistory"
+        /// `reapproveApproval`; history items carry `reapprovableUntil`, `changedFrom`, `changedAt`.
+        public static let reapproveApproval = "reapproveApproval"
         /// `decisionHistory` in the snapshot (a week of answered and cancelled decisions).
         public static let decisionHistory = "decisionHistory"
         /// `load` in the snapshot (read-only): the Mac's load level, memory, simulators, builds.
@@ -477,7 +483,8 @@ public struct RemoteSnapshot: Codable, Sendable, Equatable {
                                               serverPlanRepair, dashboard, simulators, decisions, agenda, dismissDecision,
                                               changeDecisionAnswer, agentTree, dismissServerIssues, registrarBalance,
                                               closedTerminals, approvals, load, loadDetail, serverPlanContainers,
-                                              approvalHistory, decisionHistory, loadHistory, remoteControl]
+                                              approvalHistory, decisionHistory, loadHistory, remoteControl,
+                                              reapproveApproval]
     }
 
     public func supports(_ feature: String) -> Bool { features?.contains(feature) == true }
@@ -1264,6 +1271,13 @@ public struct ResolvedApproval: Codable, Sendable, Equatable, Identifiable {
     /// What the gated action did once approved (one line), or why it failed; nil while it runs,
     /// and for refused, expired or cancelled ones.
     public var result: String?
+    /// The owner changed the answer afterwards ("Approve anyway"): what it was before (refused or
+    /// expired) and when it changed. `from` is then who changed it. Nil for an answer never changed.
+    public var changedFrom: ApprovalOutcome?
+    public var changedAt: Date?
+    /// Set by the Mac in the snapshot only (never stored): until when "Approve anyway" works for
+    /// this refused or expired one (the Mac still keeps the call behind it). Nil: it doesn't.
+    public var reapprovableUntil: Date?
 
     public var id: String { approval.id }
 

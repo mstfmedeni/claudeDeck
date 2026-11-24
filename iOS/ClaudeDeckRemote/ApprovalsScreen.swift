@@ -3,7 +3,8 @@ import SwiftUI
 // Approvals a session on the Mac waits on (ServerPlan gates, domain purchases), from a Mac with
 // `Feature.approvals`, and the week's resolved ones (`Feature.approvalHistory`). The phone mostly
 // approves or refuses them (`phoneMayApprove` / `phoneMayRefuse`): a purchase and a refusal each
-// ask once more before they're sent.
+// ask once more before they're sent. A refused or expired one the Mac still keeps the call of
+// (24 h, `ResolvedApproval.reapprovableUntil`) can be approved anyway (`Feature.reapproveApproval`).
 
 extension RemoteStore {
     /// Pending approvals, the one expiring first on top (nil: the Mac doesn't send them).
@@ -23,6 +24,21 @@ extension RemoteStore {
               let approval = approvals?.first(where: { $0.id == id }),
               approve ? approval.phoneMayApprove : approval.phoneMayRefuse else { return false }
         return send(.answerApproval(id: id, approve: approve))
+    }
+
+    /// Whether "Approve anyway" is offered for a resolved one: the Mac takes it, still keeps its
+    /// call, and the phone may approve it.
+    func mayReapprove(_ resolved: ResolvedApproval, now: Date = .now) -> Bool {
+        guard snapshot?.supports(RemoteSnapshot.Feature.reapproveApproval) == true,
+              let until = resolved.reapprovableUntil else { return false }
+        return now < until && resolved.approval.phoneMayApprove
+    }
+
+    /// "Approve anyway": the Mac runs the call it kept (it checks the window again).
+    @discardableResult
+    func reapproveApproval(_ resolved: ResolvedApproval) -> Bool {
+        guard mayReapprove(resolved) else { return false }
+        return send(.reapproveApproval(id: resolved.id))
     }
 }
 
@@ -116,7 +132,12 @@ struct ApprovalsScreen: View {
                     }
                     ForEach(history, id: \.day) { group in
                         Section {
-                            ForEach(group.items) { ResolvedApprovalPhoneRow(resolved: $0) }
+                            ForEach(group.items) { resolved in
+                                ResolvedApprovalPhoneRow(resolved: resolved, mayReapprove: store.mayReapprove(resolved),
+                                                         sending: sent.contains(resolved.id)) {
+                                    if store.reapproveApproval(resolved) { sent.insert(resolved.id) }
+                                }
+                            }
                         } header: {
                             HistoryDayHeader(day: group.day)
                         }
@@ -126,7 +147,11 @@ struct ApprovalsScreen: View {
         }
         .navigationTitle("Approvals")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: pending.map(\.id)) { _, ids in sent = sent.filter { ids.contains($0) } }
+        // A sent answer spins until its card leaves Waiting, or its history row stops offering
+        // "Approve anyway" (it's approved now).
+        .onChange(of: pending.map(\.id) + (store.approvalHistory ?? []).filter { store.mayReapprove($0) }.map(\.id)) { _, ids in
+            sent = sent.filter { ids.contains($0) }
+        }
         .disabled(store.connection != .connected)
     }
 }
@@ -217,9 +242,14 @@ struct ApprovalCardPhone: View {
     }
 }
 
-/// A resolved approval: how it ended and when, what it was, who asked, and what the action did.
+/// A resolved approval: how it ended and when, what it was, who asked, and what the action did;
+/// "Approve anyway" while the Mac still keeps a refused or expired one's call (asks once more).
 struct ResolvedApprovalPhoneRow: View {
     let resolved: ResolvedApproval
+    var mayReapprove = false
+    var sending = false
+    var reapprove: () -> Void = {}
+    @State private var confirm = false
 
     var body: some View {
         let approval = resolved.approval
@@ -240,16 +270,52 @@ struct ResolvedApprovalPhoneRow: View {
             if let result = resolved.result, !result.isEmpty {
                 Text(result).font(.caption).foregroundStyle(.secondary).lineLimit(3)
             }
+            if mayReapprove || sending {
+                HStack {
+                    if let until = resolved.reapprovableUntil {
+                        Text("Changeable until \(until.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    if sending {
+                        ProgressView()
+                    } else {
+                        Button(approval.isPurchase ? String(localized: "Buy anyway") : String(localized: "Approve anyway")) { confirm = true }
+                            .buttonStyle(.bordered)
+                            .tint(approval.isPurchase ? .red : .accentColor)
+                            .confirmationDialog(approval.isPurchase ? String(localized: "Buy anyway?") : String(localized: "Approve anyway?"),
+                                                isPresented: $confirm, titleVisibility: .visible) {
+                                Button(approval.isPurchase ? String(localized: "Buy") : String(localized: "Approve and Run"),
+                                       role: approval.isPurchase ? .destructive : nil) { reapprove() }
+                            } message: {
+                                Text(confirmMessage)
+                            }
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(.vertical, 2)
     }
 
+    private var confirmMessage: String {
+        let approval = resolved.approval
+        let run = String(localized: "ClaudeDeck runs “\(approval.title)” now, as the session asked, and tells the session the result.")
+        guard approval.isPurchase else { return run }
+        let summary = approval.summary.isEmpty ? "" : approval.summary + "\n\n"
+        return summary + run + "\n\n"
+            + String(localized: "This is a real purchase: it's charged to the Namecheap balance and can't be undone.")
+    }
+
     private var outcomeText: String {
+        let phone = resolved.from == "phone"
         switch resolved.outcome {
-        case .approved: resolved.from == "phone" ? String(localized: "Approved on the phone") : String(localized: "Approved")
-        case .refused: resolved.from == "phone" ? String(localized: "Refused on the phone") : String(localized: "Refused")
-        case .expired: String(localized: "No answer, refused")
-        case .cancelled: String(localized: "The session stopped waiting")
+        case .approved where resolved.changedFrom != nil:
+            return phone ? String(localized: "Approved anyway on the phone") : String(localized: "Approved anyway")
+        case .approved: return phone ? String(localized: "Approved on the phone") : String(localized: "Approved")
+        case .refused: return phone ? String(localized: "Refused on the phone") : String(localized: "Refused")
+        case .expired: return String(localized: "No answer, refused")
+        case .cancelled: return String(localized: "The session stopped waiting")
         }
     }
 

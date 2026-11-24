@@ -142,6 +142,34 @@ extension AppModel {
         return approvals.resolve(id, approve ? .approved : .refused, from: from) != nil
     }
 
+    /// "Approve anyway" ("Yine de onayla") on the Mac (`mac`) or a phone (`phone`): a refused or
+    /// expired approval still inside `Approvals.changeWindow` becomes approved and ClaudeDeck runs
+    /// the call it kept, the same way as after a relaunch. The result becomes the approval's
+    /// result, goes to the Activity Log, and the asking session gets a one-line message (resumed
+    /// for it when it was stopped by a session, as decision answers are). False when it can't be
+    /// changed any more (outside the window, no call kept, approved already, or not from here).
+    @discardableResult
+    func reapproveApproval(_ id: String, from: String) -> Bool {
+        guard let old = approvals.book.resolved(id) else { return false }
+        let device = from == "phone" ? "phone" : "Mac"
+        guard from == "mac" || (from == "phone" && old.approval.phoneMayApprove),
+              approvals.book.mayReapprove(id, now: approvals.now()) else {
+            logAgent(old.approval.session, inbound: true, "approval \(id): approving anyway from the \(device) isn't possible any more, ignored", ok: false)
+            return false
+        }
+        // The old answer may have reached the session already: the new one must go out too.
+        approvalCalls.delivered.remove(id)
+        approvalCalls.live.insert(id)
+        guard let (changed, replay) = approvals.reapprove(id, from: from) else {
+            approvalCalls.live.remove(id)
+            return false
+        }
+        logAgent(changed.approval.session, inbound: true, "approval \(id) \(changed.approval.command) \(changed.approval.target): "
+                 + "\(old.outcome.rawValue), changed to approved on the \(device); ClaudeDeck runs the call")
+        runApprovedReplay(changed, replay)
+        return true
+    }
+
     func showApprovals() {
         tabs.open(.approvals)
         showMainWindow()
@@ -161,8 +189,22 @@ extension AppModel {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard let self, !self.approvalCalls.delivered.contains(id), let resolved = self.approvals.book.resolved(id) else { return }
-            guard let sessionID = resolved.approval.sessionID, self.deck.session(sessionID)?.kind == .claude else { return }
-            self.enqueue(sessionID, text: Approvals.message(for: resolved))
+            guard let sessionID = resolved.approval.sessionID else { return }
+            let text = Approvals.message(for: resolved)
+            // A changed answer comes later, maybe after the session stopped: it may resume for it.
+            if resolved.changedFrom != nil {
+                let name = self.deck.session(sessionID)?.name ?? self.deck.tombstone(sessionID)?.name ?? resolved.approval.session
+                switch self.autoResume(sessionID, text: text, caller: nil, callerName: name, what: "approval \(id)") {
+                case .resumed, .queued, .notResumed("too_many_queued"): return
+                case .notResumed: break
+                }
+                guard self.deck.session(sessionID)?.kind == .claude else {
+                    self.logAgent(resolved.approval.session, inbound: false, "approval \(id): the session is gone, the result is only kept", ok: false)
+                    return
+                }
+            }
+            guard self.deck.session(sessionID)?.kind == .claude else { return }
+            self.enqueue(sessionID, text: text)
             self.logAgent(resolved.approval.session, inbound: false, "approval \(id): the result was queued for the session")
         }
     }
@@ -256,6 +298,20 @@ extension AppModel {
         }
     }
 
+    /// Runs the kept call of an approval that's approved now with nothing waiting on it (after a
+    /// relaunch, or "Approve anyway"): the owner's yes covers its first matching gate.
+    private func runApprovedReplay(_ resolved: ResolvedApproval, _ replay: ApprovalReplay) {
+        let id = resolved.id
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let job = ApprovalCallJob()
+            job.preApproved = resolved.approval
+            let (response, line) = await self.runServerCall(replay, job: job)
+            self.approvalCallFinished(id, response, line: line)
+            for other in job.approvalIDs { self.approvalCallFinished(other, response, line: line) }
+        }
+    }
+
     /// An approval ended that no running call waits on (asked before a relaunch): approved, the
     /// app replays the call (the panel asks again and gets the confirm); otherwise the asking
     /// session is told it was refused or expired.
@@ -266,14 +322,7 @@ extension AppModel {
         switch resolved.outcome {
         case .approved:
             approvalCalls.live.insert(id)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let job = ApprovalCallJob()
-                job.preApproved = resolved.approval
-                let (response, line) = await self.runServerCall(replay, job: job)
-                self.approvalCallFinished(id, response, line: line)
-                for other in job.approvalIDs { self.approvalCallFinished(other, response, line: line) }
-            }
+            runApprovedReplay(resolved, replay)
         case .refused:
             approvalCallFinished(id, SessionCLI.failure(403, "owner_refused", exit: .refused), line: nil)
         case .expired:

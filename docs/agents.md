@@ -1484,10 +1484,35 @@ cancelled ones). The Mac card and the paired phone approve everything (the phone
   again; the owner's yes covers the first gate with the same command and target (for a purchase,
   also the same price summary), anything else asks again. Approvals a phone asked for itself
   (container start/stop) are withdrawn at relaunch.
+- **Changing a refusal ("Approve anyway", "Yine de onayla"):** for **24 hours** after a refusal or
+  an expiry, the Mac's Approvals tab (Recent) and the phone's approval history offer **Approve
+  anyway** (a purchase: **Buy anyway**, with the price summary and the real-purchase warning in the
+  confirmation; every change asks once). ClaudeDeck keeps the call behind a refused or expired
+  approval in `approvals.json` for that window and drops it afterwards. The window is fixed and
+  doesn't follow the approval wait time: that setting is how long a session waits for an answer,
+  the window is how long the owner has to notice a wrong tap. Approved anyway, ClaudeDeck runs
+  the kept call itself, the same way as an approval answered after a relaunch: the owner's yes
+  covers the first gate with the same command and target (a purchase also needs the same price
+  summary; if the panel's price changed, a new card asks again), anything else asks again. The
+  approval then reads `approved` with `changed_from` (`approval status`: `a_… approved (was
+  refused): TITLE → RESULT`), `approval wait` returns the new run's answer, the change and the
+  result go to the Activity Log, and the asking session gets a queued message:
+  ``[ClaudeDeck approval a_…] The owner changed the answer to approved; ClaudeDeck ran `server
+  container recreate web`: RESULT``. A session that was stopped by another session resumes for it
+  (as with `send` and decision answers, when automatic resume is on); one the owner stopped keeps
+  it in its queue for its next start; with the session gone it's only logged. Not offered for:
+  cancelled approvals, approvals with no `claudedeck server` call behind them (Remote Control
+  off, a phone's own container actions), approvals refused by ClaudeDeck 0.6.28 or earlier (their call
+  was deleted when they were refused), or after the 24 hours. The phone needs a Mac with
+  `Feature.reapproveApproval` (`RemoteMessage.reapproveApproval(id:)`; history items carry
+  `reapprovableUntil`, `changedFrom`, `changedAt`).
+- **No "un-approve".** An approval is acted on the moment it's approved: ClaudeDeck sends the
+  gated request right away, so there's no window in which a yes could be taken back before it
+  runs. Undo it with the opposite command (start what was stopped, and so on) instead.
 
 | Command | Does |
 |---|---|
-| `claudedeck approval status ID [--json]` | `pending approval a_… (expires in 23 h 59 min): TITLE`, or `a_… approved: TITLE → RESULT` / `refused` / `expired` / `cancelled`. JSON: `{"id","status","title","command","target","session","created_at","expires_at","resolved_at","result"}` (`expires_at` absent: no limit). |
+| `claudedeck approval status ID [--json]` | `pending approval a_… (expires in 23 h 59 min): TITLE`, or `a_… approved: TITLE → RESULT` / `refused` / `expired` / `cancelled` (changed by the owner: `a_… approved (was refused): …`). JSON: `{"id","status","title","command","target","session","created_at","expires_at","resolved_at","result","changed_from"}` (`expires_at` absent: no limit; `changed_from` only on a changed answer). |
 | `claudedeck approval wait ID [--timeout S] [--json]` | waits for the command behind it and prints its answer with its exit code; `--timeout` ran out first: exit 75. |
 | `claudedeck approval cancel ID [--json]` | withdraws a pending one this session asked for (`403 not_yours` otherwise, `409 not_pending` once answered); no message follows. |
 

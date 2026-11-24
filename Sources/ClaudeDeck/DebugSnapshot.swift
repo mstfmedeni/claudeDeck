@@ -118,6 +118,8 @@ enum DebugSnapshot {
             case "refuse": model.answerApproval(parts[0], approve: false, from: "mac")
             case "phone-approve": model.answerApproval(parts[0], approve: true, from: "phone")
             case "phone-refuse": model.answerApproval(parts[0], approve: false, from: "phone")
+            case "reapprove": model.reapproveApproval(parts[0], from: "mac")
+            case "phone-reapprove": model.reapproveApproval(parts[0], from: "phone")
             default: break
             }
         }

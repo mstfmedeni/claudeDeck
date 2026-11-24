@@ -5,7 +5,7 @@ import UIKit
 /// Simulator testing: with `CLAUDEDECK_DEBUG=1` in the launch environment, files dropped into
 /// `tmp/debug/` drive the app and `tmp/debug/remote.txt` reports its state.
 ///   agents.txt (load the Agents screen's data) · <agent-id>.agentapprove / .agentreject · <session-id>.askagent (an agent id) ·
-///   fix.txt (a ServerPlan deploy id: Fix with Claude) · clear.txt ("all" or deploy ids: clear failed deploys) · <decision-id>.decide (the answer) · show.txt also takes dashboard / servers / simulators / decisions / agenda / connectionlog ·
+///   fix.txt (a ServerPlan deploy id: Fix with Claude) · clear.txt ("all" or deploy ids: clear failed deploys) · <decision-id>.decide (the answer) · <approval-id>.reapprove (Approve anyway) · show.txt also takes dashboard / servers / simulators / decisions / agenda / connectionlog ·
 ///   track.txt (seconds: the main run loop stays in tracking mode, as while a finger is on the screen) ·
 ///   homefiles.txt (a folder in the Mac's home) · addresses.txt (one per line; empty: automatic) · pair.txt (a claudedeck:// link) · screen.txt (empty: the Mac's screen; or a vnc:// URL) · <id>.open · <id>.window (new window) · <id>.mode (Shift+Tab) · <project-id>.pin (toggle) / .rename (new name) · <id>.attach (an off-screen terminal, for .type and screen-<id>.txt) · <id>.answer (JSON [QuestionAnswer]) · <id>.files (text, sent with a photo and a file) · <id>.approve / <id>.deny · <id>.type (text, "\r" = Enter)
 @MainActor
@@ -111,6 +111,11 @@ final class DebugHooks {
                 let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
                 try? FileManager.default.removeItem(at: url)
                 store.answerDecision(String(file.dropLast(7)), answer: text)
+            } else if file.hasPrefix("a_"), file.hasSuffix(".reapprove") {
+                // "Approve anyway" on a refused or expired approval, past its confirmation.
+                try? FileManager.default.removeItem(at: url)
+                let id = String(file.dropLast(10))
+                if let resolved = store.approvalHistory?.first(where: { $0.id == id }) { store.reapproveApproval(resolved) }
             } else if file == "show.txt" {
                 // settings · files · newsession · addresses · licenses · homefiles
                 let screen = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
