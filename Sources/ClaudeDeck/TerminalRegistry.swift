@@ -886,13 +886,18 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
 
     /// Types `text`; a trailing `\r` is sent separately so it lands as Enter. Text containing
     /// newlines goes in as a bracketed paste, since a raw newline in the pty would submit early.
+    /// Longer than this, typed text goes in as a bracketed paste.
+    static let pasteThreshold = 200
+
     func type(_ text: String, into id: UUID) {
         guard let view = views[id], running.contains(id) else { return }
         // Return on its own is a key press, not a line to paste.
         guard text != "\r" else { view.send(txt: text); return }
         let submit = text.hasSuffix("\r") && text.count > 1
         var body = submit ? String(text.dropLast()) : text
-        let multiline = body.contains(where: \.isNewline)
+        // Long text as a bracketed paste too, not only multi-line: typed as a burst of keys, Claude
+        // Code's paste detection has been seen to keep only the end of a ~1,000-character message.
+        let multiline = body.contains(where: \.isNewline) || body.count > Self.pasteThreshold
         if multiline { body = "\u{1B}[200~" + body + "\u{1B}[201~" }
         guard submit else { view.send(txt: body); return }
         view.send(txt: body)
@@ -900,7 +905,7 @@ final class TerminalRegistry: NSObject, LocalProcessTerminalViewDelegate {
         Task { @MainActor [weak self] in
             // Longer text takes Claude Code longer to take in; a Return inside that burst counts
             // as part of a paste and the message just sits in the prompt.
-            try? await Task.sleep(for: .milliseconds(multiline ? 500 : 150 + min(450, body.count / 3)))
+            try? await Task.sleep(for: .milliseconds(multiline ? 500 + min(1_500, body.count / 10) : 150 + min(450, body.count / 3)))
             guard let self, self.running.contains(id) else { return }
             self.views[id]?.send(txt: "\r")
             // Still in the prompt box (Claude was busy drawing)? Return again, up to twice.
