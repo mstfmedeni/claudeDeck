@@ -15,6 +15,18 @@ private let usageLog = Logger(subsystem: "co.codemagnet.ClaudeDeck", category: "
 @Observable
 final class UsageMonitor {
     private(set) var state: UsageState = .idle
+    /// Why there's no usage to show, when there isn't (Settings › Accounts says it).
+    private(set) var unavailableReason: UnavailableReason?
+
+    enum UnavailableReason: Equatable {
+        /// The login couldn't be read: no Keychain item, or macOS is asking whether ClaudeDeck may
+        /// read it (answered with `allowKeychainAccess`).
+        case noToken
+        /// The login expired or was revoked (Claude Code refreshes it the next time it runs there).
+        case expired
+        /// The account has no plan usage to report.
+        case noPlanUsage
+    }
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var failures = 0
     @ObservationIgnored private var lastFetch: Date = .distantPast
@@ -56,6 +68,16 @@ final class UsageMonitor {
         inFlight = nil
     }
 
+    /// Settings › Accounts › "Allow access": reads the login once with time for macOS's
+    /// "ClaudeDeck wants to use the Keychain item" question (2 minutes) so the owner can choose
+    /// Always Allow; the background checks then read it without asking.
+    func allowKeychainAccess() async {
+        lastFetch = Date()
+        let configDir = configDir
+        let result = await Task.detached(priority: .userInitiated) { await Self.load(configDir: configDir, keychainWait: 120) }.value
+        apply(result)
+    }
+
     private func fetch() async {
         lastFetch = Date()
         if AppModel.isDemo {
@@ -64,12 +86,19 @@ final class UsageMonitor {
         }
         let configDir = configDir
         let result = await Task.detached(priority: .utility) { await Self.load(configDir: configDir) }.value
+        apply(result)
+    }
+
+    private func apply(_ result: LoadResult) {
         switch result {
         case .usage(let usage):
+            unavailableReason = nil
             failures = 0
             state = usage.isEmpty ? .unavailable : .ok(usage)
-        case .unavailable:
+        case .unavailable(let reason):
             failures = 0
+            unavailableReason = reason
+            usageLog.info("Usage unavailable for \(self.configDir ?? "the default account", privacy: .public): \(String(describing: reason), privacy: .public)")
             state = .unavailable
         case .failed(let reason):
             failures += 1
@@ -80,13 +109,13 @@ final class UsageMonitor {
 
     private enum LoadResult: Sendable {
         case usage(ClaudeUsage)
-        case unavailable
+        case unavailable(UnavailableReason)
         case failed(String)
     }
 
     /// Off the main actor: read the token, call the endpoint. The token stays in this function.
-    nonisolated private static func load(configDir: String?) async -> LoadResult {
-        guard let token = readAccessToken(configDir: configDir) else { return .unavailable }
+    nonisolated private static func load(configDir: String?, keychainWait: Double = 5) async -> LoadResult {
+        guard let token = readAccessToken(configDir: configDir, wait: keychainWait) else { return .unavailable(.noToken) }
         var request = URLRequest(url: ClaudeUsageAPI.url, timeoutInterval: 10)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(ClaudeUsageAPI.betaHeader, forHTTPHeaderField: "anthropic-beta")
@@ -98,7 +127,8 @@ final class UsageMonitor {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             // 401: Claude Code's token expired or was revoked; 403: no plan usage for this account.
-            if status == 401 || status == 403 { return .unavailable }
+            if status == 401 { return .unavailable(.expired) }
+            if status == 403 { return .unavailable(.noPlanUsage) }
             guard (200..<300).contains(status) else { return .failed("HTTP \(status)") }
             guard let usage = ClaudeUsageAPI.parse(data) else { return .failed("unreadable response") }
             return .usage(usage)
@@ -111,14 +141,14 @@ final class UsageMonitor {
     /// another config folder "Claude Code-credentials-<hash>", see ClaudeAccounts.keychainService)
     /// on macOS, elsewhere in `<config folder>/.credentials.json`. Read through `security`, the
     /// same tool Claude Code uses.
-    nonisolated private static func readAccessToken(configDir: String?) -> String? {
+    nonisolated private static func readAccessToken(configDir: String?, wait: Double = 5) -> String? {
         let user = ProcessInfo.processInfo.environment["USER"] ?? NSUserName()
         let service = ClaudeAccounts.keychainService(configDir: configDir)
         for account in [nil, user] {
             var args = ["find-generic-password", "-s", service]
             if let account { args += ["-a", account] }
             args.append("-w")
-            if let blob = runSecurity(args), let token = ClaudeUsageAPI.accessToken(fromCredentials: blob) {
+            if let blob = runSecurity(args, wait: wait), let token = ClaudeUsageAPI.accessToken(fromCredentials: blob) {
                 return token
             }
         }
@@ -127,7 +157,7 @@ final class UsageMonitor {
         return ClaudeUsageAPI.accessToken(fromCredentials: blob)
     }
 
-    nonisolated private static func runSecurity(_ args: [String]) -> Data? {
+    nonisolated private static func runSecurity(_ args: [String], wait: Double = 5) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = args
@@ -143,7 +173,7 @@ final class UsageMonitor {
             box.data = out.fileHandleForReading.readDataToEndOfFile()
             done.signal()
         }
-        guard done.wait(timeout: .now() + 5) == .success else {
+        guard done.wait(timeout: .now() + wait) == .success else {
             process.terminate()
             return nil
         }

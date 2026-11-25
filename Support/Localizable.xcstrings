@@ -25583,6 +25583,56 @@
           }
         }
       }
+    },
+    "Login not readable": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş okunamıyor"
+          }
+        }
+      }
+    },
+    "Allow Access": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzin Ver"
+          }
+        }
+      }
+    },
+    "macOS asks whether ClaudeDeck may read this account's Claude Code login in the Keychain: choose Always Allow. ClaudeDeck only reads it to show the usage.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS, ClaudeDeck'in bu hesabın Claude Code girişini Anahtar Zinciri'nden okumasına izin verip vermediğini sorar: Her Zaman İzin Ver'i seç. ClaudeDeck bunu yalnızca kullanımı göstermek için okur."
+          }
+        }
+      }
+    },
+    "Login expired: run claude in this account once": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş süresi dolmuş: bu hesapta claude'u bir kez çalıştır"
+          }
+        }
+      }
+    },
+    "No plan usage for this account": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hesabın plan kullanımı yok"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

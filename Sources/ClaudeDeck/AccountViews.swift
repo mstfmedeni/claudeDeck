@@ -26,7 +26,41 @@ private struct AccountUsageText: View {
                          usage.sevenDay.map { String(localized: "week \(UsageFormat.percent($0))") }].compactMap { $0 }
             Text(verbatim: parts.joined(separator: " · "))
                 .foregroundStyle(standing.isNearLimit(threshold: model.deck.settings.accountNearLimitPercent) ? .orange : .secondary)
+        } else if let monitor = model.usageMonitor(forAccount: id) {
+            UsageUnavailableText(monitor: monitor)
         } else {
+            Text("Usage unknown").foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Why an account's usage isn't shown, and for an unreadable login an "Allow Access" button that
+/// gives macOS's Keychain question time to be answered (Always Allow).
+private struct UsageUnavailableText: View {
+    let monitor: UsageMonitor
+    @State private var asking = false
+
+    var body: some View {
+        switch monitor.unavailableReason {
+        case .noToken:
+            HStack(spacing: 6) {
+                Text("Login not readable").foregroundStyle(.orange)
+                if asking {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Button("Allow Access") {
+                        asking = true
+                        Task { await monitor.allowKeychainAccess(); asking = false }
+                    }
+                    .controlSize(.mini)
+                    .help("macOS asks whether ClaudeDeck may read this account's Claude Code login in the Keychain: choose Always Allow. ClaudeDeck only reads it to show the usage.")
+                }
+            }
+        case .expired:
+            Text("Login expired: run claude in this account once").foregroundStyle(.orange)
+        case .noPlanUsage:
+            Text("No plan usage for this account").foregroundStyle(.secondary)
+        case nil:
             Text("Usage unknown").foregroundStyle(.secondary)
         }
     }
