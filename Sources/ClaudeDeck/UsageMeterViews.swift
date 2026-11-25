@@ -56,11 +56,39 @@ struct UsageMeterFooter: View {
     @Environment(AppModel.self) private var model
     @State private var showDetails = false
 
+    /// The account new sessions start on now (with other accounts added): its meters, not always
+    /// the default account's.
+    private var shownAccount: String { model.hasOtherAccounts ? model.effectiveNewSessionAccount() : ClaudeAccounts.defaultID }
+    private var monitor: UsageMonitor { model.usageMonitor(forAccount: shownAccount) ?? model.usage }
+
     var body: some View {
-        if let usage = model.usage.state.usage, !usage.isEmpty {
+        if model.hasOtherAccounts, monitor.state.usage?.isEmpty ?? true {
+            // Another account with no usage to show (yet): say whose it is instead of the default's.
+            Button { showDetails.toggle() } label: {
+                HStack {
+                    Text(model.accountLabel(shownAccount)).lineLimit(1)
+                    Spacer()
+                    Text("usage unavailable").foregroundStyle(.secondary)
+                }
+                .font(.caption2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .background(.bar)
+            .popover(isPresented: $showDetails, arrowEdge: .trailing) {
+                UsageDetailsView().environment(model)
+            }
+        } else if let usage = monitor.state.usage, !usage.isEmpty {
             Button { showDetails.toggle() } label: {
                 VisibleTimeline(every: 30) { now in
                     VStack(spacing: 3) {
+                        if model.hasOtherAccounts {
+                            Text(model.accountLabel(shownAccount)).font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if let window = usage.fiveHour { UsageMeterRow(label: "5h", window: window, now: now) }
                         if let window = usage.sevenDay { UsageMeterRow(label: "Week", window: window, now: now) }
                     }
@@ -83,7 +111,7 @@ struct UsageMeterFooter: View {
     }
 
     private var isStale: Bool {
-        if case .failed = model.usage.state { true } else { false }
+        if case .failed = monitor.state { true } else { false }
     }
 }
 

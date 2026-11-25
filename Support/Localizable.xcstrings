@@ -25573,6 +25573,16 @@
           }
         }
       }
+    },
+    "usage unavailable": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kullanım bilgisi yok"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
