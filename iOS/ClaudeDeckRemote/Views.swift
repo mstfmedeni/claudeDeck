@@ -1061,6 +1061,9 @@ struct UsageRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let account = usage.account {
+                Text(account).listFont(.caption2).foregroundStyle(.secondary)
+            }
             if let value = usage.fiveHour { meter(String(localized: "5 hours"), value, usage.fiveHourResetsAt) }
             if let value = usage.week { meter(String(localized: "Week"), value, usage.weekResetsAt) }
         }

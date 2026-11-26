@@ -106,6 +106,10 @@ struct DashboardRow: View {
                 }
                 if dashboard.fiveHour != nil || dashboard.week != nil {
                     VStack(spacing: 5) {
+                        if let account = dashboard.usageAccount {
+                            Text(account).font(.caption2).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if let window = dashboard.fiveHour { UsageLine(title: String(localized: "5 hours"), window: window) }
                         if let window = dashboard.week { UsageLine(title: String(localized: "Week"), window: window) }
                     }

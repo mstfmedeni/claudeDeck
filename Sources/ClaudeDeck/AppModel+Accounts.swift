@@ -94,6 +94,11 @@ extension AppModel {
         return pin == ClaudeAccounts.defaultID || deck.settings.account(pin) != nil ? pin : nil
     }
 
+    /// The account whose usage the sidebar meter and the phone show: where new sessions start
+    /// now (the default account while there are no others).
+    var shownUsageAccount: String { hasOtherAccounts ? effectiveNewSessionAccount() : ClaudeAccounts.defaultID }
+    var shownUsageMonitor: UsageMonitor { usageMonitor(forAccount: shownUsageAccount) ?? usage }
+
     func usageMonitor(forAccount id: String) -> UsageMonitor? {
         id == ClaudeAccounts.defaultID ? usage : accountUsage[id]
     }

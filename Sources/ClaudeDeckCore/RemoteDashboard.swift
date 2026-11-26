@@ -23,13 +23,17 @@ public struct RemoteDashboard: Codable, Sendable, Equatable {
     /// Each project's share of the usage windows (biggest first, at most `maxProjects`); nil from
     /// Macs that don't send it.
     public var projects: [ProjectShare]?
+    /// Whose usage `fiveHour`/`week` are, when the Mac has more than one Claude account.
+    public var usageAccount: String?
 
     public static let maxWaiting = 5
     public static let maxProjects = 8
 
     public init(working: Int, waiting: Int, yourTurn: Int, linesAdded: Int?, linesRemoved: Int?,
-                waitingList: [Waiting], moreWaiting: Int = 0, fiveHour: Window?, week: Window?, projects: [ProjectShare]? = nil) {
+                waitingList: [Waiting], moreWaiting: Int = 0, fiveHour: Window?, week: Window?, projects: [ProjectShare]? = nil,
+                usageAccount: String? = nil) {
         self.projects = projects
+        self.usageAccount = usageAccount
         self.working = working
         self.waiting = waiting
         self.yourTurn = yourTurn

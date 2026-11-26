@@ -58,8 +58,8 @@ struct UsageMeterFooter: View {
 
     /// The account new sessions start on now (with other accounts added): its meters, not always
     /// the default account's.
-    private var shownAccount: String { model.hasOtherAccounts ? model.effectiveNewSessionAccount() : ClaudeAccounts.defaultID }
-    private var monitor: UsageMonitor { model.usageMonitor(forAccount: shownAccount) ?? model.usage }
+    private var shownAccount: String { model.shownUsageAccount }
+    private var monitor: UsageMonitor { model.shownUsageMonitor }
 
     var body: some View {
         if model.hasOtherAccounts, monitor.state.usage?.isEmpty ?? true {

@@ -626,11 +626,14 @@ public struct RemoteUsage: Codable, Sendable, Equatable {
     public var fiveHourResetsAt: Date?
     public var week: Double?
     public var weekResetsAt: Date?
-    public init(fiveHour: Double?, fiveHourResetsAt: Date?, week: Double?, weekResetsAt: Date?) {
+    /// Whose usage it is, when the Mac has more than one Claude account (nil: the only one).
+    public var account: String?
+    public init(fiveHour: Double?, fiveHourResetsAt: Date?, week: Double?, weekResetsAt: Date?, account: String? = nil) {
         self.fiveHour = fiveHour
         self.fiveHourResetsAt = fiveHourResetsAt
         self.week = week
         self.weekResetsAt = weekResetsAt
+        self.account = account
     }
 }
 

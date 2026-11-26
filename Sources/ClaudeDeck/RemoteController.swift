@@ -783,9 +783,11 @@ final class RemoteController {
         // Pinned first, like the sidebar.
         snapshot.projects = (model.deck.projects.filter(\.pinned) + model.deck.projects.filter { !$0.pinned })
             .map { RemoteProject(id: $0.id, name: $0.name, pinned: $0.pinned, path: $0.path, status: $0.status) }
-        if case .ok(let usage) = model.usage.state {
+        // The account new sessions start on (not always the default one).
+        if case .ok(let usage) = model.shownUsageMonitor.state {
             snapshot.usage = RemoteUsage(fiveHour: usage.fiveHour?.usedPercent, fiveHourResetsAt: usage.fiveHour?.resetsAt,
-                                         week: usage.sevenDay?.usedPercent, weekResetsAt: usage.sevenDay?.resetsAt)
+                                         week: usage.sevenDay?.usedPercent, weekResetsAt: usage.sevenDay?.resetsAt,
+                                         account: model.hasOtherAccounts ? model.accountLabel(model.shownUsageAccount) : nil)
         }
         snapshot.addresses = hostAddresses.filter { $0 != "127.0.0.1" }
         snapshot.addressesOrdered = model.deck.settings.remoteAddresses.isEmpty ? nil : true

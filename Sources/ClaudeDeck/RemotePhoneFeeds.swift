@@ -131,8 +131,11 @@ final class RemotePhoneFeeds {
         let top = RemoteDashboard.top(waiting)
         var five: RemoteDashboard.Window?
         var week: RemoteDashboard.Window?
-        if let usage = model.usage.state.usage, !usage.isEmpty {
-            let samples = recorder.ledger.usage
+        // The account new sessions start on; the burn history is recorded for the default account
+        // only, so another account's windows come without it.
+        let onDefault = model.shownUsageAccount == ClaudeAccounts.defaultID
+        if let usage = model.shownUsageMonitor.state.usage, !usage.isEmpty {
+            let samples = onDefault ? recorder.ledger.usage : []
             five = usage.fiveHour.map { window in
                 RemoteDashboard.Window.make(window, length: 5 * 3600, samples: samples.compactMap { s in s.fiveHour.map { (s.at, $0) } }, now: now)
             }
@@ -147,7 +150,8 @@ final class RemotePhoneFeeds {
             yourTurn: claude.filter { model.isUnseenIdle($0.id) }.count,
             linesAdded: lines?.added, linesRemoved: lines?.removed,
             waitingList: top.list, moreWaiting: top.more, fiveHour: five, week: week,
-            projects: Self.projectShares(model)
+            projects: Self.projectShares(model),
+            usageAccount: model.hasOtherAccounts ? model.accountLabel(model.shownUsageAccount) : nil
         )
     }
 
