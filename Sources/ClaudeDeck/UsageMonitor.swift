@@ -17,6 +17,12 @@ final class UsageMonitor {
     private(set) var state: UsageState = .idle
     /// Why there's no usage to show, when there isn't (Settings › Accounts says it).
     private(set) var unavailableReason: UnavailableReason?
+    /// The last usage read, kept while it can't be read (an expired token on an account nothing
+    /// runs on): choosing an account goes by it (a window whose reset passed counts as empty)
+    /// instead of taking an unreadable account for a free one.
+    private(set) var lastKnownUsage: ClaudeUsage?
+    /// After every fetch (AppModel re-checks where sessions run).
+    @ObservationIgnored var onUpdate: (@MainActor () -> Void)?
 
     enum UnavailableReason: Equatable {
         /// The login couldn't be read: no Keychain item, or macOS is asking whether ClaudeDeck may
@@ -81,7 +87,7 @@ final class UsageMonitor {
     private func fetch() async {
         lastFetch = Date()
         if AppModel.isDemo {
-            state = .ok(Self.demoUsage(index: demoIndex))
+            apply(Self.demoResult(index: demoIndex))
             return
         }
         let configDir = configDir
@@ -95,6 +101,7 @@ final class UsageMonitor {
             unavailableReason = nil
             failures = 0
             state = usage.isEmpty ? .unavailable : .ok(usage)
+            if !usage.isEmpty { lastKnownUsage = usage }
         case .unavailable(let reason):
             failures = 0
             unavailableReason = reason
@@ -105,6 +112,7 @@ final class UsageMonitor {
             usageLog.info("Usage fetch failed: \(reason, privacy: .public)")
             state = .failed(last: state.usage)
         }
+        onUpdate?()
     }
 
     private enum LoadResult: Sendable {
@@ -187,6 +195,29 @@ final class UsageMonitor {
     /// 24 % an hour (the dashboard's burn-down has a slope to project). Other accounts start at
     /// 97 % (near the limit), 18 %, 40 %, … in the order they were added.
     private static let demoLaunch = Date()
+
+    /// `CLAUDEDECK_DEMO_USAGE` overrides the fixture per account (default first, then in the
+    /// order they were added), comma-separated: a number is a fixed 5-hour percent (100: used up
+    /// for two hours), `wN` a fixed weekly percent (`w100`: used up for a day), `unknown` usage
+    /// that can't be read; an empty or missing entry keeps the fixture. Read on every fetch.
+    private static func demoResult(index: Int) -> LoadResult {
+        let entries = (ProcessInfo.processInfo.environment["CLAUDEDECK_DEMO_USAGE"] ?? "")
+            .split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        let entry = index < entries.count ? entries[index] : ""
+        let now = Date()
+        if entry == "unknown" { return .unavailable(.expired) }
+        if entry.hasPrefix("w"), let percent = Double(entry.dropFirst()) {
+            return .usage(ClaudeUsage(fiveHour: nil, sevenDay: UsageWindow(usedPercent: percent, resetsAt: demoLaunch.addingTimeInterval(86400)),
+                                      fetchedAt: now))
+        }
+        if let percent = Double(entry) {
+            return .usage(ClaudeUsage(fiveHour: UsageWindow(usedPercent: percent, resetsAt: demoLaunch.addingTimeInterval(2 * 3600)),
+                                      sevenDay: UsageWindow(usedPercent: 20, resetsAt: demoLaunch.addingTimeInterval(4 * 86400)),
+                                      fetchedAt: now))
+        }
+        return .usage(demoUsage(index: index))
+    }
+
     private static func demoUsage(index: Int) -> ClaudeUsage {
         let now = Date()
         let minutes = now.timeIntervalSince(demoLaunch) / 60

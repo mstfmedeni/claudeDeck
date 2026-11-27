@@ -242,3 +242,55 @@ extension Transcript {
         return calendar.nextDate(after: after, matching: wanted, matchingPolicy: .nextTime)
     }
 }
+
+// MARK: - Background tasks in the transcript
+
+extension Transcript {
+    /// The `tool_use` ids of background tasks (a Bash or an Agent with `run_in_background`)
+    /// started in `chunk` (complete JSONL lines, oldest first) with no `<task-notification>`
+    /// (completed, failed or stopped) and no failed launch after them. Moving a session to
+    /// another account ends its process, and these with it.
+    public static func runningBackgroundTasks(in chunk: String) -> Set<String> {
+        var running = Set<String>()
+        for line in chunk.split(separator: "\n") {
+            let launches = line.contains(#""run_in_background":true"#)
+            let notifies = line.contains("<task-notification>") || line.contains(#"<task-notification>"#)
+            let results = !running.isEmpty && line.contains(#""is_error":true"#)
+            guard launches || notifies || results,
+                  let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  object["isSidechain"] as? Bool != true,
+                  object["type"] as? String == "user" || object["type"] as? String == "assistant",
+                  let message = object["message"] as? [String: Any] else { continue }
+            if let text = message["content"] as? String {
+                if text.contains("<task-notification>") { running.subtract(toolUseIDs(inNotification: text)) }
+                continue
+            }
+            for block in message["content"] as? [[String: Any]] ?? [] {
+                switch block["type"] as? String {
+                case "tool_use":
+                    if (block["input"] as? [String: Any])?["run_in_background"] as? Bool == true, let id = block["id"] as? String {
+                        running.insert(id)
+                    }
+                case "tool_result":
+                    if block["is_error"] as? Bool == true, let id = block["tool_use_id"] as? String { running.remove(id) }
+                case "text":
+                    if let text = block["text"] as? String, text.contains("<task-notification>") {
+                        running.subtract(toolUseIDs(inNotification: text))
+                    }
+                default: break
+                }
+            }
+        }
+        return running
+    }
+
+    static func toolUseIDs(inNotification text: String) -> [String] {
+        var ids: [String] = []
+        var rest = Substring(text)
+        while let open = rest.range(of: "<tool-use-id>"), let close = rest[open.upperBound...].range(of: "</tool-use-id>") {
+            ids.append(rest[open.upperBound..<close.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines))
+            rest = rest[close.upperBound...]
+        }
+        return ids
+    }
+}

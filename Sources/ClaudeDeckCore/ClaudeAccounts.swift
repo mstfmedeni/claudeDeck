@@ -317,10 +317,44 @@ public struct AccountStanding: Sendable, Equatable {
         [limitedUntil, usage?.exhaustedUntil].compactMap { $0 }.filter { $0 > now }.max()
     }
 
-    /// A window is at or above `threshold` percent (0: never near).
-    public func isNearLimit(threshold: Double) -> Bool {
-        guard threshold > 0, let usage else { return false }
-        return [usage.fiveHour, usage.sevenDay].compactMap { $0 }.contains { $0.usedPercent >= threshold }
+    /// A window is at or above `threshold` percent (0: never near). A window whose reset has
+    /// passed counts as empty (that reading is from before it rolled over).
+    public func isNearLimit(threshold: Double, now: Date = Date()) -> Bool {
+        guard threshold > 0, let used = usedPercent(now: now) else { return false }
+        return used >= threshold
+    }
+
+    /// The fuller window's percent (nil: usage unknown).
+    public func usedPercent(now: Date = Date()) -> Double? {
+        guard let usage else { return nil }
+        let windows = [usage.fiveHour, usage.sevenDay].compactMap { $0 }
+        guard !windows.isEmpty else { return nil }
+        return windows.map { window in
+            if let reset = window.resetsAt, reset <= now { return 0 }
+            return window.usedPercent
+        }.max()
+    }
+
+    /// Has room: logged in, not limited and the fuller window below `threshold - margin`
+    /// (unknown usage only when `allowUnknown`).
+    public func hasRoom(threshold: Double, margin: Double = 0, allowUnknown: Bool = true, now: Date = Date()) -> Bool {
+        guard loggedIn, !isLimited(now: now) else { return false }
+        guard let used = usedPercent(now: now) else { return allowUnknown }
+        return threshold <= 0 || used < max(0, threshold - margin)
+    }
+}
+
+/// ClaudeDeck's own record of an account being used up: until when, and when it learned that
+/// (a session's limit message, or the usage API showing a full window). Kept across relaunches
+/// (`account-limits.json`), so an account whose usage can't be read for a while (an expired
+/// token on an account nothing runs on) doesn't look free.
+public struct AccountLimitRecord: Codable, Sendable, Equatable {
+    public var until: Date
+    public var recordedAt: Date
+
+    public init(until: Date, recordedAt: Date = Date()) {
+        self.until = until
+        self.recordedAt = recordedAt
     }
 }
 
@@ -331,13 +365,24 @@ public enum AccountPolicy {
         case none(earliestReset: Date?)
     }
 
-    /// For moving a session that hit its limit: the first account in `order` that isn't
-    /// `excluding`, is logged in, isn't limited and isn't near its limit. Never a limited or
-    /// near-limit one.
+    /// Points below the near-limit threshold an account must be to take a session that isn't
+    /// stopped on a limit (an idle one, or a new one leaving a near-limit account): hysteresis,
+    /// so a reading that wobbles around the threshold doesn't send sessions back and forth.
+    public static let roomMargin: Double = 5
+    /// At most one automatic move per session in this time.
+    public static let moveCooldown: TimeInterval = 10 * 60
+    /// A limit record that a fresh usage reading taken this much later contradicts is dropped.
+    public static let recordTrustWindow: TimeInterval = 2 * 60
+
+    /// For moving a session: the first account in `order` that isn't `excluding`, is logged in,
+    /// isn't limited and is below `threshold - margin`. Accounts whose usage is known come
+    /// first; one whose usage is unknown only when `allowUnknown`.
     public static func pickForSwitch(order: [String], standings: [String: AccountStanding], excluding: Set<String>,
-                                     threshold: Double, now: Date = Date()) -> Pick {
-        let candidates = order.filter { !excluding.contains($0) }.compactMap { standings[$0] }.filter(\.loggedIn)
-        if let ok = candidates.first(where: { !$0.isLimited(now: now) && !$0.isNearLimit(threshold: threshold) }) {
+                                     threshold: Double, margin: Double = 0, allowUnknown: Bool = true,
+                                     now: Date = Date()) -> Pick {
+        let roomy = order.filter { !excluding.contains($0) }.compactMap { standings[$0] }
+            .filter { $0.hasRoom(threshold: threshold, margin: margin, allowUnknown: allowUnknown, now: now) }
+        if let ok = roomy.first(where: { $0.usage != nil }) ?? roomy.first {
             return .account(ok.id)
         }
         let all = order.compactMap { standings[$0] }.filter(\.loggedIn)
@@ -358,6 +403,133 @@ public enum AccountPolicy {
             return soonest.id
         }
         return order.first ?? ClaudeAccounts.defaultID
+    }
+
+    /// Where a start nobody chose an account for goes instead of `chosen` (nil: it stays). Away
+    /// from a limited account to any with room; away from one that is only near its limit just
+    /// to one clearly below it (`roomMargin`).
+    public static func redirectNew(from chosen: String, order: [String], standings: [String: AccountStanding],
+                                   threshold: Double, now: Date = Date()) -> String? {
+        guard let standing = standings[chosen] else { return nil }
+        let limited = standing.isLimited(now: now)
+        guard limited || standing.isNearLimit(threshold: threshold, now: now) else { return nil }
+        let pick = pickForSwitch(order: order, standings: standings, excluding: [chosen], threshold: threshold,
+                                 margin: limited ? 0 : roomMargin, now: now)
+        if case .account(let other) = pick { return other }
+        return nil
+    }
+
+    // MARK: Moving sessions on their own
+
+    /// Why ClaudeDeck moves a session by itself.
+    public enum MoveTrigger: String, Sendable, Equatable {
+        /// It stopped on its account's usage limit.
+        case limit
+        /// It is idle on an account that is used up: moved before it is next used.
+        case idle
+        /// A message (a queued prompt, `send`, a decision's answer) is about to go into it.
+        case delivery
+    }
+
+    /// What ClaudeDeck knows about a session when it considers moving it.
+    public struct SessionFacts: Sendable, Equatable {
+        public var account: String
+        /// Pinned itself, or its project is.
+        public var pinned: Bool
+        /// In the middle of a turn.
+        public var working: Bool
+        /// A permission prompt or a question is on screen.
+        public var blocked: Bool
+        /// Stopped on a usage limit and not going again yet.
+        public var atLimit: Bool
+        /// Background tasks (shells, agents) still run in it: a move would end them.
+        public var backgroundTasks: Bool
+        /// Its last automatic move.
+        public var lastMovedAt: Date?
+
+        public init(account: String, pinned: Bool = false, working: Bool = false, blocked: Bool = false,
+                    atLimit: Bool = false, backgroundTasks: Bool = false, lastMovedAt: Date? = nil) {
+            self.account = account
+            self.pinned = pinned
+            self.working = working
+            self.blocked = blocked
+            self.atLimit = atLimit
+            self.backgroundTasks = backgroundTasks
+            self.lastMovedAt = lastMovedAt
+        }
+    }
+
+    public enum StayReason: Equatable, Sendable {
+        case pinned
+        /// Its account isn't used up.
+        case accountHasRoom
+        case working
+        case blocked
+        case backgroundTasks
+        /// Moved recently; may move again then.
+        case cooldown(until: Date)
+        /// No other account has room; the earliest reset (nil: unknown).
+        case noRoom(earliestReset: Date?)
+    }
+
+    public enum MoveDecision: Equatable, Sendable {
+        case move(to: String)
+        case stay(StayReason)
+    }
+
+    /// Whether ClaudeDeck moves a session to another account by itself now. Only ever away from
+    /// an account that is used up (a session never leaves one that still has room, so accounts
+    /// recovering never send sessions back and forth); never a pinned session, one in the middle
+    /// of a turn or with a prompt on screen; at most once per `moveCooldown`. A session stopped
+    /// on the limit, or one a message is about to go into, takes any account below the threshold
+    /// (staying means a certain limit); an idle one moved ahead of time only one clearly below it
+    /// (`roomMargin`) whose usage is known, and not while background tasks run in it (when it is
+    /// next used it moves anyway).
+    public static func decideMove(_ facts: SessionFacts, trigger: MoveTrigger, order: [String],
+                                  standings: [String: AccountStanding], threshold: Double, now: Date = Date()) -> MoveDecision {
+        if facts.pinned { return .stay(.pinned) }
+        guard standings[facts.account]?.isLimited(now: now) ?? false else { return .stay(.accountHasRoom) }
+        if facts.blocked { return .stay(.blocked) }
+        if facts.working && !facts.atLimit { return .stay(.working) }
+        if trigger == .idle && facts.backgroundTasks && !facts.atLimit { return .stay(.backgroundTasks) }
+        if let last = facts.lastMovedAt, now.timeIntervalSince(last) < moveCooldown {
+            return .stay(.cooldown(until: last.addingTimeInterval(moveCooldown)))
+        }
+        // Only a move nobody needs right now waits for clearly more room.
+        let proactive = trigger == .idle && !facts.atLimit
+        let pick = pickForSwitch(order: order, standings: standings, excluding: [facts.account], threshold: threshold,
+                                 margin: proactive ? roomMargin : 0, allowUnknown: !proactive, now: now)
+        switch pick {
+        case .account(let id): return .move(to: id)
+        case .none(let earliest): return .stay(.noRoom(earliestReset: earliest))
+        }
+    }
+
+    // MARK: Keeping what is known
+
+    /// The record after a usage reading: a full window extends it to that window's reset; a
+    /// reading taken well after the record was made whose windows are all clearly below full
+    /// (under `clearlyFreePercent`) drops it (the limit was lifted early, or the record was a
+    /// guess); otherwise it stays (the API can lag a limit message, or show 99 % at the limit).
+    public static func limitRecord(_ record: AccountLimitRecord?, after usage: ClaudeUsage, now: Date = Date()) -> AccountLimitRecord? {
+        if let until = usage.exhaustedUntil, until > now {
+            if let record, record.until >= until { return record }
+            return AccountLimitRecord(until: until, recordedAt: now)
+        }
+        guard let record, record.until > now else { return nil }
+        let used = AccountStanding(id: "", usage: usage).usedPercent(now: now)
+        if let used, used < clearlyFreePercent, usage.fetchedAt.timeIntervalSince(record.recordedAt) > recordTrustWindow { return nil }
+        return record
+    }
+
+    /// See `limitRecord`.
+    public static let clearlyFreePercent: Double = 90
+
+    /// When a session stopped on the limit is due its continue: the reset in its limit message,
+    /// else its account's known reset, else half an hour after the hit (then it is tried, and a
+    /// new limit message gives the real time); plus `grace`.
+    public static func continueDue(hitAt: Date, messageReset: Date?, accountReset: Date?, grace: TimeInterval) -> Date {
+        (messageReset ?? accountReset ?? hitAt.addingTimeInterval(30 * 60)).addingTimeInterval(grace)
     }
 }
 

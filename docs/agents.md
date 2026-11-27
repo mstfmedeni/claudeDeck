@@ -874,11 +874,29 @@ owner's MCP servers, onboarding answers and each folder's trust are copied into 
   middle of something it gets:
   `[ClaudeDeck] Account switched after a usage limit. Continue exactly where you left off: re-read docs/AGENDA.md (and HANDOFF.md if present), then resume the current task.`
   An idle session is resumed silently. When every account is at its limit, the session waits:
-  it moves as soon as another account has room, or gets the usual continue message when its own
-  limit resets. Every move is in the activity log and a notification (and a push to the phone
-  when remote mode is on). **Notify me** instead offers the move in a notification with a
-  **Switch Account** button. Pinned sessions (their menu › Account › Keep on This Account) and
-  sessions in a pinned project never move.
+  it moves as soon as another account has room (checked every 30 seconds and after every usage
+  reading), or gets the usual continue message when its own limit resets (5-hour or weekly, on
+  any account). Either message is watched for: if it doesn't show up in the transcript within
+  90 seconds while the session sits idle, it is typed again (three tries, then a notification).
+  Every move and every continue is in the activity log with its reason; a move after a limit
+  also gets a notification (and a push to the phone when remote mode is on). **Notify me**
+  instead offers the move in a notification with a **Switch Account** button. Pinned sessions
+  (their menu › Account › Keep on This Account) and sessions in a pinned project never move.
+- **Idle sessions on a used-up account** move silently to one with room before they are next
+  used: on their own (every 30 seconds) when they sit at their prompt, and in any case the moment
+  a message is about to go in (a queued prompt, `claudedeck send`, a decision's answer, the
+  phone): the message waits in the session's queue and goes in once it is back. Never a session
+  in the middle of a turn, with a prompt or question on screen, or pinned. A session with
+  background tasks still running (a `run_in_background` shell or agent with no
+  `<task-notification>` yet) isn't moved on its own, since the move would end them; it moves
+  when it is next used (its next request would hit the limit anyway).
+- **No flapping:** a session only ever moves away from an account that is used up, never from
+  one that still has room; an idle session moved ahead of time, or a new one leaving a near-limit
+  account, only goes to an account 5 points below **Near the limit at** (a session stopped on the
+  limit, or one a message is about to go into, takes any account below it); and ClaudeDeck moves
+  a session by itself at most once every 10 minutes.
+  An account whose usage can't be read is never a target for an idle session; a stopped one
+  prefers accounts whose usage is known.
 - **With `close` and the stall watch:** a session at its limit (`limit_reached`) or being moved
   (`switching_account`) never counts as stalled (no nudge, no restart; the watch starts over once
   it works again). `close` on a session being moved is refused (`409 switching_account`; try
@@ -891,8 +909,14 @@ owner's MCP servers, onboarding answers and each folder's trust are copied into 
   was trusted on the other account. If Claude Code ever replaces a linked file in an account folder
   with its own copy (e.g. `settings.json`), that account stops following later changes to the
   shared one; ClaudeDeck logs it ("not linked (in the way)") and leaves the file alone. Which
-  account knows it is at its limit is kept in memory (and the usage API): after a relaunch an
-  account counts as limited again only once the API or a session says so.
+  account is used up, and until when, comes from sessions' limit messages and from the usage API
+  (a full 5-hour or weekly window); ClaudeDeck keeps it in `account-limits.json` (next to
+  `deck.json`) across relaunches, and keeps an account's last usage reading while it can't be
+  read (an expired token on an account nothing runs on), so such an account never looks free.
+  A later reading with every window clearly below full (under 90 %) drops the record. A limit a
+  session hit while ClaudeDeck wasn't attached (a relaunch with sessions kept running) is picked
+  up from the transcript when ClaudeDeck attaches. In demo mode, `CLAUDEDECK_DEMO_USAGE` pins
+  each account's usage (tools/demo.sh).
 
 ```sh
 claudedeck account list [--json]

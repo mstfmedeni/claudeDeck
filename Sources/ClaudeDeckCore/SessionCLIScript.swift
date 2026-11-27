@@ -2356,7 +2356,10 @@ extension SessionCLI {
     plan's usage limit, ClaudeDeck can end it and resume the same conversation (same session id,
     folder, options and pane) on another account, then type
     `[ClaudeDeck] Account switched after a usage limit. Continue exactly where you left off: ...`.
-    Nothing to do for you except one habit: **keep your durable state in files** -
+    An idle session on a used-up account may also be moved silently before its next message;
+    its background tasks (`run_in_background` shells, agents) end with the move, so a session
+    waiting on one should not rely on it across a limit. Nothing else to do for you except one
+    habit: **keep your durable state in files** -
     `docs/AGENDA.md` (what's done, what's next) and `HANDOFF.md` for anything mid-flight - so a
     resumed session (or another one) can pick up from them.
 

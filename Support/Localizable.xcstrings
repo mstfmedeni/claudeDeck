@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ didn't continue": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ devam etmedi"
+          }
+        }
+      }
+    },
+    "ClaudeDeck typed the continue message %lld times; it never arrived.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ClaudeDeck devam mesajını %lld kez yazdı; hiç ulaşmadı."
+          }
+        }
+      }
+    },
     "Bearer … (added if you paste just the token)": {
       "localizations": {
         "tr": {

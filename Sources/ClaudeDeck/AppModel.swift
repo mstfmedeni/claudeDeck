@@ -151,7 +151,7 @@ final class AppModel {
     /// Demo mode (tools/demo.sh): fixture data only — never touches ~/.claude/settings.json or iCloud.
     static let isDemo = ProcessInfo.processInfo.environment["CLAUDEDECK_DEMO"] != nil
     @ObservationIgnored private var watcher: DirectoryWatcher?
-    @ObservationIgnored private var tailers: [UUID: FileTailer] = [:]
+    @ObservationIgnored private(set) var tailers: [UUID: FileTailer] = [:]
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// Last notified state per session. Blocked states include the hook timestamp so a second
     /// permission request in the same turn notifies again.
@@ -179,7 +179,7 @@ final class AppModel {
     @ObservationIgnored var resumeTyping: Set<UUID> = []
     // MARK: Remote Control — end
     /// Hook files older than the terminal's launch belong to a previous process.
-    @ObservationIgnored private var launchedAt: [UUID: Date] = [:]
+    @ObservationIgnored private(set) var launchedAt: [UUID: Date] = [:]
     /// Claude sessions launched with the Pencil (Pen.app) MCP server (PaneHeader badge).
     private(set) var pencilSessions: Set<UUID> = []
     /// Set by the UI layer (notifications, dock, bounce).
@@ -214,13 +214,25 @@ final class AppModel {
     var usageLimitHits: [UUID: UsageLimitHit] = [:]
     /// The reset each session was last continued for (one continue per limit event).
     @ObservationIgnored var continuedLimitResets: [UUID: Date] = [:]
-    @ObservationIgnored var usageLimitTask: Task<Void, Never>?
     // MARK: Usage meter — end
     // MARK: Accounts (AppModel+Accounts) — begin
     /// Usage of each account besides the default one (`usage`), by account id.
     var accountUsage: [String: UsageMonitor] = [:]
-    /// Accounts a session hit the usage limit on: until when (ClaudeDeck's own knowledge).
-    var accountLimitedUntil: [String: Date] = [:]
+    /// Accounts known to be used up (a session's limit message, a full window in the usage API):
+    /// until when. Kept in `account-limits.json` across relaunches.
+    var accountLimits: [String: AccountLimitRecord] = [:]
+    /// Each session's last automatic move (`AccountPolicy.moveCooldown`).
+    @ObservationIgnored var lastAccountMove: [UUID: Date] = [:]
+    /// Sessions about to move before a message goes in (typed once they're back).
+    var pendingAccountMoves: Set<UUID> = []
+    /// Sessions that were moved while stopped on a limit and must get going again: the message
+    /// they were sent, until their transcript shows it arrived (or a new limit).
+    @ObservationIgnored var pendingKicks: [UUID: PendingKick] = [:]
+    @ObservationIgnored var accountWatchTask: Task<Void, Never>?
+    @ObservationIgnored var accountBalanceScheduled = false
+    @ObservationIgnored var balancingAccounts = false
+    /// `hasBackgroundTasks`, by transcript size.
+    @ObservationIgnored var backgroundTaskCheck: [UUID: (size: UInt64, running: Bool)] = [:]
     /// Sessions being moved to another account right now.
     var switchingAccounts: Set<UUID> = []
     /// Who is logged in on each account (from its `.claude.json`), refreshed with the usage.
@@ -284,8 +296,11 @@ final class AppModel {
         loadAgentNotes()
         loadDecisions()
         loadApprovals()
+        loadAccountLimits()
+        usage.onUpdate = { [weak self] in self?.accountUsageUpdated(ClaudeAccounts.defaultID) }
         usage.start()
         syncAccountMonitors() // nothing without other accounts
+        startAccountWatch() // limits, continues and moves between accounts (AppModel+UsageLimit)
         trackMenuBarCounts()
         menuBarCountsObserver = NotificationCenter.default.addObserver(forName: AppVisibility.didChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.publishMenuBarCounts() }
@@ -548,6 +563,7 @@ final class AppModel {
             MainActor.assumeIsolated {
                 self?.onTranscriptChanged?(id)
                 self?.stallTranscriptGrew(id, chunk: chunk)
+                self?.kickTranscriptGrew(id, chunk: chunk)
             }
             // Only look for limit events when the chunk may hold one or a hit is waiting to be cleared.
             let mayMatter = chunk.contains(#""rate_limit""#) || chunk.contains(#""isApiErrorMessage":true"#)
@@ -559,7 +575,12 @@ final class AppModel {
             Task { @MainActor in self?.receive(signal, for: id) }
         }
         // The transcript appears with the first message; retried on the next status update.
-        if tailer.start() { tailers[id] = tailer }
+        if tailer.start() {
+            tailers[id] = tailer
+            // The tailer starts at the end: a limit this process stopped on before ClaudeDeck
+            // (re)attached would go unseen (AppModel+UsageLimit).
+            rescanUsageLimit(id, path: path)
+        }
     }
 
     private func receive(_ signal: TranscriptSignal, for id: UUID) {
@@ -877,6 +898,7 @@ final class AppModel {
         pendingCompact.remove(id)
         pendingContinue.remove(id)
         usageLimitHits[id] = nil
+        pendingKicks[id] = nil
         // On quit, prepareForQuit already recorded which sessions were open and working.
         guard !isQuitting else { return }
         // A restart (the user's, or the stall watch's) keeps the session's simulators.

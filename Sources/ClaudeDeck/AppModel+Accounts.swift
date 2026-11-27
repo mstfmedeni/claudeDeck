@@ -21,6 +21,13 @@ enum AccountSwitchReason: String {
     case manual
     /// `claudedeck account switch` from the session itself.
     case cli
+    /// It sat idle on an account that is used up.
+    case idle
+    /// A message was about to go into it while its account is used up.
+    case delivery
+
+    /// ClaudeDeck's own decision (cooldown, hysteresis), not the owner's or the session's.
+    var isAutomatic: Bool { self == .limit || self == .idle || self == .delivery }
 }
 
 enum AccountSwitchRefusal: String, Error {
@@ -103,9 +110,12 @@ extension AppModel {
         id == ClaudeAccounts.defaultID ? usage : accountUsage[id]
     }
 
+    /// What is known about an account: its usage (the last reading while it can't be read now),
+    /// and ClaudeDeck's own record of it being used up.
     func accountStanding(_ id: String) -> AccountStanding {
-        AccountStanding(id: id, loggedIn: id == ClaudeAccounts.defaultID || accountLogins[id] != nil,
-                        usage: usageMonitor(forAccount: id)?.state.usage, limitedUntil: accountLimitedUntil[id])
+        let monitor = usageMonitor(forAccount: id)
+        return AccountStanding(id: id, loggedIn: id == ClaudeAccounts.defaultID || accountLogins[id] != nil,
+                               usage: monitor?.state.usage ?? monitor?.lastKnownUsage, limitedUntil: accountLimits[id]?.until)
     }
 
     var accountStandings: [String: AccountStanding] {
@@ -129,12 +139,8 @@ extension AppModel {
     func effectiveNewSessionAccount() -> String {
         let chosen = accountForNewSession()
         let settings = deck.settings
-        let standing = accountStanding(chosen)
-        guard standing.isLimited() || standing.isNearLimit(threshold: settings.accountNearLimitPercent),
-              case .account(let other) = AccountPolicy.pickForSwitch(order: settings.accountPriority, standings: accountStandings,
-                                                                   excluding: [chosen], threshold: settings.accountNearLimitPercent)
-        else { return chosen }
-        return other
+        return AccountPolicy.redirectNew(from: chosen, order: settings.accountPriority, standings: accountStandings,
+                                         threshold: settings.accountNearLimitPercent) ?? chosen
     }
 
     // MARK: Starting on an account
@@ -153,13 +159,13 @@ extension AppModel {
         // chose an account for (there also one that's near its limit). Never for a pinned one, or
         // one being moved on purpose.
         let unchosen = fresh && own == nil
-        let standing = accountStanding(target)
-        let avoid = standing.isLimited() && (settings.accountSwitchMode == .auto || unchosen)
-            || unchosen && standing.isNearLimit(threshold: settings.accountNearLimitPercent)
-        if avoid, !pinned, !switchingAccounts.contains(id),
-           case .account(let other) = AccountPolicy.pickForSwitch(order: settings.accountPriority, standings: accountStandings,
-                                                                excluding: [target], threshold: settings.accountNearLimitPercent) {
-            logAgent("ClaudeDeck", inbound: false, "\(session.name): starts on \(accountLabel(other)) (\(accountLabel(target)) is at its limit)")
+        let limited = accountStanding(target).isLimited()
+        let mayLeave = limited ? settings.accountSwitchMode == .auto || unchosen : unchosen
+        if mayLeave, !pinned, !switchingAccounts.contains(id),
+           let other = AccountPolicy.redirectNew(from: target, order: settings.accountPriority, standings: accountStandings,
+                                                 threshold: settings.accountNearLimitPercent) {
+            let why = limited ? "at its limit" : "near its limit"
+            logAgent("ClaudeDeck", inbound: false, "\(session.name): starts on \(accountLabel(other)) (\(accountLabel(target)) is \(why))")
             target = other
         }
         if session.account != target { mutate(userInitiated: false) { $0.updateSession(id) { $0.account = target } } }
@@ -199,6 +205,8 @@ extension AppModel {
         for (index, account) in accounts.enumerated() where accountUsage[account.id] == nil {
             let monitor = UsageMonitor(configDir: account.configDir, demoIndex: index + 1)
             accountUsage[account.id] = monitor
+            let id = account.id
+            monitor.onUpdate = { [weak self] in self?.accountUsageUpdated(id) }
             monitor.start()
         }
         for id in accountUsage.keys where !accounts.contains(where: { $0.id == id }) {
@@ -307,7 +315,7 @@ extension AppModel {
                 deck.sessions[index].transcriptPath = nil
             }
         }
-        accountLimitedUntil[id] = nil
+        if accountLimits.removeValue(forKey: id) != nil { saveAccountLimits() }
         syncAccountMonitors()
         try? FileManager.default.trashItem(at: URL(fileURLWithPath: account.configDir), resultingItemURL: nil)
         logAgent("ClaudeDeck", inbound: false, "account removed: \(account.label) (\(account.id))")
@@ -390,15 +398,31 @@ extension AppModel {
         case .resume(let sid): launch(id, resume: true, resumeID: sid)
         default: launch(id, resume: false)
         }
-        let line = "\(session.name): account \(accountLabel(from)) → \(accountLabel(target)) (\(reason.rawValue))"
+        if reason.isAutomatic { lastAccountMove[id] = Date() }
+        let line = "\(session.name): account \(accountLabel(from)) → \(accountLabel(target)) (\(moveReasonText(reason, from: from)))"
         accountLog.info("\(line, privacy: .public)")
         logAgent("ClaudeDeck", inbound: false, line)
-        notifyAccountSwitch(id, from: from, to: target, reason: reason)
+        // A silent move (an idle session) isn't worth a notification; the log has it.
+        if reason != .idle && reason != .delivery { notifyAccountSwitch(id, from: from, to: target, reason: reason) }
         if midTask {
             let message = atLimit ? AccountSwitchMessage.afterLimit : AccountSwitchMessage.manual
+            // Kept until the transcript shows it arrived; typed again otherwise (retryKicks).
+            pendingKicks[id] = PendingKick(message: message, sentAt: Date(), attempts: 1)
             Task { await sendContinueMessage(id, message: message) }
         }
         return .success(target)
+    }
+
+    /// Why a session moved, for the activity log.
+    private func moveReasonText(_ reason: AccountSwitchReason, from: String) -> String {
+        let until = accountStanding(from).resetsAt().map { " until \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""
+        switch reason {
+        case .limit: return "stopped on the usage limit; \(accountLabel(from)) is used up\(until)"
+        case .idle: return "idle on \(accountLabel(from)), which is used up\(until); moved before its next use"
+        case .delivery: return "a message for it while \(accountLabel(from)) is used up\(until)"
+        case .manual: return "by the owner"
+        case .cli: return "claudedeck account switch"
+        }
     }
 
     /// Trust and MCP servers for `folders` on `target`, from the default config and `from`'s.
@@ -434,13 +458,13 @@ extension AppModel {
     func accountLimitHit(_ id: UUID, resetsAt: Date?) {
         guard let session = deck.session(id), session.kind == .claude else { return }
         let account = accountID(of: session)
-        let until = resetsAt ?? usageMonitor(forAccount: account)?.state.usage?.exhaustedUntil ?? Date().addingTimeInterval(30 * 60)
-        accountLimitedUntil[account] = max(accountLimitedUntil[account] ?? .distantPast, until)
+        let until = resetsAt ?? accountStanding(account).usage?.exhaustedUntil ?? Date().addingTimeInterval(30 * 60)
+        recordAccountLimit(account, until: until)
         guard hasOtherAccounts, deck.settings.accountSwitchMode != .off, !isAccountPinned(session) else { return }
         Task { await moveAfterLimit(id) }
     }
 
-    /// The account a session that hit its limit would move to now (nil: none has headroom).
+    /// The account a session that hit its limit would move to now (nil: none has room).
     func accountSwitchCandidate(for id: UUID) -> String? {
         guard let session = deck.session(id) else { return nil }
         let pick = AccountPolicy.pickForSwitch(order: deck.settings.accountPriority, standings: accountStandings,
@@ -451,33 +475,51 @@ extension AppModel {
 
     /// `wait` and `list`: a session at its limit that is about to move keeps counting as running.
     func accountSwitchPending(_ id: UUID) -> Bool {
-        if switchingAccounts.contains(id) { return true }
+        if switchingAccounts.contains(id) || pendingAccountMoves.contains(id) { return true }
         guard hasOtherAccounts, deck.settings.accountSwitchMode == .auto, usageLimitHits[id] != nil,
               let session = deck.session(id), !isAccountPinned(session) else { return false }
         return accountSwitchCandidate(for: id) != nil
     }
 
+    /// The facts `AccountPolicy.decideMove` goes by (background tasks: false; see `hasBackgroundTasks`).
+    func accountMoveFacts(_ id: UUID) -> AccountPolicy.SessionFacts? {
+        guard let session = deck.session(id), session.kind == .claude else { return nil }
+        let display = status(of: id).display
+        return AccountPolicy.SessionFacts(account: accountID(of: session), pinned: isAccountPinned(session), working: display.isRunning,
+                                          blocked: display.isBlocked, atLimit: usageLimitHits[id] != nil, lastMovedAt: lastAccountMove[id])
+    }
+
+    func decideAccountMove(_ facts: AccountPolicy.SessionFacts, trigger: AccountPolicy.MoveTrigger) -> AccountPolicy.MoveDecision {
+        AccountPolicy.decideMove(facts, trigger: trigger, order: deck.settings.accountPriority, standings: accountStandings,
+                                 threshold: deck.settings.accountNearLimitPercent)
+    }
+
     /// Moves (auto) or offers to move (notify) a session that hit its limit; with no account to
-    /// move to it waits for the reset (the usual "continue" after it, or a move as soon as another
-    /// account has room again: `retryAccountSwitches`).
+    /// move to it waits: it moves as soon as another account has room (`balanceAccounts`), or gets
+    /// the usual "continue" when its own limit resets.
     func moveAfterLimit(_ id: UUID) async {
         guard let hit = usageLimitHits[id], let session = deck.session(id), !isAccountPinned(session) else { return }
         let ids = Set(deck.settings.accountPriority).subtracting([accountID(of: session)])
         for account in ids { await usageMonitor(forAccount: account)?.refresh() }
         refreshAccountLogins()
-        guard usageLimitHits[id] == hit, terminals.isRunning(id) else { return }
-        guard let target = accountSwitchCandidate(for: id) else {
-            if accountSwitchOffered[id] != hit.at {
-                accountSwitchOffered[id] = hit.at
-                let reset = AccountPolicy.pickForSwitch(order: deck.settings.accountPriority, standings: accountStandings, excluding: [],
-                                                        threshold: deck.settings.accountNearLimitPercent)
-                var when = ""
-                if case .none(let earliest?) = reset { when = earliest.formatted(date: .omitted, time: .shortened) }
+        guard usageLimitHits[id] == hit, terminals.isRunning(id), let facts = accountMoveFacts(id) else { return }
+        let decision = decideAccountMove(facts, trigger: .limit)
+        guard case .move(let target) = decision else {
+            // Said once per limit event; the watch keeps trying every half minute.
+            guard accountSwitchOffered[id] != hit.at else { return }
+            accountSwitchOffered[id] = hit.at
+            switch decision {
+            case .stay(.noRoom(let earliest)):
+                let when = earliest.map { $0.formatted(date: .omitted, time: .shortened) } ?? ""
                 logAgent("ClaudeDeck", inbound: false, "\(session.name): every account is at its limit; waiting" + (when.isEmpty ? "" : " (first reset \(when))"), ok: false)
                 onAccountNotice?(AccountNotice(sessionID: id, title: String(localized: "\(session.name): every account is at its limit"),
                                                body: when.isEmpty ? String(localized: "It continues when a limit resets.")
                                                                   : String(localized: "It continues when a limit resets (first at \(when))."),
                                                switchTo: nil))
+            case .stay(.cooldown(let until)):
+                logAgent("ClaudeDeck", inbound: false, "\(session.name): at its limit; moved a moment ago, may move again at \(until.formatted(date: .omitted, time: .shortened))", ok: false)
+            default:
+                break
             }
             return
         }
@@ -485,7 +527,7 @@ extension AppModel {
         case .off: return
         case .auto:
             if case .failure(let refusal) = await switchAccount(id, to: target, reason: .limit) {
-                logAgent("ClaudeDeck", inbound: false, "\(session.name): couldn't move to \(accountLabel(target)) (\(refusal.rawValue))", ok: false)
+                automaticMoveFailed(id, to: target, refusal)
             }
         case .notify:
             guard accountSwitchOffered[id] != hit.at else { return }
@@ -498,14 +540,143 @@ extension AppModel {
         }
     }
 
-    /// Every half minute while sessions wait on a limit (AppModel+UsageLimit): one whose account
-    /// is still used up moves as soon as another account has room.
-    func retryAccountSwitches() async {
-        guard hasOtherAccounts, deck.settings.accountSwitchMode == .auto else { return }
-        for id in usageLimitHits.keys where !switchingAccounts.contains(id) {
-            guard let session = deck.session(id), !isAccountPinned(session), terminals.isRunning(id),
-                  accountStanding(accountID(of: session)).isLimited(), accountSwitchCandidate(for: id) != nil else { continue }
-            await moveAfterLimit(id)
+    // MARK: Keeping sessions on accounts with room
+
+    /// Every half minute and after every usage reading (with "switch accounts" on): a session
+    /// stopped on its limit moves as soon as another account has room; an idle one sitting on a
+    /// used-up account moves (silently) before it is next used. One at a time.
+    func balanceAccounts() async {
+        guard hasOtherAccounts, deck.settings.accountSwitchMode == .auto, !balancingAccounts else { return }
+        balancingAccounts = true
+        defer { balancingAccounts = false }
+        for session in deck.sessions where session.kind == .claude {
+            let id = session.id
+            guard terminals.isRunning(id), !switchingAccounts.contains(id), !restartingSessions.contains(id),
+                  !pendingAccountMoves.contains(id), let facts = accountMoveFacts(id) else { continue }
+            if facts.atLimit {
+                guard case .move = decideAccountMove(facts, trigger: .limit) else { continue }
+                await moveAfterLimit(id)
+                continue
+            }
+            guard readyForInput(id), case .move = decideAccountMove(facts, trigger: .idle) else { continue }
+            // Only now read the transcript: a move would end its background tasks.
+            var withTasks = facts
+            withTasks.backgroundTasks = await hasBackgroundTasks(id)
+            guard readyForInput(id), case .move(let target) = decideAccountMove(withTasks, trigger: .idle) else { continue }
+            if case .failure(let refusal) = await switchAccount(id, to: target, reason: .idle) {
+                automaticMoveFailed(id, to: target, refusal)
+            }
         }
+    }
+
+    /// Not tried again for `moveCooldown` (no retry every half minute); a move already under
+    /// way (another path got there first) isn't a failure.
+    private func automaticMoveFailed(_ id: UUID, to target: String, _ refusal: AccountSwitchRefusal, detail: String = "") {
+        guard refusal != .switching else { return }
+        lastAccountMove[id] = Date()
+        let name = deck.session(id)?.name ?? id.uuidString
+        logAgent("ClaudeDeck", inbound: false, "\(name): couldn't move to \(accountLabel(target)) (\(refusal.rawValue))\(detail)", ok: false)
+    }
+
+    /// Idle at its prompt, started up, nothing typed into it that hasn't begun.
+    func readyForInput(_ id: UUID) -> Bool {
+        guard terminals.isRunning(id), status(of: id).display.isIdle,
+              let hook = hookStatuses[id], hook.updatedAt >= (launchedAt[id] ?? .distantPast) else { return false }
+        return queueAwaiting[id] == nil && !pendingContinue.contains(id) && !pendingCompact.contains(id) && pendingKicks[id] == nil
+    }
+
+    /// Background shells or agents still running in the session (its transcript's last part).
+    /// Read again only when the transcript has grown.
+    func hasBackgroundTasks(_ id: UUID) async -> Bool {
+        guard let path = tailers[id]?.url.path ?? deck.session(id)?.transcriptPath else { return false }
+        let size = ((try? FileManager.default.attributesOfItem(atPath: path)[.size]) as? NSNumber)?.uint64Value ?? 0
+        if let cached = backgroundTaskCheck[id], cached.size == size { return cached.running }
+        let running = await Task.detached(priority: .utility) {
+            guard let tail = AppModel.tail(of: path, bytes: 4 * 1024 * 1024) else { return false }
+            return !Transcript.runningBackgroundTasks(in: tail).isEmpty
+        }.value
+        backgroundTaskCheck[id] = (size, running)
+        return running
+    }
+
+    /// Called before a message goes into a Claude session (a queued prompt, `send`, a decision's
+    /// answer, the phone): when it sits on a used-up account and another has room, it moves first
+    /// and the message waits in its queue until it is back. True: hold the message.
+    func holdForAccountMove(_ id: UUID) -> Bool {
+        if pendingAccountMoves.contains(id) || switchingAccounts.contains(id) { return true }
+        guard hasOtherAccounts, deck.settings.accountSwitchMode == .auto, terminals.isRunning(id),
+              !restartingSessions.contains(id), let facts = accountMoveFacts(id),
+              case .move(let target) = decideAccountMove(facts, trigger: .delivery) else { return false }
+        pendingAccountMoves.insert(id)
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.switchAccount(id, to: target, reason: .delivery)
+            self.pendingAccountMoves.remove(id)
+            if case .failure(let refusal) = result {
+                self.automaticMoveFailed(id, to: target, refusal, detail: "; its message goes in here")
+            }
+            self.drainQueues()
+        }
+        return true
+    }
+
+    // MARK: What is known about each account
+
+    /// Every usage reading: a full window marks the account used up until its reset (kept across
+    /// relaunches); then sessions may move.
+    func accountUsageUpdated(_ account: String) {
+        if let usage = usageMonitor(forAccount: account)?.state.usage {
+            let next = AccountPolicy.limitRecord(accountLimits[account], after: usage)
+            if next != accountLimits[account] {
+                if let next, (accountLimits[account]?.until ?? .distantPast) < Date() {
+                    logAgent("ClaudeDeck", inbound: false, "\(accountLabel(account)) is used up until \(next.until.formatted(date: .abbreviated, time: .shortened)) (usage)")
+                } else if next == nil {
+                    logAgent("ClaudeDeck", inbound: false, "\(accountLabel(account)) has room again (usage)")
+                }
+                accountLimits[account] = next
+                saveAccountLimits()
+            }
+        }
+        scheduleAccountBalance()
+    }
+
+    func recordAccountLimit(_ account: String, until: Date) {
+        let now = Date()
+        let old = accountLimits[account]
+        guard (old?.until ?? .distantPast) < until else { return }
+        accountLimits[account] = AccountLimitRecord(until: until, recordedAt: now)
+        saveAccountLimits()
+    }
+
+    private func scheduleAccountBalance() {
+        guard hasOtherAccounts, !accountBalanceScheduled else { return }
+        accountBalanceScheduled = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
+            self.accountBalanceScheduled = false
+            await self.balanceAccounts()
+        }
+    }
+
+    private var accountLimitsFile: URL { store.url.deletingLastPathComponent().appending(path: "account-limits.json") }
+
+    func loadAccountLimits() {
+        guard let data = try? Data(contentsOf: accountLimitsFile) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let records = try? decoder.decode([String: AccountLimitRecord].self, from: data) else { return }
+        let now = Date()
+        accountLimits = records.filter { $0.value.until > now }
+    }
+
+    func saveAccountLimits() {
+        let now = Date()
+        let live = accountLimits.filter { $0.value.until > now }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(live) else { return }
+        try? data.write(to: accountLimitsFile, options: .atomic)
     }
 }

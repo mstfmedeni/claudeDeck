@@ -37,6 +37,9 @@ extension AppModel {
         for session in deck.sessions where !session.queue.isEmpty && session.kind == .claude {
             let id = session.id
             guard terminals.isRunning(id) else { continue }
+            // Being moved to another account: once it is back and has started up.
+            if switchingAccounts.contains(id) || pendingAccountMoves.contains(id) { continue }
+            if let launched = launchedAt[id], (hookStatuses[id]?.updatedAt ?? .distantPast) < launched { continue }
             let display = status(of: id).display
             if let sentAt = queueAwaiting[id] {
                 if display.isRunning || display.isBlocked || Date().timeIntervalSince(sentAt) > 45 {
@@ -46,6 +49,8 @@ extension AppModel {
                 }
             }
             guard display.isIdle, let next = session.queue.first else { continue }
+            // On a used-up account while another has room: it moves first (AppModel+Accounts).
+            if holdForAccountMove(id) { continue }
             mutate(userInitiated: false) { $0.updateSession(id) { $0.queue.removeFirst() } }
             queueAwaiting[id] = Date()
             if typePrompt(next.text, into: id) == nil { queuedMessageTyped(next.text) }
@@ -58,6 +63,13 @@ extension AppModel {
     func typePrompt(_ text: String, into id: UUID) -> String? {
         guard terminals.isRunning(id) else { return String(localized: "This session isn't running.") }
         guard !status(of: id).display.isBlocked else { return String(localized: "Answer the prompt on screen first.") }
+        // Its account is used up and another has room: it moves first, the message goes into its
+        // queue and in once it is back.
+        if deck.session(id)?.kind == .claude, holdForAccountMove(id) {
+            mutate(userInitiated: false) { $0.updateSession(id) { $0.queue.append(QueuedPrompt(text: text)) } }
+            markSeen(id)
+            return nil
+        }
         terminals.type(text + "\r", into: id)
         markSeen(id)
         return nil

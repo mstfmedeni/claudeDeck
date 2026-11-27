@@ -1134,6 +1134,11 @@ final class RemoteController {
         guard let model, model.deck.session(id)?.kind == .claude, model.terminals.isRunning(id),
               !model.status(of: id).display.isBlocked
         else { return }
+        // Its account is used up: it moves first and gets the message once it is back.
+        if model.holdForAccountMove(id) {
+            model.enqueue(id, text: text)
+            return
+        }
         model.terminals.type(text.trimmingCharacters(in: .whitespacesAndNewlines) + "\r", into: id)
     }
 

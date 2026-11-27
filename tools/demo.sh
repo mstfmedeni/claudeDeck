@@ -367,6 +367,9 @@ KEEP_SESSIONS=false; [ -n "${CLAUDEDECK_DEMO_PERSIST:-}" ] && [ "$DEFAULTS" = fa
 # CLAUDEDECK_DEMO_ACCOUNTS=auto|notify: two more Claude accounts (Settings › Accounts): "work" (its
 # demo usage starts at 97 %, near its limit) and "spare" (18 %), and that mode for sessions that
 # hit the usage limit. Touch $ROOT/scenes/<session id>.limit to make one hit it.
+# CLAUDEDECK_DEMO_USAGE pins each account's usage (default, work, spare), e.g. "w100,unknown,30":
+# a number is a 5-hour percent (100: used up), wN a weekly one, "unknown" can't be read, empty
+# keeps the fixture. It is read on every usage poll, so it applies from launch on.
 ACCOUNTS=""
 if [ -n "${CLAUDEDECK_DEMO_ACCOUNTS:-}" ] && [ "$DEFAULTS" = false ]; then
   ACCOUNTS=$(jq -rn --arg dir "$ROOT/data/accounts" --arg mode "$CLAUDEDECK_DEMO_ACCOUNTS" --argjson now "$NOW" \

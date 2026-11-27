@@ -112,4 +112,38 @@ import Testing
         #expect(Transcript.limitResetDate(in: "Claude AI usage limit reached|1790003600", after: at) == Date(timeIntervalSince1970: 1_790_003_600))
         #expect(Transcript.limitResetDate(in: "You've hit your session limit", after: at) == nil)
     }
+
+    /// The messages Claude Code 2.1.33x wrote on 2026-11-26/27, and the lines around them.
+    @Test func realLimitMessagesOfEveryWindow() {
+        // 21:53:44Z = 00:53 Istanbul; 3:10am is 00:10Z the next day.
+        let fiveHour = hitLine("You've hit your 5-hour limit · resets 3:10am (Europe/Istanbul)", at: "2026-11-26T21:53:44.153Z")
+        let notice = #"{"parentUuid":"x","isSidechain":false,"type":"system","subtype":"informational","content":"Usage limit reached · set to continue automatically at 3:10am","timestamp":"2026-11-26T21:53:44.156Z","userType":"external"}"#
+        let cancelled = #"{"isSidechain":false,"type":"system","subtype":"informational","content":"Automatic continue cancelled · /rate-limit-options to wait again","timestamp":"2026-11-26T22:14:55.086Z"}"#
+        let snapshot = #"{"type":"file-history-snapshot","messageId":"m","snapshot":{"timestamp":"2026-11-26T22:14:55.474Z"}}"#
+        let expected = UsageLimitEvent.hit(at: date("2026-11-26T21:53:44.153Z"), resetsAt: date("2026-11-27T00:10:00Z"))
+        #expect(Transcript.lastUsageLimitEvent(in: [fiveHour, notice].joined(separator: "\n")) == expected)
+        // A process that was ended (moved) leaves the hit the last word.
+        #expect(Transcript.lastUsageLimitEvent(in: [fiveHour, notice, cancelled, snapshot].joined(separator: "\n")) == expected)
+        let session = hitLine("You've hit your session limit · resets 3:10am (Europe/Istanbul)", at: "2026-11-26T22:01:02.000Z")
+        #expect(Transcript.lastUsageLimitEvent(in: session) == .hit(at: date("2026-11-26T22:01:02Z"), resetsAt: date("2026-11-27T00:10:00Z")))
+        let weekly = hitLine("You've hit your weekly limit · resets Nov 29 at 8am (Europe/Istanbul)", at: "2026-11-26T22:15:03.000Z")
+        #expect(Transcript.lastUsageLimitEvent(in: weekly) == .hit(at: date("2026-11-26T22:15:03Z"), resetsAt: date("2026-11-29T05:00:00Z")))
+    }
+
+    @Test func backgroundTasksStillRunning() {
+        func launch(_ id: String, background: Bool = true) -> String {
+            #"{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","id":"\#(id)","name":"Bash","input":{"command":"sleep 99","run_in_background":\#(background)}}]}}"#
+        }
+        func notification(_ id: String, status: String = "completed") -> String {
+            #"{"type":"user","isSidechain":false,"message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>\#(id)</tool-use-id>\n<status>\#(status)</status>\n</task-notification>"}}"#
+        }
+        let failed = #"{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t3","is_error":true,"content":"no"}]}}"#
+        let queued = #"{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<tool-use-id>t1</tool-use-id>\n</task-notification>"}"#
+        let side = #"{"type":"assistant","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","id":"s1","name":"Bash","input":{"run_in_background":true}}]}}"#
+        #expect(Transcript.runningBackgroundTasks(in: [launch("t1"), launch("t2", background: false)].joined(separator: "\n")) == ["t1"])
+        #expect(Transcript.runningBackgroundTasks(in: [launch("t1"), queued].joined(separator: "\n")) == ["t1"])
+        #expect(Transcript.runningBackgroundTasks(in: [launch("t1"), notification("t1", status: "stopped")].joined(separator: "\n")).isEmpty)
+        #expect(Transcript.runningBackgroundTasks(in: [launch("t1"), launch("t3"), failed, side].joined(separator: "\n")) == ["t1"])
+        #expect(Transcript.runningBackgroundTasks(in: "").isEmpty)
+    }
 }
