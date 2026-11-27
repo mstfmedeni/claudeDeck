@@ -511,12 +511,16 @@ public enum AccountPolicy {
     /// reading taken well after the record was made whose windows are all clearly below full
     /// (under `clearlyFreePercent`) drops it (the limit was lifted early, or the record was a
     /// guess); otherwise it stays (the API can lag a limit message, or show 99 % at the limit).
-    public static func limitRecord(_ record: AccountLimitRecord?, after usage: ClaudeUsage, now: Date = Date()) -> AccountLimitRecord? {
+    /// `heldUntil`: the latest reset of a limit a session on the account stopped on and still
+    /// waits for; a session's own limit message is never overruled by a reading before then.
+    public static func limitRecord(_ record: AccountLimitRecord?, after usage: ClaudeUsage, heldUntil: Date? = nil,
+                                   now: Date = Date()) -> AccountLimitRecord? {
         if let until = usage.exhaustedUntil, until > now {
             if let record, record.until >= until { return record }
             return AccountLimitRecord(until: until, recordedAt: now)
         }
         guard let record, record.until > now else { return nil }
+        if let heldUntil, heldUntil > now { return record }
         let used = AccountStanding(id: "", usage: usage).usedPercent(now: now)
         if let used, used < clearlyFreePercent, usage.fetchedAt.timeIntervalSince(record.recordedAt) > recordTrustWindow { return nil }
         return record

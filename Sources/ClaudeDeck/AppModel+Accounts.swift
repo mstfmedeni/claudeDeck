@@ -612,8 +612,9 @@ extension AppModel {
             guard let self else { return }
             let result = await self.switchAccount(id, to: target, reason: .delivery)
             self.pendingAccountMoves.remove(id)
-            if case .failure(let refusal) = result {
-                self.automaticMoveFailed(id, to: target, refusal, detail: "; its message goes in here")
+            switch result {
+            case .success: self.deliveryMoved.insert(id)
+            case .failure(let refusal): self.automaticMoveFailed(id, to: target, refusal, detail: "; its message goes in here")
             }
             self.drainQueues()
         }
@@ -626,7 +627,12 @@ extension AppModel {
     /// relaunches); then sessions may move.
     func accountUsageUpdated(_ account: String) {
         if let usage = usageMonitor(forAccount: account)?.state.usage {
-            let next = AccountPolicy.limitRecord(accountLimits[account], after: usage)
+            // Sessions still stopped on this account's limit keep it (their message wins).
+            let held = usageLimitHits.compactMap { id, hit -> Date? in
+                guard let session = deck.session(id), accountID(of: session) == account else { return nil }
+                return hit.resetsAt
+            }.max()
+            let next = AccountPolicy.limitRecord(accountLimits[account], after: usage, heldUntil: held)
             if next != accountLimits[account] {
                 if let next, (accountLimits[account]?.until ?? .distantPast) < Date() {
                     logAgent("ClaudeDeck", inbound: false, "\(accountLabel(account)) is used up until \(next.until.formatted(date: .abbreviated, time: .shortened)) (usage)")

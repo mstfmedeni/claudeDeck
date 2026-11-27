@@ -231,6 +231,9 @@ final class AppModel {
     @ObservationIgnored var accountWatchTask: Task<Void, Never>?
     @ObservationIgnored var accountBalanceScheduled = false
     @ObservationIgnored var balancingAccounts = false
+    /// Moved before a message went in: the first message typed after the move is watched like a
+    /// continue (`pendingKicks`), since the fresh process may swallow it.
+    @ObservationIgnored var deliveryMoved: Set<UUID> = []
     /// `hasBackgroundTasks`, by transcript size.
     @ObservationIgnored var backgroundTaskCheck: [UUID: (size: UInt64, running: Bool)] = [:]
     /// Sessions being moved to another account right now.
@@ -899,6 +902,7 @@ final class AppModel {
         pendingContinue.remove(id)
         usageLimitHits[id] = nil
         pendingKicks[id] = nil
+        deliveryMoved.remove(id)
         // On quit, prepareForQuit already recorded which sessions were open and working.
         guard !isQuitting else { return }
         // A restart (the user's, or the stall watch's) keeps the session's simulators.

@@ -53,7 +53,11 @@ extension AppModel {
             if holdForAccountMove(id) { continue }
             mutate(userInitiated: false) { $0.updateSession(id) { $0.queue.removeFirst() } }
             queueAwaiting[id] = Date()
-            if typePrompt(next.text, into: id) == nil { queuedMessageTyped(next.text) }
+            if typePrompt(next.text, into: id) == nil {
+                queuedMessageTyped(next.text)
+                // The first message after a move: typed again if it never shows up (retryKicks).
+                if deliveryMoved.remove(id) != nil { pendingKicks[id] = PendingKick(message: next.text, sentAt: Date(), attempts: 1) }
+            }
         }
     }
 

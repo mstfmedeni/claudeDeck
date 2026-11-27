@@ -303,9 +303,12 @@ extension AppModel {
         let enter = form["enter"] == "1" || (target.kind == .claude && form["enter"] != "0")
         guard text.count <= SessionCLI.maxText else { return SessionCLI.failure(400, "too_long", exit: .usage) }
         guard !text.isEmpty || enter else { return SessionCLI.failure(400, "bad_request", exit: .usage) }
+        // Being moved to another account, its process is down for a moment: never resumed here
+        // (that would race the move); with `.type` below the text waits in its queue.
+        let moving = target.kind == .claude && (switchingAccounts.contains(target.id) || pendingAccountMoves.contains(target.id))
         // A stopped Claude session a session closed resumes for it when the caller may resume it
         // (the close chain, not only the sessions it started itself; Settings › Agents).
-        if target.kind == .claude, enter, !terminals.isRunning(target.id),
+        if target.kind == .claude, enter, !moving, !terminals.isRunning(target.id),
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let resumed = cliSendResume(caller, to: target.id, text: text, json: json) { return resumed }
         let sender = deck.session(caller)?.name ?? "claudedeck"
@@ -331,6 +334,14 @@ extension AppModel {
             return SessionCLI.answer(200, SessionCLISent(delivered: "note", noteId: note),
                                      text: "note: \(target.name) gets it as a note for the user (sessions may not type into Claude)", exit: .ok, json: json)
         case .type:
+            if moving, enter, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                rememberAgentPrompt(text, in: target.id)
+                enqueue(target.id, text: text)
+                logAgent(sender, inbound: true, "claudedeck send → queued (moving to another account) · \(target.name)")
+                cli.sentAt[target.id] = Date()
+                return SessionCLI.answer(200, SessionCLISent(delivered: "claude"),
+                                         text: "claude: queued for \(target.name) (it is moving to another account)", exit: .ok, json: json)
+            }
             guard terminals.isRunning(target.id) else { return SessionCLI.failure(409, "not_running", exit: .failed) }
             let delivered: String
             if target.kind == .claude {

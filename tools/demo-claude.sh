@@ -188,7 +188,12 @@ tick() {
     rc=$?
     if [ "$rc" = 0 ]; then
       case "$line" in */exit*) exit 0 ;; esac
-      rc_input || true
+      rc_input && return 0
+      # A typed message goes into the transcript as Claude Code's does (ClaudeDeck checks that
+      # a continue arrived).
+      text=$(printf '%s' "$line" | tr -d '\r')
+      [ -n "$text" ] && [ -n "$TRANSCRIPT" ] && jq -nc --arg t "$text" \
+        '{type: "user", timestamp: (now | strftime("%Y-%m-%dT%H:%M:%S.000Z")), message: {role: "user", content: $t}}' >> "$TRANSCRIPT"
       return 0
     fi
     # Over 128: the second passed. Anything else (end of input): don't spin.

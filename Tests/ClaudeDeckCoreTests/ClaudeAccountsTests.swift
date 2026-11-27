@@ -344,6 +344,9 @@ import Testing
         #expect(AccountPolicy.limitRecord(older, after: usage(99), now: now) == older)
         // A later reading clearly below full drops it (lifted early, or a guess).
         #expect(AccountPolicy.limitRecord(older, after: usage(40), now: now) == nil)
+        // …unless a session still waits on that limit: its own message wins.
+        #expect(AccountPolicy.limitRecord(older, after: usage(40), heldUntil: now.addingTimeInterval(1800), now: now) == older)
+        #expect(AccountPolicy.limitRecord(older, after: usage(40), heldUntil: now.addingTimeInterval(-1), now: now) == nil)
         // Expired records go.
         #expect(AccountPolicy.limitRecord(AccountLimitRecord(until: now.addingTimeInterval(-1)), after: usage(99), now: now) == nil)
     }
